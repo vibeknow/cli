@@ -1,0 +1,26 @@
+package httpclient
+
+import "net/http"
+
+// Middleware wraps a RoundTripper with additional behavior.
+type Middleware interface {
+	Wrap(next http.RoundTripper) http.RoundTripper
+}
+
+// Chain applies middlewares in order: Chain(base, A, B, C) yields
+// A(B(C(base))) — A sees the request first, C sends it last.
+func Chain(base http.RoundTripper, mws ...Middleware) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	rt := base
+	for i := len(mws) - 1; i >= 0; i-- {
+		rt = mws[i].Wrap(rt)
+	}
+	return rt
+}
+
+// roundTripperFunc adapts a function to RoundTripper.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
