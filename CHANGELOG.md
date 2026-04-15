@@ -2,4 +2,4 @@
 
 ## [Unreleased]
 ### Added
-- P0 bootstrap: repo scaffold, base framework packages, `profile` / `config` / `doctor` / `completion` / `version` commands.
+- Repository scaffold with empty `vibeknow` root command.
