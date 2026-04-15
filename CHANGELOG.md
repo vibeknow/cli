@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.0-p1] — 2026-04-15
+### Added
+- Multi-endpoint direct-connect: profile schema v2 with `endpoints` map for account/vectoria/figlens/vibeknow. Cloud defaults built in.
+- `internal/httpclient` stack: core client + middleware chain (auth / trace-id / version skew / verbose+redact / retry).
+- `internal/errs` canonical Error Object (spec §11.2).
+- `client/account` with `Whoami`.
+- `cmd/auth whoami / status / logout` (no interactive login in P1; use `VIBEKNOW_TOKEN` env or P1.5's Device Flow).
+- `cmd/api call --service <name> --method ... --path ...` raw tunneling.
+- `cmd/doctor` extended with concurrent endpoint reachability + API version probe.
+- Backend contract document at `docs/contracts/p1-backend.md`.
+
+### Changed
+- `profile add` accepts `--endpoint-{account,vectoria,figlens,vibeknow}`; `--api-endpoint` retained as deprecated alias for `--endpoint-vibeknow`.
+- `profile show` prints endpoints map instead of single `api_endpoint`.
+- Profile schema_version bumped from "1" to "2"; v1 profiles auto-migrate on load.
+- `doctor` header message updated to reflect P1 scope (environment + endpoint diagnostics).
+
+### Deferred
+- Interactive `auth login` (Device Flow + PAT) → P1.5 standalone project.
+- Service clients for vectoria / figlens / vibeknow / speech → P2 (alongside shortcuts).
+
 ## [0.1.0-p0] — 2026-04-15
 ### Added
 - Repository scaffold with cobra-based `vibeknow` CLI.

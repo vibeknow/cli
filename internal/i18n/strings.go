@@ -8,7 +8,7 @@ func init() {
 		"msg.profile.switched":     "active profile is now %q",
 		"msg.profile.added":        "added profile %q",
 		"msg.profile.removed":      "removed profile %q",
-		"doctor.header":            "vibeknow doctor — local checks only (P0)",
+		"doctor.header":            "vibeknow doctor — environment and endpoint diagnostics",
 		"doctor.ok":                "[ok] %s",
 		"doctor.fail":              "[fail] %s: %s",
 	})
@@ -19,7 +19,7 @@ func init() {
 		"msg.profile.switched":     "当前 profile 已切换为 %q",
 		"msg.profile.added":        "已添加 profile %q",
 		"msg.profile.removed":      "已删除 profile %q",
-		"doctor.header":            "vibeknow doctor — 仅本地检查（P0）",
+		"doctor.header":            "vibeknow doctor — 环境与 endpoint 诊断",
 		"doctor.ok":                "[通过] %s",
 		"doctor.fail":              "[失败] %s: %s",
 	})
