@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,6 +54,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 
 	resp, err := c.http.Do(req)
 	if err != nil {
+		var eo *errObject
+		if errors.As(err, &eo) {
+			return eo
+		}
 		return &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
 	}
 	defer resp.Body.Close()
