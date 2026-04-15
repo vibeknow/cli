@@ -1,13 +1,19 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
 	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
 )
@@ -19,7 +25,7 @@ type check struct {
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "diagnose local setup (P0 runs local checks only)",
+	Short: "diagnose local setup and endpoint reachability",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println(i18n.T("doctor.header"))
 		checks := []check{
@@ -37,6 +43,9 @@ var doctorCmd = &cobra.Command{
 				fmt.Println(i18n.T("doctor.ok", c.name))
 			}
 		}
+
+		failed += checkEndpoints()
+
 		if failed > 0 {
 			return fmt.Errorf("%d check(s) failed", failed)
 		}
@@ -84,4 +93,79 @@ func checkLocale() error {
 		return fmt.Errorf("i18n returned empty string")
 	}
 	return nil
+}
+
+// checkEndpoints resolves each service endpoint and probes /v1/health concurrently.
+// Returns the number of failures.
+func checkEndpoints() int {
+	f, err := config.LoadProfiles()
+	if err != nil || f.Current == "" {
+		fmt.Println("[skip] endpoints: no active profile")
+		return 0
+	}
+	var prof *config.Profile
+	for i := range f.Profiles {
+		if f.Profiles[i].Name == f.Current {
+			prof = &f.Profiles[i]
+		}
+	}
+	if prof == nil {
+		return 0
+	}
+	services := []string{"account", "vectoria", "figlens", "vibeknow"}
+	type result struct {
+		svc, url string
+		ok       bool
+		detail   string
+	}
+	results := make([]result, len(services))
+	var wg sync.WaitGroup
+	for i, svc := range services {
+		wg.Add(1)
+		go func(i int, svc string) {
+			defer wg.Done()
+			url, err := endpoints.Resolve(*prof, svc)
+			if err != nil {
+				results[i] = result{svc: svc, ok: false, detail: err.Error()}
+				return
+			}
+			results[i] = result{svc: svc, url: url}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			req, _ := http.NewRequestWithContext(ctx, "GET", url+"/v1/health", nil)
+			client := &http.Client{Timeout: 3 * time.Second}
+			resp, err := client.Do(req)
+			if err != nil {
+				results[i].detail = err.Error()
+				return
+			}
+			defer resp.Body.Close()
+			gotVer := resp.Header.Get("X-Vibeknow-Api-Version")
+			var body struct {
+				Status     string `json:"status"`
+				Version    string `json:"version"`
+				APIVersion string `json:"api_version"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&body)
+			if resp.StatusCode != 200 || body.Status != "ok" {
+				results[i].detail = fmt.Sprintf("http=%d status=%q", resp.StatusCode, body.Status)
+				return
+			}
+			results[i].ok = true
+			results[i].detail = fmt.Sprintf("api=%s build=%s", gotVer, body.Version)
+		}(i, svc)
+	}
+	wg.Wait()
+
+	failed := 0
+	for _, r := range results {
+		name := fmt.Sprintf("%s endpoint %s", r.svc, r.url)
+		if r.ok {
+			fmt.Println(i18n.T("doctor.ok", name+"  "+r.detail))
+		} else {
+			fmt.Println(i18n.T("doctor.fail", name, r.detail))
+			failed++
+		}
+	}
+	return failed
 }
