@@ -4,7 +4,7 @@
 - **状态**：Design, pending implementation plan
 - **作者**：nullkey（与 Claude 协作 brainstorm）
 - **参考实现**：[lark-cli](https://github.com/larksuite/cli)（MIT 许可，可直接借鉴代码）
-- **版本**：v2.2（v2.1 基础上补齐 lark-cli 最佳实践：AGENTS.md、终端输出清理、`--output` 枚举、Skill references 结构）
+- **版本**：v2.3（v2.2 基础上基于实际后端拓扑修正架构：多 endpoint 直连为主路径，放弃 Gateway 假设）
 
 ## 1. 背景与目标
 
@@ -35,7 +35,7 @@ vibeknow 产品将文档/链接经 pipeline 自动生成视频。现有后端服
 | 技术栈 | Go + cobra + viper，npm 分发 | Python / TS / Rust | 与后端同语言、生态成熟、可大量复用 lark-cli 基础设施 |
 | 命令架构 | 三层（Shortcuts / API / Raw） | 单层封装 | 同时满足"一条命令跑通"与"未封装 API 兜底" |
 | Domain 切分 | E 架构骨架，A 阶段只填主链路 | 只做 A（无扩展位） | 保留扩展但控制初期工作量 |
-| 认证 | 统一 token（go-account 签发），通过 go-vibeknow 网关转发（**前提：§4.1 G1 + G2 成立**） | 多服务直连 + 多 token（见 §4.4 Fallback B） | CLI 感知面最小；符合人/Agent 定位 |
+| 认证 | 统一 JWT（go-account 签发，所有对外服务信任），CLI 多 endpoint 直连对应服务 | 独立 Gateway 服务 / go-vibeknow 兼任 Gateway | 匹配当前 4 外部服务 + peer 拓扑；Gateway 属过早抽象（见 §4.1） |
 | 多环境 | lark-cli 风格 profile（`~/.config/vibeknow/profiles.yaml`） | 环境变量 | 支持 dev/staging/prod 无缝切换 |
 | 长耗时任务 | 默认同步 + 进度流；`--async` 切异步；`--output json` 时输出 NDJSON 事件流 | 纯同步 / 纯异步 | TTY 人类友好 + Agent 可流式解析 |
 | Hero 命令 | `vibeknow create --from <source>`，复杂配置沉到 `project` | 参数全部平铺 | 单参数命令符合 Agent-Native；配置沉淀到后端可跨端共享 |
@@ -54,11 +54,11 @@ vibeknow 产品将文档/链接经 pipeline 自动生成视频。现有后端服
 
 1. **Shortcuts 层** — 面向人与 Agent 的"黄金路径"。封装多次后端调用 + 合理默认值 + 业务侧默认值合成（如 `create` 会自动按需 upload → submit → wait）。**特征**：动词在前（create / download），对人/Agent 语义自然。
 2. **API Commands 层** — 一一映射后端服务 API，参数贴近 proto/OpenAPI。**特征**：命名对齐后端 RPC/REST（`video.task.get --id xxx`），单次请求。
-3. **Raw 层** — 未封装 API 的兜底通道。所有 raw 请求**仍通过 go-vibeknow 网关**，`--service` 只是路由提示，不是直连：
+3. **Raw 层** — 未封装 API 的兜底通道。`--service` flag 从 profile 的 `endpoints` map 选择目标服务 endpoint 直连：
    ```
-   vibeknow api call --service figlens --method POST --path /v1/pipeline/run --body @x.json
+   vibeknow api call --service figlens --method POST --path /v1/tasks/init --body @x.json
    ```
-   等价于 `POST {gateway}/proxy/figlens/v1/pipeline/run`，网关负责鉴权 + 转发。仅当 profile 启用 `service_overrides` 时才可能直连（见 §4.3）。
+   等价于 `POST {endpoints.figlens}/v1/tasks/init`，CLI 携带 Bearer token，目标服务自行验证（P1 prereq 保证所有服务共享 JWT）。未来若引入 Gateway（§4.5），raw 层路由会透明切换至网关，flag 形态不变。
 
 **分层判定规则**（两个工程师应该做出一致的选择）：
 
@@ -152,27 +152,60 @@ vibeknow doctor / update / completion
 
 ## 4. 认证、Profile 与网关姿态
 
-### 4.1 Go / No-Go Gates（实施前必须确认）
+### 4.1 架构决策：多 endpoint 直连
 
-以下三项是**架构的前提假设**，任一项不成立都会让设计形态发生根本变化。在 implementation plan 阶段必须先与服务 owner 对齐；未就绪则设计需要改版而非局部打补丁。
+**现状拓扑**（2026-04-15 核查确认）：前端已直连 4 个对外服务 —— **vectoria**（文档解析）、**figlens**（视频任务）、**vibeknow**（扣费 / 声音克隆 / project）、**account**（登录）。**speech** 为纯内部服务，通过 figlens（TTS）与 vibeknow（声音克隆）调用。服务间通过内部调用完成扣费联动（`figlens → vibeknow`）。
 
-| Gate | 内容 | 若不成立 |
+**CLI 采用相同架构**：profile 维护 4 个对外服务的 endpoint 映射，各 client 直连对应服务。所有服务共享 go-account 签发的 JWT（见 P1 prereq）。
+
+**为什么不引入 Gateway**（匹配当前规模的判断）：
+
+1. 4 个对外服务规模未触发 Gateway 规模效益（典型触发阈值 ≥ 10 服务）
+2. 共享框架 **go-atlas** 已横向解决 cross-cutting 策略（JWT 校验 / trace-id / 统一 error shape）
+3. 扣费 / 配额逻辑天然嵌入 `figlens → vibeknow` 服务间调用路径，Gateway 前置反而需要重新设计异步扣费
+4. 对外未暴露第三方开发者 API，不需要独立的外部契约稳定层
+5. 全 HTTP/JSON 协议栈，不需要协议转换
+
+**Gateway 引入触发条件**（成立 2 项即可启动 Gateway 项目；届时应建**独立 gateway 服务**，不 retrofit 进 vibeknow）：
+
+- 对外服务数 ≥ 10
+- 对三方开发者开放 API
+- 需要全局配额 / 反滥用策略（单服务无法实现）
+- 客户端种类 ≥ 5（iOS / Android / 小程序 / 插件 / IoT …）
+- 出现协议转换或跨服务请求聚合需求
+
+#### 4.1.1 Gateway-Ready 基础设施（即便不建 Gateway 也该做）
+
+为将来引入 Gateway 保留可行性，以下投资无论是否建 Gateway 都有价值：
+
+- **每服务固化 public API contract**（OpenAPI / proto）
+- **统一 error / auth / trace 格式**（已由 go-atlas 提供）
+- **Trace-ID 跨服务传递**（go-atlas 已支持）
+- **Service Discovery 约定**（DNS + 配置，或后期接 Envoy / Istio）
+
+#### 4.1.2 Prerequisites
+
+| Prereq | 内容 | 若不成立 |
 |---|---|---|
-| **G1** | go-vibeknow 已是（或愿意补成）对外网关，聚合 figlens/vectoria/speech | 走 §4.4 Fallback B：CLI 直连多服务 |
-| **G2** | go-account 签发的 token 被所有下游服务信任（或可通过网关统一注入） | 改造成多 token 模型，需要重新设计 `client/` 各包的鉴权与 credential 存储 |
-| **G3** | go-figlens 暴露（或愿意补成）stage 级状态（SSE 或可轮询的 snapshot） | §5 长耗时任务模型降级为"只有 submitted / succeeded / failed 三态"，进度条消失 |
+| **P1** | go-account 签发的 JWT 被所有对外服务信任 | 改造成多 token 模型，重新设计 `client/` 各包鉴权与 credential 存储 |
+| **P2** | go-figlens 暴露（或补成）stage 级任务状态（SSE 或可轮询的细粒度 snapshot） | §5 长耗时任务模型降级为三态（submitted / succeeded / failed），进度条消失 |
 
-**本 spec 的其余内容均建立在 G1 + G2 + G3 成立的假设之上。**
+**P1 已确认成立**（2026-04-15 核查）。**P2 待与 figlens owner 对齐**，CLI P2 阶段开工前必须解决；调研显示 go-figlens 目前只有 `/v1/tasks/*` 轮询和 `/v1/assistant/stream` 对话流，没有 task-level 阶段事件流。
 
-### 4.2 主路径认证流程（假设 G1 + G2 成立）
+### 4.2 主路径认证流程
 
-1. `vibeknow auth login` 调 go-account 签发 token。
-   - A 阶段先实现一种登录方式：**推荐 username/password**（最低依赖），OAuth / SSO 留扩展位。
-   - CI / 无 TTY 场景下，支持 `VIBEKNOW_TOKEN` 环境变量直接注入，跳过 keychain。
-2. Token 存 OS keychain，复用 lark-cli 的 `internal/keychain` + `internal/credential`。
-   - **Keychain 不可用 fallback**（Linux headless）：加密后存 `~/.config/vibeknow/credentials.enc`（AES-GCM，密钥派生自 machine id + 用户显式 passphrase）。由 `vibeknow auth login --storage file` 显式触发，不自动降级。
-3. 所有请求携带 token；go-vibeknow 网关反向代理到 figlens/vectoria/speech；CLI 只感知 `api_endpoint` 一个地址。
-4. `vibeknow auth whoami` 调 go-account 验证；`logout` 清 credential。
+1. `vibeknow auth login` 调 go-account 获取 JWT（access + refresh token 对）。
+   - **P1 阶段**：仅支持 `VIBEKNOW_TOKEN` 环境变量注入（用户从 web 端登录后复制 token），`auth login` 命令不实现交互式流程。理由：避开 OTP 交互对 CI / Agent 的不友好，保持 P1 可快速交付。
+   - **P1.5 阶段**（独立项目）：go-account 新增 Device Flow（`/v1/auth/device/code` + `/v1/auth/device/token`）+ Personal Access Token（PAT）管理，CLI 接入：
+     - `vibeknow auth login`（默认）：浏览器 Device Flow
+     - `vibeknow auth login --with-token $PAT`：PAT 方式
+     - `vibeknow auth login --no-wait` + `auth login --device-code <code>`：Agent 异步两步流程
+     - `VIBEKNOW_STRICT=bot` 下 `auth login` 拒绝运行（对齐 lark-cli strict mode）
+2. Token 存 OS keychain，复用 P0 已交付的 `internal/keychain` + `internal/credential`。
+   - **Keychain 不可用 fallback**（Linux headless）：AES-GCM 加密文件，由 `auth login --storage file` 显式触发（P1.5 起支持）。
+3. 所有请求携带 `Authorization: Bearer <access_token>`。服务直连；所有对外服务都认同一个 JWT（P1 prereq 已确认）。
+4. `vibeknow auth whoami` 调 go-account `GET /v1/user/profile` 验证 token 并返回用户信息；`logout` 清本地 credential（JWT 无服务端 session 无需 revoke；PAT 场景调 PAT delete API）。
+5. Access token 过期时 CLI 自动用 refresh_token 调 `POST /v1/auth/token/refresh` 续期（中间件层透明重试，见 §8.4）。
 
 ### 4.3 Profile 模型
 
@@ -182,34 +215,49 @@ vibeknow doctor / update / completion
 ```
 profiles:
   - name: string (必填，唯一)
-    api_endpoint: string (必填，网关地址)
+    endpoints: map[service]url (必填，至少含一个；缺省 service 用 cloud 默认值)
+      account:  string (go-account endpoint)
+      vectoria: string (go-vectoria endpoint)
+      figlens:  string (go-figlens endpoint)
+      vibeknow: string (go-vibeknow endpoint)
     credential_ref: string (必填，keychain 条目名或 file:// 路径)
     default_project: string (可选)
     trust: "user" | "dev" (默认 user)
     is_production: bool (默认 true)
-    service_overrides: map[string]string (可选，仅 trust=dev 且 is_production=false 生效)
 current: string (当前激活 profile 名)
 ```
 
-**`service_overrides`**：允许开发者为特定后端服务指定直连 endpoint（调试场景）。生效条件（全部满足）：
-1. `profile.trust == "dev"`
-2. `profile.is_production == false`（**必须显式声明**；默认 `true` 保护普通用户）
-3. 环境变量 `VIBEKNOW_ALLOW_OVERRIDES=1`
+**Service 列表**：`account` / `vectoria` / `figlens` / `vibeknow` 四个。**`speech` 不出现** —— 它是纯内部服务，声音克隆走 vibeknow，TTS 由 figlens 内部调用。
 
-三重开关全部满足时，raw `api call --service X` 和 API Commands 层走直连而非网关，并在 stderr 打印显著警告（包含被覆盖的服务名与目标地址）。任一条件未满足：`service_overrides` 字段读入即忽略并打 warning，不影响其它字段。
+**Endpoint 解析规则**：`endpoints[service]` 优先于内置 cloud 默认值。开发者可只覆盖一部分（"本地 figlens + 其它走 staging"），未覆盖的 service 回落到 profile 的默认环境（通过 `--env {prod|staging}` 或 profile `env` 字段推导）。
 
-**不采用启发式保护**（如检查 `api_endpoint` 是否含 `prod` 子串）—— 启发式会被域名形态绕过，不如显式声明可靠。
+**Cloud 默认值**（P1 待和运维确认具体域名）：
+- account: `https://account.vibeknow.com`
+- vectoria: `https://vectoria.vibeknow.com`
+- figlens: `https://figlens.vibeknow.com`
+- vibeknow: `https://api.vibeknow.com`
+
+**开发者覆盖 endpoint 的信任边界**：`endpoints[service]` 指向非生产地址（如 `http://localhost:*`）时，CLI 要求 profile 必须 `trust: dev` **且** `is_production: false`；否则该 endpoint 被拒绝并报错（防止普通用户误配置把生产流量引到本地）。**不采用启发式保护**（域名子串检查）—— 显式 profile 声明可靠。
 
 命令：`vibeknow profile use / add / list / remove / show`。
 
-### 4.4 Fallback B：多服务直连（若 G1 不成立）
+### 4.4 从 P0 单 endpoint schema 的迁移
 
-**仅在实施阶段确认 G1 不成立时启用，作为备选设计。** 不作为主路径实现。
+P0 交付的 profile schema 字段是 `api_endpoint: string`（单一地址，基于旧的 Gateway 假设）。P1 首个任务完成 schema 迁移：
 
-- Profile schema 扩展为 `endpoints: map[service]url`，每个服务一个 endpoint。
-- `client/` 各包独立发起请求。
-- 鉴权仍基于 G2：token 相同，但每次请求需附加 `X-Vibeknow-Service` 之类 header 让下游自行识别。
-- 若 G2 也不成立，则进入"多服务 + 多 token"最坏情况，此时应回到 brainstorm 阶段重谈。
+1. 兼容加载：旧 `api_endpoint` 字段若存在，自动映射为 `endpoints.vibeknow`（兼容期 1 个 minor 版本，附 stderr deprecation 警告）。
+2. `vibeknow profile add` 新增 `--endpoint-account/--endpoint-vectoria/--endpoint-figlens/--endpoint-vibeknow` 多 flag（未传的 service 用 cloud 默认值）；旧 `--api-endpoint` flag 继续接受，等价于 `--endpoint-vibeknow`。
+3. `vibeknow profile show` 打印完整 endpoints map。
+
+### 4.5 未来 Gateway 引入方式（仅作架构预案，不在任何 P 阶段）
+
+若 §4.1 触发条件成立启动 Gateway 项目：
+
+- **建独立的 `go-gateway` 服务**，不复用 vibeknow。
+- Profile schema 扩展 `gateway_endpoint: string` 字段；启用时 CLI 改用单一 endpoint 走网关路由，`endpoints[service]` 降级为调试覆盖字段。
+- 支持混合模式（部分服务走网关、部分直连），由 `routing_mode: direct | gateway | mixed` 字段控制。
+
+此预案不影响当前任何实现，仅作为架构演进方向记录。
 
 ## 5. 长耗时任务模型
 
@@ -384,7 +432,7 @@ skills/<skill-name>/
 
 同一 profile 下三者同时有值时：env 覆盖一切；env 缺省则按 `credential_ref` 形态选 keychain 或 file。logout 只影响与当前 profile 绑定的持久化来源（2 或 3），不会"清"掉 env。
 
-- **`service_overrides` 信任边界**：规则见 §4.3（需 `trust: dev` + `is_production: false` + `VIBEKNOW_ALLOW_OVERRIDES=1` 三重开关）。
+- **Endpoint 覆盖信任边界**：`endpoints[service]` 指向非生产地址（localhost / 非官方域名）时，profile 必须显式 `trust: dev` **且** `is_production: false`，否则 CLI 拒绝该 endpoint 启动（见 §4.3）。
 - **本地文件读取**：`--from` 路径校验为 regular file（非 symlink-to-socket / device），大小上限默认 500MB（可配置）。
 - **下载磁盘空间预检**：`video download` 前若 `Content-Length` 已知，检查目标盘剩余空间是否 ≥ `size × 1.1`；不足则 exit 2 并提示。未知 size 时不预检，但写入失败（ENOSPC）时删除半成品并 exit 1。
 - **日志脱敏**：所有日志路径统一经 `internal/redact`，自动抹掉 Authorization / Cookie / token-like 字符串。
@@ -459,22 +507,26 @@ A 阶段支持 3 种取值，默认由 TTY 探测决定：
 
 ## 10. 开放问题 / 待 plan 阶段确认
 
-1. **Go module / organization 名**：占位 `github.com/<org>/vibeknow-cli`，待定。
-2. **G1 网关现状**：go-vibeknow 是否已聚合下游？补网关工作量？
-3. **G2 Token 信任范围**：各下游服务是否都认 account token？
-4. **G3 figlens 状态流现状**：是否已暴露 stage 级状态？SSE 还是仅轮询？
-5. **登录方式二选一**：A 阶段先做 username/password 还是 API key？
-6. **vectoria collection 约定**：RAG query 的 collection 命名、租户隔离策略。
-7. **lark-cli 代码复用策略**：vendor / fork / 抽独立包？
-8. **Staging 环境稳定性**：集成测试是否依赖，还是改本地 docker-compose？
-9. **Doc_id 格式规范**：`^doc_[a-zA-Z0-9]{8,}$` 是否匹配后端实际实现？
-10. **Task_id 命名**：`t_` 前缀由谁签发？后端是否已有格式约定？
-11. **后端 SSE endpoint 是否已存在**：路径形态、事件格式是否对齐 §11.1 schema？
-12. **网关 proxy 路径形态**：§3.2 示例用 `/proxy/figlens/v1/...`，实际由 go-vibeknow 采用 path-based 还是 header-based 路由需对齐。
-13. **Submit 失败的输出形态**：submit 阶段本身失败（auth / 参数 / 网关不可达），客户端尚无 task_id，一律走 §11.2 Error Object 而非 task event —— 需在 plan 阶段写死此契约。
-14. **`doctor` 探测是懒加载还是启动前置**：首次 `create` 是否同步跑能力探测并缓存？缓存 TTL？
-15. **`Error Object.message` 的语言**：跟随 `VIBEKNOW_LANG` 还是固定英文？Agent 用 `code` 不受影响，但人类读 `message`。
-16. **`task_id` 格式**：示例 `t_123` 是否反映后端真实格式？Spec 应与后端一次锁定后不再假设前缀。
+**已解决**（v2.3 核查确认）：
+- ~~G1 网关~~ → §4.1 决定不建 Gateway，采用多 endpoint 直连
+- ~~G2 Token 信任~~ → 已确认成立（重命名为 P1 prereq）
+- ~~登录方式~~ → P1 只支持 `VIBEKNOW_TOKEN` env；P1.5 引入 Device Flow + PAT
+
+**仍开放**：
+
+1. **Go module / organization 名**：已定 `github.com/shiliu-ai/vibeknow-cli`（P0 确认）。
+2. **Cloud 默认 endpoint 域名**：§4.3 列的 `account.vibeknow.com` 等是假设值，需和运维对齐真实生产域名。
+3. **P2 prereq：figlens stage 级任务状态**：现状只有 `/v1/tasks/*` 轮询 snapshot + `/v1/assistant/stream` 对话流，无 task-level 阶段事件。CLI P2 开工前必须解决：figlens 补 SSE endpoint，或 CLI 降级为轮询推导 stage。
+4. **vectoria collection 约定**：RAG query 的 collection 命名、租户隔离策略。
+5. **lark-cli 代码复用策略**：vendor / fork / 抽独立包？
+6. **Staging 环境稳定性**：集成测试是否依赖，还是改本地 docker-compose？
+7. **Doc_id 格式规范**：`^doc_[a-zA-Z0-9]{8,}$` 是否匹配 vectoria 实际实现？
+8. **Task_id 格式**：figlens 签发的 task_id 前缀 / 正则需确认（示例里的 `t_123` 是 placeholder）。
+9. **Submit 失败的输出形态**：submit 本身失败（auth / 参数 / 网络），客户端尚无 task_id，一律走 §11.2 Error Object 而非 task event。
+10. **`doctor` 探测是懒加载还是启动前置**：首次 `create` 是否同步跑能力探测并缓存？缓存 TTL？
+11. **`Error Object.message` 的语言**：跟随 `VIBEKNOW_LANG` 还是固定英文？
+12. **P1.5 Device Flow 激活页路径**：`vibeknow.com/activate?user_code=XXXX` 还是别的？前端团队排期？
+13. **后端轻量改动**（P1 前置）：4 个服务共享 go-atlas 层加 `X-Vibeknow-Api-Version` 响应 header、`/v1/health` 扩展 `{status, version, api_version}`、error shape 加 `retryable` 字段 —— 需确认已合并或列入 P1 并行项。
 
 ## 11. Canonical Schemas
 
@@ -530,30 +582,37 @@ Error code 枚举（A 阶段）：`auth_required` | `auth_expired` | `invalid_ar
 
 ```yaml
 # ~/.config/vibeknow/profiles.yaml
-schema_version: "1"
+schema_version: "2"   # P1 bumped from "1" due to endpoints schema change
 current: dev
 profiles:
   - name: prod
-    api_endpoint: https://api.vibeknow.example.com
+    endpoints:
+      account:  https://account.vibeknow.com
+      vectoria: https://vectoria.vibeknow.com
+      figlens:  https://figlens.vibeknow.com
+      vibeknow: https://api.vibeknow.com
     credential_ref: vibeknow.prod
     default_project: news-daily
     trust: user
     is_production: true
   - name: dev
-    api_endpoint: https://staging-api.vibeknow.example.com
+    endpoints:
+      figlens: http://localhost:20067   # only figlens overridden for local debug
+      # account/vectoria/vibeknow fall through to built-in cloud defaults
     credential_ref: vibeknow.dev
     trust: dev
     is_production: false
-    service_overrides:
-      figlens: http://localhost:8081
 ```
 
-校验规则：
+**校验规则**：
 - `name` 唯一；`current` 必须指向存在的 profile 名。
+- `endpoints` 键只接受：`account` | `vectoria` | `figlens` | `vibeknow`。其它键读入即忽略并打 warning。
+- 每个 endpoint 必须是绝对 URL（scheme + host）。
+- 缺省 service 由 CLI 内置 cloud 默认值填充；空 `endpoints: {}` 合法（全走默认）。
 - `trust` 只接受 `user` | `dev`；缺省 `user`。
-- `is_production` 只接受 `true` | `false`；缺省 `true`（保护语义：未明说就按生产处理）。
-- `service_overrides` 仅在 `trust == "dev"` **且** `is_production == false` **且** `VIBEKNOW_ALLOW_OVERRIDES=1` 三重开关全部满足时被 CLI 读取；任一不满足则读入即忽略并打 warning。
-- `api_endpoint` 必须是绝对 URL（scheme + host）。
+- `is_production` 只接受 `true` | `false`；缺省 `true`（保护语义：未明说按生产处理）。
+- **Endpoint 覆盖信任边界**：任一 `endpoints[x]` 指向 `localhost` / `127.0.0.1` / 非官方域名时，profile 必须 `trust: dev` **且** `is_production: false`，否则加载失败并打错误。
+- **P0 兼容**：旧 `api_endpoint: <url>` 字段若存在，自动映射为 `endpoints.vibeknow: <url>`，打 stderr deprecation 警告，一个 minor 版本后移除。
 
 ### 11.4 Project Object
 
@@ -573,6 +632,21 @@ profiles:
 `vibeknow project show --output json` 返回 `{ "schema_version": "1", "project": { ... } }`。
 
 ---
+
+## 附：v2.2 → v2.3 变更摘要
+
+基于对 3 个后端服务（go-vibeknow / go-figlens / go-account）的实际拓扑核查（2026-04-15 进行），修正架构假设：
+
+- **§4.1 架构决策彻底重写**：放弃 Gateway 假设（原 G1），确定"多 endpoint 直连"为主路径，记录判断依据（规模触发条件 + 业务逻辑契合度 + 运维成本分析）。保留 Gateway 未来引入的触发条件与实施方式（§4.5）。
+- **§4.1.1 新增 Gateway-Ready 基础设施清单**：OpenAPI contract、统一 error/auth/trace、trace-id 传递、service discovery —— 无论是否建 Gateway 都该做。
+- **§4.1.2 Prerequisites 从 3 项精简为 2 项**：G2 (→ P1) 已确认成立；G3 (→ P2) 仍需 figlens owner 对齐。G1 撤销。
+- **§4.2 认证流程重写**：P1 阶段只支持 `VIBEKNOW_TOKEN` env 注入；Device Flow + PAT 推迟到 P1.5 独立立项，附完整 UX 设计（`--no-wait` / `--device-code` Agent 流程、`VIBEKNOW_STRICT=bot` 对齐 lark-cli）。
+- **§4.3 Profile schema 改为 endpoints map**：4 个对外服务（account / vectoria / figlens / vibeknow）各自 endpoint；speech 移出（纯内部服务）；内置 cloud 默认值；endpoint 覆盖的信任边界收紧（non-prod URL 需显式 `trust: dev` + `is_production: false`）。
+- **§4.4 P0→P1 迁移规则**：旧 `api_endpoint` 字段 → `endpoints.vibeknow`，兼容一个 minor 版本。
+- **§4.5 新增 Gateway 未来引入预案**：独立 `go-gateway` 服务 + profile `gateway_endpoint` 字段 + `routing_mode` 字段，retrofit 进 vibeknow 明确否决。
+- **§3.2 Raw 层更新**：`--service` flag 直接从 endpoints map 路由，不再假设 proxy path。
+- **§11.3 Canonical YAML schema bump 到 `"2"`**，含 endpoints map + 信任边界校验规则 + P0 兼容逻辑。
+- **§10 开放问题更新**：G1/G2/登录方式已解决；新增"cloud 默认域名"、"后端 3 件轻量改动"、"P1.5 激活页前端排期"等新问题。
 
 ## 附：v2.1 → v2.2 变更摘要
 
