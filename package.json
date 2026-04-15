@@ -1,0 +1,19 @@
+{
+  "name": "@vibeknow/cli",
+  "version": "0.1.0-p0",
+  "description": "vibeknow CLI — turn docs into videos",
+  "license": "MIT",
+  "bin": {
+    "vibeknow": "scripts/npm-launcher.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/npm-postinstall.js"
+  },
+  "files": [
+    "scripts/",
+    "dist/"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
