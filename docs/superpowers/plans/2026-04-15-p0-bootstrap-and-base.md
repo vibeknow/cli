@@ -85,9 +85,9 @@ Each `internal/*` package is one focused responsibility; boundaries are defined 
 Run:
 ```bash
 cd ~/laoshen/vibeknow-cli
-go mod init github.com/nullkey/vibeknow-cli
+go mod init github.com/shiliu-ai/vibeknow-cli
 ```
-(Org name is an open question in spec §10.1; using `nullkey` as placeholder — adjust at commit time if decided.)
+(Org name confirmed: `shiliu-ai`.)
 
 - [ ] **Step 2: Write `.gitignore`**
 
@@ -114,7 +114,7 @@ package main
 import (
 	"os"
 
-	"github.com/nullkey/vibeknow-cli/cmd"
+	"github.com/shiliu-ai/vibeknow-cli/cmd"
 )
 
 func main() {
@@ -219,7 +219,7 @@ git commit -m "feat(p0): repository bootstrap with empty root command"
 ```makefile
 BINARY := vibeknow
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X github.com/nullkey/vibeknow-cli/cmd.version=$(VERSION)
+LDFLAGS := -X github.com/shiliu-ai/vibeknow-cli/cmd.version=$(VERSION)
 
 .PHONY: build test lint install clean
 
@@ -247,7 +247,7 @@ clean:
 set -euo pipefail
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
-LDFLAGS="-X github.com/nullkey/vibeknow-cli/cmd.version=${VERSION}"
+LDFLAGS="-X github.com/shiliu-ai/vibeknow-cli/cmd.version=${VERSION}"
 DIST="${DIST:-./dist}"
 mkdir -p "$DIST"
 
@@ -839,7 +839,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nullkey/vibeknow-cli/internal/charcheck"
+	"github.com/shiliu-ai/vibeknow-cli/internal/charcheck"
 )
 
 type textW struct{ w io.Writer }
@@ -1364,7 +1364,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nullkey/vibeknow-cli/internal/lockfile"
+	"github.com/shiliu-ai/vibeknow-cli/internal/lockfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -1994,7 +1994,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/i18n"
+	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 )
 
 var (
@@ -2160,7 +2160,7 @@ func init() {
 
 Add to `cmd/root.go` init():
 ```go
-import profilecmd "github.com/nullkey/vibeknow-cli/cmd/profile"
+import profilecmd "github.com/shiliu-ai/vibeknow-cli/cmd/profile"
 // inside init():
 rootCmd.AddCommand(profilecmd.Cmd)
 ```
@@ -2175,8 +2175,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
-	"github.com/nullkey/vibeknow-cli/internal/i18n"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 )
 
 var addFlags struct {
@@ -2230,7 +2230,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 )
 
 var listCmd = &cobra.Command{
@@ -2267,8 +2267,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
-	"github.com/nullkey/vibeknow-cli/internal/i18n"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 )
 
 var useCmd = &cobra.Command{
@@ -2295,8 +2295,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
-	"github.com/nullkey/vibeknow-cli/internal/i18n"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 )
 
 var removeCmd = &cobra.Command{
@@ -2323,7 +2323,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 )
 
 var showCmd = &cobra.Command{
@@ -2397,7 +2397,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nullkey/vibeknow-cli/internal/lockfile"
+	"github.com/shiliu-ai/vibeknow-cli/internal/lockfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -2491,7 +2491,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 )
 
 var getCmd = &cobra.Command{
@@ -2520,7 +2520,7 @@ package config
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 )
 
 var setCmd = &cobra.Command{
@@ -2548,7 +2548,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 )
 
 var listCmd = &cobra.Command{
@@ -2576,7 +2576,7 @@ var listCmd = &cobra.Command{
 
 Add to `cmd/root.go`:
 ```go
-import configcmd "github.com/nullkey/vibeknow-cli/cmd/config"
+import configcmd "github.com/shiliu-ai/vibeknow-cli/cmd/config"
 // inside init():
 rootCmd.AddCommand(configcmd.Cmd)
 ```
@@ -2619,9 +2619,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nullkey/vibeknow-cli/internal/config"
-	"github.com/nullkey/vibeknow-cli/internal/i18n"
-	"github.com/nullkey/vibeknow-cli/internal/keychain"
+	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
+	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
 )
 
 type check struct {
