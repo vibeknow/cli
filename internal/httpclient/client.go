@@ -1,0 +1,71 @@
+// Package httpclient provides a shared HTTP client used by all service
+// clients in client/*. See spec §4 and §11.2.
+package httpclient
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
+const ClientAPIVersion = "v1"
+
+type Client struct {
+	baseURL string
+	http    *http.Client
+}
+
+func New(baseURL string) *Client {
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		http:    &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (c *Client) WithTransport(rt http.RoundTripper) *Client {
+	nc := *c
+	nc.http = &http.Client{Transport: rt, Timeout: c.http.Timeout}
+	return &nc
+}
+
+func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("httpclient: marshal body: %w", err)
+		}
+		reader = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	if err != nil {
+		return fmt.Errorf("httpclient: new request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return parseBackendError(resp)
+	}
+	if out == nil || resp.StatusCode == http.StatusNoContent {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return &errObject{Code: "unknown", Message: "decode response: " + err.Error()}
+	}
+	return nil
+}
