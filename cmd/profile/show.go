@@ -2,6 +2,7 @@ package profile
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -23,8 +24,21 @@ var showCmd = &cobra.Command{
 		}
 		for _, p := range f.Profiles {
 			if p.Name == name {
-				fmt.Printf("name: %s\napi_endpoint: %s\ncredential_ref: %s\ntrust: %s\nis_production: %v\ndefault_project: %s\n",
-					p.Name, p.APIEndpoint, p.CredentialRef, p.Trust, p.IsProduction, p.DefaultProject)
+				fmt.Printf("name: %s\ntrust: %s\nis_production: %v\ncredential_ref: %s\ndefault_project: %s\n",
+					p.Name, p.Trust, p.IsProduction, p.CredentialRef, p.DefaultProject)
+				fmt.Println("endpoints:")
+				if len(p.Endpoints) == 0 {
+					fmt.Println("  (all using cloud defaults)")
+				} else {
+					for _, k := range []string{"account", "vectoria", "figlens", "vibeknow"} {
+						if v, ok := p.Endpoints[k]; ok {
+							fmt.Printf("  %s: %s\n", k, v)
+						}
+					}
+				}
+				if p.APIEndpoint != "" {
+					fmt.Fprintln(os.Stderr, "warning: api_endpoint is deprecated; use endpoints.vibeknow")
+				}
 				return nil
 			}
 		}
