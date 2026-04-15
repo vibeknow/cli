@@ -123,12 +123,15 @@ func runNodeWithRetry(ctx context.Context, nodeName, stepID string, fn func() (a
 }
 ```
 
-Helper functions for Task 4 (defined next):
+Helper functions — add them in the **same file** (`base.go`) so this commit compiles standalone. English defaults inline; Task 3 will optionally upgrade to i18n later:
+
 ```go
-func nodeStartMessage(stepID string) string   { return i18nNodeMessage(stepID, "start") }
-func nodeSuccessMessage(stepID string) string { return i18nNodeMessage(stepID, "success") }
-func nodeErrorMessage(stepID string) string   { return i18nNodeMessage(stepID, "error") }
+func nodeStartMessage(stepID string) string   { return fmt.Sprintf("node %s: started", stepID) }
+func nodeSuccessMessage(stepID string) string { return fmt.Sprintf("node %s: completed", stepID) }
+func nodeErrorMessage(stepID string) string   { return fmt.Sprintf("node %s: failed", stepID) }
 ```
+
+Make sure `"fmt"` is in the imports of `base.go` (likely already is).
 
 - [ ] **Step 7: Commit**
 
@@ -140,70 +143,112 @@ git commit -m "feat(pipeline): emit start/success/error process events from runN
 
 ---
 
-## Task 2: Update all 14 node Run() methods to pass `stepID`
+## Task 2: Update 14 node `Run()` methods to emit lifecycle events
 
-**Files:**
-- Modify: `internal/pipeline/node/video_prepare.go`
-- Modify: `internal/pipeline/node/video_knowledge_detail.go`
-- Modify: `internal/pipeline/node/video_text_speech.go`
-- Modify: `internal/pipeline/node/video_content_analyze.go`
-- Modify: `internal/pipeline/node/video_theme.go`
-- Modify: `internal/pipeline/node/video_design.go`
-- Modify: `internal/pipeline/node/video_tts_generate.go`
-- Modify: `internal/pipeline/node/video_scene_generate.go`
-- Modify: `internal/pipeline/node/video_bg_images.go`
-- Modify: `internal/pipeline/node/video_cover.go`
-- Modify: `internal/pipeline/node/video_bgm.go`
-- Modify: `internal/pipeline/node/video_suggest.go`
-- Modify: `internal/pipeline/node/video_package.go`
-- Modify: `internal/pipeline/node/video_finish.go`
+**Verified against `~/laoshen/go-figlens` on 2026-04-15:**
 
-(File names are inferred from node purposes; verify against actual `internal/pipeline/node/` directory before editing.)
+11 of 14 nodes already use `runNodeWithRetry`; 3 nodes (`tts_generate`, `scene_generate`, `bg_images`) do **not** — they call external services where the current design intentionally skips the common retry wrapper. The plan adds a second helper `emitNodeLifecycle` for these 3, preserving their existing no-retry behavior.
 
-- [ ] **Step 1: Discover actual file names**
+**Actual file → node-type → stepID mapping** (copy-paste; do NOT re-infer):
 
-```bash
-ls internal/pipeline/node/
+| File | Go type name | Canonical stepID | Currently uses `runNodeWithRetry`? |
+|---|---|---|---|
+| `video_prepare.go` | `VideoPrepareNode` | `prepare` | ✅ |
+| `video_knowledge.go` | `VideoKnowledgeNode` | `knowledge_detail` | ✅ |
+| `video_speech.go` | `VideoSpeechNode` | `text_speech` | ✅ |
+| `video_content_analyze.go` | `VideoContentAnalyzeNode` | `content_analyze` | ✅ (+ has pre-existing inline emit to delete) |
+| `video_theme.go` | `VideoThemeNode` | `theme_select` | ✅ |
+| `video_design.go` | `VideoDesignNode` | `design` | ✅ |
+| `video_tts.go` | `VideoTTSNode` | `tts_generate` | ❌ — use `emitNodeLifecycle` |
+| `video_scene.go` | `SceneGenerateNode` | `scene_generate` | ❌ — use `emitNodeLifecycle` |
+| `video_bg_image.go` | `VideoBGImageNode` | `bg_images` | ❌ — use `emitNodeLifecycle` |
+| `video_cover.go` | `VideoCoverNode` | `cover` | ✅ |
+| `video_bgm.go` | `VideoBGMNode` | `bgm` | ✅ |
+| `video_suggest.go` | `VideoSuggestNode` | `suggest` | ✅ |
+| `video_package.go` | `VideoPackageNode` | `video_package` | ✅ |
+| `video_finish.go` | `VideoFinishNode` | `video_finish` | ✅ |
+
+- [ ] **Step 1: Add `emitNodeLifecycle` helper to `internal/pipeline/node/base.go`**
+
+Place alongside the existing `runNodeWithRetry`. Same emit semantics but without retry:
+
+```go
+// emitNodeLifecycle wraps fn with start/success/error process event emission.
+// Unlike runNodeWithRetry, it does NOT retry on failure — intended for nodes
+// that call external services where retry is handled elsewhere (or undesired).
+func emitNodeLifecycle(ctx context.Context, nodeName, stepID string, fn func() (any, error)) (any, error) {
+	persistPipelineProcessLog(ctx, nodeStartMessage(stepID), "start", stepID)
+	result, err := fn()
+	if err != nil {
+		pipelineErrorf(ctx, "节点 %s 失败: %v", nodeName, err)
+		persistPipelineProcessLog(ctx, fmt.Sprintf("%s: %v", nodeErrorMessage(stepID), err), "error", stepID)
+		return nil, err
+	}
+	pipelineInfos(ctx, "完成节点 %s", nodeName)
+	persistPipelineProcessLog(ctx, nodeSuccessMessage(stepID), "success", stepID)
+	return result, nil
+}
 ```
 
-Map each of the 14 canonical node identifiers (`prepare`, `knowledge_detail`, etc.) to its Go file. Make a note.
+- [ ] **Step 2: Update the 11 nodes that already use `runNodeWithRetry`**
 
-- [ ] **Step 2: For each of the 14 nodes, update the `runNodeWithRetry` call**
+For each, add the canonical stepID as the new second argument. Example for `video_prepare.go:37`:
 
-Change:
+Before:
 ```go
 return runNodeWithRetry(ctx, "VideoPrepareNode", func() (any, error) { ... })
 ```
 
-to:
+After:
 ```go
 return runNodeWithRetry(ctx, "VideoPrepareNode", "prepare", func() (any, error) { ... })
 ```
 
-Node-identifier mapping (copy-paste friendly — these MUST match exactly the strings in `video_pipeline.go:169-189`'s `sg.AddNode(...)` calls):
+Per-file edits (exact line numbers verified on 2026-04-15):
 
-| Go type name (existing `nodeName` arg) | Canonical `stepID` (new arg) |
-|---|---|
-| `VideoPrepareNode` | `prepare` |
-| `VideoKnowledgeDetailNode` | `knowledge_detail` |
-| `VideoTextSpeechNode` | `text_speech` |
-| `VideoContentAnalyzeNode` | `content_analyze` |
-| `VideoThemeSelectNode` | `theme_select` |
-| `VideoDesignNode` | `design` |
-| `VideoTTSGenerateNode` | `tts_generate` |
-| `VideoSceneGenerateNode` | `scene_generate` |
-| `VideoBGImagesNode` | `bg_images` |
-| `VideoCoverNode` | `cover` |
-| `VideoBGMNode` | `bgm` |
-| `VideoSuggestNode` | `suggest` |
-| `VideoPackageNode` | `video_package` |
-| `VideoFinishNode` | `video_finish` |
+| File | Line | stepID to pass |
+|---|---|---|
+| `video_prepare.go:37` | `"prepare"` |
+| `video_knowledge.go:28` | `"knowledge_detail"` |
+| `video_speech.go:44` | `"text_speech"` |
+| `video_content_analyze.go:37` | `"content_analyze"` |
+| `video_theme.go:253` | `"theme_select"` |
+| `video_design.go:153` | `"design"` |
+| `video_cover.go:23` | `"cover"` |
+| `video_bgm.go:28` | `"bgm"` |
+| `video_suggest.go:22` | `"suggest"` |
+| `video_package.go:72` | `"video_package"` |
+| `video_finish.go:19` | `"video_finish"` |
 
-Verify by comparing to `video_pipeline.go:169-189` — canonical strings take priority if anything differs.
+- [ ] **Step 3: Wrap the 3 retry-free nodes with `emitNodeLifecycle`**
 
-- [ ] **Step 3: Remove the existing one-off emit in `video_content_analyze.go`**
+For `video_tts.go`, `video_scene.go`, `video_bg_image.go`:
 
-This node currently calls `persistPipelineProcessLog` manually to avoid double-emit. Find and delete the two lines (search for `persistPipelineProcessLog` in `video_content_analyze.go`):
+Before (example `video_tts.go`):
+```go
+func (n *VideoTTSNode) Run(ctx context.Context, state graph.State) (any, error) {
+    // ... existing logic ...
+    return newState, nil
+}
+```
+
+After:
+```go
+func (n *VideoTTSNode) Run(ctx context.Context, state graph.State) (any, error) {
+    return emitNodeLifecycle(ctx, "VideoTTSNode", "tts_generate", func() (any, error) {
+        // ... existing logic ...
+        return newState, nil
+    })
+}
+```
+
+Apply the same pattern to:
+- `video_scene.go` → `emitNodeLifecycle(ctx, "SceneGenerateNode", "scene_generate", ...)`
+- `video_bg_image.go` → `emitNodeLifecycle(ctx, "VideoBGImageNode", "bg_images", ...)`
+
+- [ ] **Step 4: Remove the pre-existing inline emit in `video_content_analyze.go`**
+
+`VideoContentAnalyzeNode.Run()` currently emits its own start/success events manually. With the wrapper emitting the same events, delete these 2 lines to avoid double-emit. Search in that file for `persistPipelineProcessLog` and remove the 2 calls.
 
 Before:
 ```go
@@ -223,15 +268,20 @@ return runNodeWithRetry(ctx, "VideoContentAnalyzeNode", "content_analyze", func(
 })
 ```
 
-- [ ] **Step 4: Grep the codebase to confirm no stray `persistPipelineProcessLog` calls remain**
+If the `i18n.AssistantEventTextByProvider` / `i18n.KeyPipelineContentAnalyzeStart` imports are no longer used in this file, remove them.
+
+- [ ] **Step 5: Grep to verify no stray emits**
 
 ```bash
 grep -rn "persistPipelineProcessLog" internal/pipeline/node/
 ```
 
-Should only hit the helper definition itself, no per-node call sites (emit is now centralized in `runNodeWithRetry`).
+Should hit only:
+- `internal/pipeline/node/base.go` (definition + `runNodeWithRetry` + `emitNodeLifecycle` usage)
 
-- [ ] **Step 5: Build**
+No per-node manual call sites remain.
+
+- [ ] **Step 6: Build**
 
 ```bash
 go build ./...
@@ -239,50 +289,24 @@ go build ./...
 
 All 14 files compile.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add internal/pipeline/node/
-git commit -m "refactor(pipeline): thread canonical stepID through all 14 nodes; remove one-off emit in content_analyze"
+git commit -m "refactor(pipeline): emit stage events from all 14 nodes (retry-wrapped + 3 retry-free)"
 ```
 
 ---
 
-## Task 3: i18n messages (optional — can default to English)
+## Task 3: i18n messages (deferred — NOT needed for P2 CLI)
 
-**Files:**
-- Optional: `internal/i18n/` (add keys for 14 nodes × 3 statuses = 42 keys)
-- Or: inline English defaults in `internal/pipeline/node/base.go`
+**Skip this task for the 4-hour budget.** Task 1 already ships English defaults via `nodeStartMessage/Success/Error` — sufficient for CLI consumption.
 
-- [ ] **Step 1: Pragmatic choice — inline English defaults**
+Later (when scheduling allows), upgrade to full i18n:
+- Add keys for 14 nodes × 3 statuses = 42 new i18n keys (or parameterized keys)
+- Replace the inline `fmt.Sprintf("node %s: started", stepID)` with `i18n.AssistantEventTextByProvider(..., i18n.KeyPipelineNodeStart, stepID)`
 
-For the 4-hour budget, skip full i18n for the new messages; use English placeholders that mention the stepID. This is acceptable because `process` event messages are primarily consumed by the CLI (which has its own i18n) and server logs.
-
-Add to `internal/pipeline/node/base.go` (or a new `internal/pipeline/node/messages.go`):
-
-```go
-func i18nNodeMessage(stepID, status string) string {
-	switch status {
-	case "start":
-		return fmt.Sprintf("node %s: started", stepID)
-	case "success":
-		return fmt.Sprintf("node %s: completed", stepID)
-	case "error":
-		return fmt.Sprintf("node %s: failed", stepID)
-	default:
-		return fmt.Sprintf("node %s: %s", stepID, status)
-	}
-}
-```
-
-- [ ] **Step 2 (skip for 4-hour budget)**: the richer i18n keys, once added, can replace the inline defaults. Ticket for later, not this mini-plan.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add internal/pipeline/node/
-git commit -m "feat(pipeline): node event message helper (English defaults; i18n TODO)"
-```
+Not blocking P2 — CLI routes via `step_id` + `status` (machine-readable), not via message text.
 
 ---
 
