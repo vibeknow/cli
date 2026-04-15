@@ -4,47 +4,51 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Profile is the canonical profile shape. See spec §4.3 and §11.3.
-type Profile struct {
-	Name             string            `yaml:"name"`
-	APIEndpoint      string            `yaml:"api_endpoint"`
-	CredentialRef    string            `yaml:"credential_ref"`
-	DefaultProject   string            `yaml:"default_project,omitempty"`
-	Trust            string            `yaml:"trust,omitempty"`    // user | dev
-	IsProduction     bool              `yaml:"is_production"`      // default true
-	ServiceOverrides map[string]string `yaml:"service_overrides,omitempty"`
+var allowedEndpointKeys = map[string]bool{
+	"account":  true,
+	"vectoria": true,
+	"figlens":  true,
+	"vibeknow": true,
 }
 
-// ProfilesFile is the top-level YAML shape.
+type Profile struct {
+	Name           string            `yaml:"name"`
+	Endpoints      map[string]string `yaml:"endpoints,omitempty"`
+	APIEndpoint    string            `yaml:"api_endpoint,omitempty"`
+	CredentialRef  string            `yaml:"credential_ref"`
+	DefaultProject string            `yaml:"default_project,omitempty"`
+	Trust          string            `yaml:"trust,omitempty"`
+	IsProduction   bool              `yaml:"is_production"`
+}
+
 type ProfilesFile struct {
 	SchemaVersion string    `yaml:"schema_version"`
 	Current       string    `yaml:"current"`
 	Profiles      []Profile `yaml:"profiles"`
 }
 
-// UnmarshalYAML ensures IsProduction defaults to true when the key is absent,
-// matching the spec §4.3 "default true" protection for service_overrides.
+var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+
 func (p *Profile) UnmarshalYAML(node *yaml.Node) error {
-	// Shadow type with pointer IsProduction so we can detect absence.
 	type shadow struct {
-		Name             string            `yaml:"name"`
-		APIEndpoint      string            `yaml:"api_endpoint"`
-		CredentialRef    string            `yaml:"credential_ref"`
-		DefaultProject   string            `yaml:"default_project,omitempty"`
-		Trust            string            `yaml:"trust,omitempty"`
-		IsProduction     *bool             `yaml:"is_production,omitempty"`
-		ServiceOverrides map[string]string `yaml:"service_overrides,omitempty"`
+		Name           string            `yaml:"name"`
+		Endpoints      map[string]string `yaml:"endpoints,omitempty"`
+		APIEndpoint    string            `yaml:"api_endpoint,omitempty"`
+		CredentialRef  string            `yaml:"credential_ref"`
+		DefaultProject string            `yaml:"default_project,omitempty"`
+		Trust          string            `yaml:"trust,omitempty"`
+		IsProduction   *bool             `yaml:"is_production,omitempty"`
 	}
 	var s shadow
 	if err := node.Decode(&s); err != nil {
 		return err
 	}
 	p.Name = s.Name
-	p.APIEndpoint = s.APIEndpoint
 	p.CredentialRef = s.CredentialRef
 	p.DefaultProject = s.DefaultProject
 	p.Trust = s.Trust
@@ -53,20 +57,25 @@ func (p *Profile) UnmarshalYAML(node *yaml.Node) error {
 	} else {
 		p.IsProduction = *s.IsProduction
 	}
-	p.ServiceOverrides = s.ServiceOverrides
+	p.Endpoints = map[string]string{}
+	for k, v := range s.Endpoints {
+		if allowedEndpointKeys[k] {
+			p.Endpoints[k] = v
+		}
+	}
+	p.APIEndpoint = s.APIEndpoint
+	if s.APIEndpoint != "" {
+		if _, ok := p.Endpoints["vibeknow"]; !ok {
+			p.Endpoints["vibeknow"] = s.APIEndpoint
+		}
+	}
 	return nil
 }
 
-var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
-
-// Validate enforces the rules listed in spec §11.3.
+// Validate enforces the rules listed in spec §11.3 v2.
 func (p Profile) Validate() error {
 	if !nameRe.MatchString(p.Name) {
 		return fmt.Errorf("profile.name %q invalid (must match %s)", p.Name, nameRe)
-	}
-	u, err := url.Parse(p.APIEndpoint)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("profile.api_endpoint %q must be an absolute URL", p.APIEndpoint)
 	}
 	if p.CredentialRef == "" {
 		return fmt.Errorf("profile.credential_ref is required")
@@ -78,18 +87,28 @@ func (p Profile) Validate() error {
 	if trust != "user" && trust != "dev" {
 		return fmt.Errorf("profile.trust must be 'user' or 'dev', got %q", trust)
 	}
-	if len(p.ServiceOverrides) > 0 {
-		if trust != "dev" {
-			return fmt.Errorf("profile.service_overrides requires trust=dev")
+	for svc, rawURL := range p.Endpoints {
+		u, err := url.Parse(rawURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("profile.endpoints[%q] %q must be absolute URL", svc, rawURL)
 		}
-		if p.IsProduction {
-			return fmt.Errorf("profile.service_overrides requires is_production=false")
+		if isNonProdURL(u) {
+			if trust != "dev" || p.IsProduction {
+				return fmt.Errorf("profile.endpoints[%q]=%q is non-production; requires trust=dev and is_production=false", svc, rawURL)
+			}
 		}
 	}
 	return nil
 }
 
-// ValidateFile checks top-level invariants and each profile.
+func isNonProdURL(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || host == "127.0.0.1" || strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") {
+		return true
+	}
+	return false
+}
+
 func (f ProfilesFile) Validate() error {
 	seen := map[string]bool{}
 	for _, p := range f.Profiles {

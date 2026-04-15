@@ -27,7 +27,7 @@ func LoadProfiles() (ProfilesFile, error) {
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return ProfilesFile{SchemaVersion: "1"}, nil
+		return ProfilesFile{SchemaVersion: "2"}, nil
 	}
 	if err != nil {
 		return f, fmt.Errorf("read %s: %w", path, err)
@@ -36,7 +36,7 @@ func LoadProfiles() (ProfilesFile, error) {
 		return f, fmt.Errorf("parse %s: %w", path, err)
 	}
 	if f.SchemaVersion == "" {
-		f.SchemaVersion = "1"
+		f.SchemaVersion = "2"
 	}
 	if err := f.Validate(); err != nil {
 		return f, fmt.Errorf("validate %s: %w", path, err)
@@ -47,7 +47,7 @@ func LoadProfiles() (ProfilesFile, error) {
 // SaveProfiles writes profiles.yaml atomically under a file lock.
 func SaveProfiles(f ProfilesFile) error {
 	if f.SchemaVersion == "" {
-		f.SchemaVersion = "1"
+		f.SchemaVersion = "2"
 	}
 	if err := f.Validate(); err != nil {
 		return err

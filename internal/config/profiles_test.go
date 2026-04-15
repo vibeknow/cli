@@ -19,7 +19,7 @@ func TestLoadMissingReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.SchemaVersion != "1" || len(f.Profiles) != 0 {
+	if f.SchemaVersion != "2" || len(f.Profiles) != 0 {
 		t.Errorf("unexpected initial state: %+v", f)
 	}
 }
