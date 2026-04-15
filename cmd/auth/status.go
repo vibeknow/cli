@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
 	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
 )
 
 var statusCmd = &cobra.Command{
@@ -21,13 +21,8 @@ var statusCmd = &cobra.Command{
 		fmt.Printf("active profile: %s\n", orNone(f.Current))
 		r := credential.Resolver{Env: credential.EnvSource{Var: "VIBEKNOW_TOKEN"}}
 		if f.Current != "" {
-			for _, p := range f.Profiles {
-				if p.Name == f.Current && p.CredentialRef != "" {
-					if kc, err := keychain.OpenFor("vibeknow"); err == nil {
-						r.Keychain = credential.KeychainSource{Keychain: kc, Entry: p.CredentialRef}
-					}
-					break
-				}
+			if p, err := cliauth.CurrentProfile(); err == nil {
+				r = cliauth.ResolverFor(p)
 			}
 		}
 		_, src, err := r.Resolve()

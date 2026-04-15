@@ -3,6 +3,8 @@ package httpclient
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/shiliu-ai/vibeknow-cli/internal/errs"
 )
 
 type errObject struct {
@@ -21,6 +23,17 @@ func (e *errObject) Error() string {
 }
 
 func (e *errObject) IsRetryable() bool { return e.Retryable }
+
+// AsErrsObject converts to the canonical user-facing Error Object (spec §11.2).
+func (e *errObject) AsErrsObject() *errs.Object {
+	return &errs.Object{
+		SchemaVersion: "1",
+		Code:          e.Code,
+		Message:       e.Message,
+		TraceID:       e.TraceID,
+		Retryable:     e.Retryable,
+	}
+}
 
 type backendBody struct {
 	Code      int             `json:"code"`

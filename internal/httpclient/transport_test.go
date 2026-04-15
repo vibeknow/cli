@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
 
@@ -31,5 +32,32 @@ func TestChainAppliesInOrder(t *testing.T) {
 	_ = c.Do(context.Background(), "GET", "/", nil, nil)
 	if got.Get("X-A") != "1" || got.Get("X-B") != "2" {
 		t.Errorf("headers not applied: %+v", got)
+	}
+}
+
+func TestStandardChainRetriesAndInjectsAuth(t *testing.T) {
+	var hits int32
+	var authSeen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) < 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		authSeen = r.Header.Get("Authorization")
+		w.Header().Set("X-Vibeknow-Api-Version", "v1")
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	chain := StandardChain(staticTokenProvider("abc"), nil)
+	c := New(srv.URL).WithTransport(chain)
+	if err := c.Do(context.Background(), "GET", "/", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if authSeen != "Bearer abc" {
+		t.Errorf("auth not injected: %q", authSeen)
+	}
+	if atomic.LoadInt32(&hits) != 2 {
+		t.Errorf("retry didn't happen: hits=%d", atomic.LoadInt32(&hits))
 	}
 }

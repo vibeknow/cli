@@ -1,6 +1,10 @@
 package httpclient
 
-import "net/http"
+import (
+	"io"
+	"net/http"
+	"time"
+)
 
 // Middleware wraps a RoundTripper with additional behavior.
 type Middleware interface {
@@ -24,3 +28,16 @@ func Chain(base http.RoundTripper, mws ...Middleware) http.RoundTripper {
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// StandardChain returns the canonical middleware stack used by all service
+// clients: Auth → TraceID → Verbose → Version → Retry. Pass nil verboseOut
+// to disable verbose logging.
+func StandardChain(tp TokenProvider, verboseOut io.Writer) http.RoundTripper {
+	return Chain(http.DefaultTransport,
+		AuthMiddleware{Provider: tp},
+		TraceIDMiddleware{},
+		VerboseMiddleware{Out: verboseOut},
+		VersionMiddleware{Expected: ClientAPIVersion},
+		RetryMiddleware{MaxAttempts: 3, BaseDelay: 200 * time.Millisecond},
+	)
+}

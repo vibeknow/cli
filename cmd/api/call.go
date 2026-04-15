@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,11 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
+	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
 	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
 	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
 )
 
 var callFlags struct {
@@ -29,63 +28,55 @@ var callCmd = &cobra.Command{
 	Use:   "call",
 	Short: "call a raw backend endpoint",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		f, err := config.LoadProfiles()
+		p, err := cliauth.CurrentProfile()
 		if err != nil {
 			return err
 		}
-		if f.Current == "" {
-			return fmt.Errorf("no active profile")
-		}
-		var prof *config.Profile
-		for i := range f.Profiles {
-			if f.Profiles[i].Name == f.Current {
-				prof = &f.Profiles[i]
-				break
-			}
-		}
-		if prof == nil {
-			return fmt.Errorf("current profile %q not found", f.Current)
-		}
-		url, err := endpoints.Resolve(*prof, callFlags.service)
+		url, err := endpoints.Resolve(p, callFlags.service)
 		if err != nil {
 			return err
 		}
 
-		r := credential.Resolver{Env: credential.EnvSource{Var: "VIBEKNOW_TOKEN"}}
-		if prof.CredentialRef != "" {
-			if kc, err := keychain.OpenFor("vibeknow"); err == nil {
-				r.Keychain = credential.KeychainSource{Keychain: kc, Entry: prof.CredentialRef}
-			}
-		}
-		tok, _, _ := r.Resolve()
+		// Build a TokenProvider from the resolver.
+		tp := resolverTokenProvider{res: cliauth.ResolverFor(p)}
 
-		var bodyReader *bytes.Reader
+		// Body
+		var body any
 		if callFlags.body != "" {
-			data, err := readBody(callFlags.body)
+			raw, err := readBody(callFlags.body)
 			if err != nil {
 				return err
 			}
-			bodyReader = bytes.NewReader(data)
+			// Pass raw JSON bytes through as-is. httpclient.Client marshals
+			// via encoding/json; to avoid double-encoding we use json.RawMessage.
+			body = json.RawMessage(raw)
 		}
 
+		client := httpclient.New(url).WithTransport(httpclient.StandardChain(tp, nil))
+
+		// Raw layer: print response body to stdout. We do this ourselves
+		// rather than decoding into a struct, so use a custom path via
+		// http.NewRequestWithContext since httpclient.Client.Do decodes JSON.
+		// For symmetry with the rest of the stack, do it manually but still
+		// invoke the same chain's transport.
+		var reader io.Reader
+		if body != nil {
+			buf, _ := json.Marshal(body)
+			reader = bytes.NewReader(buf)
+		}
 		fullURL := strings.TrimRight(url, "/") + callFlags.path
-		req, err := http.NewRequestWithContext(context.Background(), callFlags.method, fullURL, nil)
+		req, err := http.NewRequestWithContext(context.Background(), callFlags.method, fullURL, reader)
 		if err != nil {
 			return err
 		}
-		if bodyReader != nil {
-			req.Body = io.NopCloser(bodyReader)
+		if reader != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
-		if tok != "" {
-			req.Header.Set("Authorization", "Bearer "+tok)
-		}
+		req.Header.Set("Accept", "application/json")
 
-		chain := httpclient.Chain(http.DefaultTransport,
-			httpclient.TraceIDMiddleware{},
-			httpclient.VersionMiddleware{Expected: httpclient.ClientAPIVersion},
-		)
-		resp, err := chain.RoundTrip(req)
+		// Extract the transport from the client so we share the middleware stack.
+		transport := client.Transport()
+		resp, err := transport.RoundTrip(req)
 		if err != nil {
 			return err
 		}
@@ -96,6 +87,19 @@ var callCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// resolverTokenProvider adapts credential.Resolver to httpclient.TokenProvider.
+type resolverTokenProvider struct {
+	res interface{ Resolve() (string, string, error) }
+}
+
+func (r resolverTokenProvider) Token(ctx context.Context) (string, error) {
+	tok, _, err := r.res.Resolve()
+	if err != nil {
+		return "", nil // empty token → AuthMiddleware skips
+	}
+	return tok, nil
 }
 
 func init() {

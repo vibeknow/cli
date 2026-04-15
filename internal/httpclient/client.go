@@ -34,6 +34,10 @@ func (c *Client) WithTransport(rt http.RoundTripper) *Client {
 	return &nc
 }
 
+// Transport returns the underlying RoundTripper so callers can issue raw requests
+// that still traverse the middleware chain.
+func (c *Client) Transport() http.RoundTripper { return c.http.Transport }
+
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {

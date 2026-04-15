@@ -3,8 +3,6 @@
 package account
 
 import (
-	"net/http"
-
 	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
 )
 
@@ -12,12 +10,7 @@ type Client struct {
 	http *httpclient.Client
 }
 
-// New constructs an account client with auth + trace-id + version middleware.
+// New constructs an account client with the standard middleware chain.
 func New(baseURL string, tokenProvider httpclient.TokenProvider) *Client {
-	chain := httpclient.Chain(http.DefaultTransport,
-		httpclient.AuthMiddleware{Provider: tokenProvider},
-		httpclient.TraceIDMiddleware{},
-		httpclient.VersionMiddleware{Expected: httpclient.ClientAPIVersion},
-	)
-	return &Client{http: httpclient.New(baseURL).WithTransport(chain)}
+	return &Client{http: httpclient.New(baseURL).WithTransport(httpclient.StandardChain(tokenProvider, nil))}
 }
