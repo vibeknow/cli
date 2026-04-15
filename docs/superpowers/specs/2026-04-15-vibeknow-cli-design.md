@@ -4,7 +4,7 @@
 - **状态**：Design, pending implementation plan
 - **作者**：nullkey（与 Claude 协作 brainstorm）
 - **参考实现**：[lark-cli](https://github.com/larksuite/cli)（MIT 许可，可直接借鉴代码）
-- **版本**：v2（v1 经独立 review 后全面修订）
+- **版本**：v2.1（v1 → v2 全面修订，v2 → v2.1 修 schema 契约与事件语义）
 
 ## 1. 背景与目标
 
@@ -35,7 +35,7 @@ vibeknow 产品将文档/链接经 pipeline 自动生成视频。现有后端服
 | 技术栈 | Go + cobra + viper，npm 分发 | Python / TS / Rust | 与后端同语言、生态成熟、可大量复用 lark-cli 基础设施 |
 | 命令架构 | 三层（Shortcuts / API / Raw） | 单层封装 | 同时满足"一条命令跑通"与"未封装 API 兜底" |
 | Domain 切分 | E 架构骨架，A 阶段只填主链路 | 只做 A（无扩展位） | 保留扩展但控制初期工作量 |
-| 认证 | 统一 token（go-account 签发），通过 go-vibeknow 网关转发 | 多服务直连 + 多 token | CLI 感知面最小；符合人/Agent 定位 |
+| 认证 | 统一 token（go-account 签发），通过 go-vibeknow 网关转发（**前提：§4.1 G1 + G2 成立**） | 多服务直连 + 多 token（见 §4.4 Fallback B） | CLI 感知面最小；符合人/Agent 定位 |
 | 多环境 | lark-cli 风格 profile（`~/.config/vibeknow/profiles.yaml`） | 环境变量 | 支持 dev/staging/prod 无缝切换 |
 | 长耗时任务 | 默认同步 + 进度流；`--async` 切异步；`--output json` 时输出 NDJSON 事件流 | 纯同步 / 纯异步 | TTY 人类友好 + Agent 可流式解析 |
 | Hero 命令 | `vibeknow create --from <source>`，复杂配置沉到 `project` | 参数全部平铺 | 单参数命令符合 Agent-Native；配置沉淀到后端可跨端共享 |
@@ -185,11 +185,19 @@ profiles:
     credential_ref: string (必填，keychain 条目名或 file:// 路径)
     default_project: string (可选)
     trust: "user" | "dev" (默认 user)
-    service_overrides: map[string]string (可选，仅 trust=dev 生效)
+    is_production: bool (默认 true)
+    service_overrides: map[string]string (可选，仅 trust=dev 且 is_production=false 生效)
 current: string (当前激活 profile 名)
 ```
 
-**`service_overrides`**：允许开发者为特定后端服务指定直连 endpoint（调试场景）。仅当 `profile.trust == "dev"` **且** 环境变量 `VIBEKNOW_ALLOW_OVERRIDES=1` 时生效（双重开关，避免普通用户误配置）。若生效，raw `api call --service X` 和 API Commands 层都会走直连而非网关，并在 stderr 打印显著警告。
+**`service_overrides`**：允许开发者为特定后端服务指定直连 endpoint（调试场景）。生效条件（全部满足）：
+1. `profile.trust == "dev"`
+2. `profile.is_production == false`（**必须显式声明**；默认 `true` 保护普通用户）
+3. 环境变量 `VIBEKNOW_ALLOW_OVERRIDES=1`
+
+三重开关全部满足时，raw `api call --service X` 和 API Commands 层走直连而非网关，并在 stderr 打印显著警告（包含被覆盖的服务名与目标地址）。任一条件未满足：`service_overrides` 字段读入即忽略并打 warning，不影响其它字段。
+
+**不采用启发式保护**（如检查 `api_endpoint` 是否含 `prod` 子串）—— 启发式会被域名形态绕过，不如显式声明可靠。
 
 命令：`vibeknow profile use / add / list / remove / show`。
 
@@ -249,6 +257,11 @@ submit → queued → running(stage_a) → running(stage_b) → ... → succeede
 | 5 | 任务失败不可重试 |
 | 6 | 流中断 / 网络错误（**任务状态未知**，Agent 应 `wait <id>` 重试获取结果而非重新 submit） |
 | 130 | 用户中断（SIGINT） |
+
+**CLI 对 `stage.failed` 的行为**：
+- `fatal=false`：视为进度信息。TTY 下进度条标红该 stage 但继续；NDJSON 模式透传事件。**不**设置非 0 exit code，等待后续终态事件。
+- `fatal=true`：作为 `task.failed` 的前奏，CLI 保留该事件的 `error_code` / `error_message`，最终随 `task.failed` 到来时用上面的 exit code 规则退出。
+- 若 SSE 在 `fatal=true` 的 `stage.failed` 之后断流（未收到 `task.failed`）：按 exit code 6 处理。
 
 **Agent 决策指南**（会写入 `vibeknow-create` Skill）：
 - code 4 → 同一 task_id 调 `vibeknow video retry <id>`（A 阶段内未实现则回退到重新 `create`）。
@@ -345,10 +358,19 @@ vibeknow create --from x.pdf --output json
 
 ### 8.5 安全
 
-- **Token 存储**：默认 OS keychain，fallback 到 AES-GCM 加密文件（§4.2）。
-- **CI 注入**：`VIBEKNOW_TOKEN` 环境变量，优先级高于 keychain，用完即忘（不落盘）。
-- **`service_overrides` 信任边界**：仅 `trust: dev` + `VIBEKNOW_ALLOW_OVERRIDES=1` 双开关生效；每次请求 stderr 警告；禁止配合生产 profile（校验 `api_endpoint` 不含 `prod` / `production` 子串时才允许，或 profile 显式声明 `is_production: false`）。
+**Credential 来源优先级**（三者共存时，按顺序取首个有值）：
+
+| 优先级 | 来源 | 特征 | logout 行为 |
+|---|---|---|---|
+| 1 | `VIBEKNOW_TOKEN` 环境变量 | 不落盘；适合 CI | 不可清除（env 由调用方管理）；但 logout 会在 stderr 提示 |
+| 2 | OS keychain（`credential_ref` 指向 keychain 条目） | 默认；适合人类用户 | 清除对应条目 |
+| 3 | 加密文件（`credential_ref` 为 `file://` 路径，AES-GCM） | Linux headless fallback，由 `auth login --storage file` 显式触发 | 删除文件 |
+
+同一 profile 下三者同时有值时：env 覆盖一切；env 缺省则按 `credential_ref` 形态选 keychain 或 file。logout 只影响与当前 profile 绑定的持久化来源（2 或 3），不会"清"掉 env。
+
+- **`service_overrides` 信任边界**：规则见 §4.3（需 `trust: dev` + `is_production: false` + `VIBEKNOW_ALLOW_OVERRIDES=1` 三重开关）。
 - **本地文件读取**：`--from` 路径校验为 regular file（非 symlink-to-socket / device），大小上限默认 500MB（可配置）。
+- **下载磁盘空间预检**：`video download` 前若 `Content-Length` 已知，检查目标盘剩余空间是否 ≥ `size × 1.1`；不足则 exit 2 并提示。未知 size 时不预检，但写入失败（ENOSPC）时删除半成品并 exit 1。
 - **日志脱敏**：所有日志路径统一经 `internal/redact`，自动抹掉 Authorization / Cookie / token-like 字符串。
 
 ### 8.6 本地缓存与下载
@@ -416,6 +438,11 @@ vibeknow create --from x.pdf --output json
 9. **Doc_id 格式规范**：`^doc_[a-zA-Z0-9]{8,}$` 是否匹配后端实际实现？
 10. **Task_id 命名**：`t_` 前缀由谁签发？后端是否已有格式约定？
 11. **后端 SSE endpoint 是否已存在**：路径形态、事件格式是否对齐 §11.1 schema？
+12. **网关 proxy 路径形态**：§3.2 示例用 `/proxy/figlens/v1/...`，实际由 go-vibeknow 采用 path-based 还是 header-based 路由需对齐。
+13. **Submit 失败的输出形态**：submit 阶段本身失败（auth / 参数 / 网关不可达），客户端尚无 task_id，一律走 §11.2 Error Object 而非 task event —— 需在 plan 阶段写死此契约。
+14. **`doctor` 探测是懒加载还是启动前置**：首次 `create` 是否同步跑能力探测并缓存？缓存 TTL？
+15. **`Error Object.message` 的语言**：跟随 `VIBEKNOW_LANG` 还是固定英文？Agent 用 `code` 不受影响，但人类读 `message`。
+16. **`task_id` 格式**：示例 `t_123` 是否反映后端真实格式？Spec 应与后端一次锁定后不再假设前缀。
 
 ## 11. Canonical Schemas
 
@@ -441,7 +468,7 @@ vibeknow create --from x.pdf --output json
 | `stage.started` | `stage: string` | stage 开始，stage 取值：`parse` \| `outline` \| `storyboard` \| `tts` \| `render` \| `publish`（A 阶段至少这 6 个） |
 | `stage.progress` | `stage: string`, `percent: int (0-100)`, `message?: string` | stage 进度，推送频率 ≥1 次/5s |
 | `stage.succeeded` | `stage: string`, `duration_ms: int` | stage 完成 |
-| `stage.failed` | `stage: string`, `error_code: string`, `error_message: string`, `retryable: bool` | stage 失败（可能不终止任务，取决于 pipeline 策略） |
+| `stage.failed` | `stage: string`, `error_code: string`, `error_message: string`, `retryable: bool`, `fatal: bool` | stage 失败。`fatal=true` 时后端必须紧随 `task.failed`；`fatal=false` 时 pipeline 内部重试或跳过，任务继续（可能后续仍有 `stage.started` / `task.succeeded`） |
 | `task.succeeded` | `video_url: string`, `thumbnail_url?: string`, `duration_ms: int` | 任务成功 |
 | `task.failed` | `failed_stage: string`, `error_code: string`, `error_message: string`, `retryable: bool` | 任务失败（终态） |
 | `task.cancelled` | `cancelled_by: string` | 任务被取消（终态） |
@@ -479,18 +506,21 @@ profiles:
     credential_ref: vibeknow.prod
     default_project: news-daily
     trust: user
+    is_production: true
   - name: dev
     api_endpoint: https://staging-api.vibeknow.example.com
     credential_ref: vibeknow.dev
     trust: dev
+    is_production: false
     service_overrides:
       figlens: http://localhost:8081
 ```
 
 校验规则：
 - `name` 唯一；`current` 必须指向存在的 profile 名。
-- `trust` 只接受 `user` | `dev`。
-- `service_overrides` 仅在 `trust == "dev"` 时被 CLI 读取；否则读入即忽略并打 warning。
+- `trust` 只接受 `user` | `dev`；缺省 `user`。
+- `is_production` 只接受 `true` | `false`；缺省 `true`（保护语义：未明说就按生产处理）。
+- `service_overrides` 仅在 `trust == "dev"` **且** `is_production == false` **且** `VIBEKNOW_ALLOW_OVERRIDES=1` 三重开关全部满足时被 CLI 读取；任一不满足则读入即忽略并打 warning。
 - `api_endpoint` 必须是绝对 URL（scheme + host）。
 
 ### 11.4 Project Object
@@ -511,6 +541,15 @@ profiles:
 `vibeknow project show --output json` 返回 `{ "schema_version": "1", "project": { ... } }`。
 
 ---
+
+## 附：v2 → v2.1 变更摘要
+
+- 新增 `is_production` profile 字段（默认 `true`），取代脆弱的字符串启发式作为 `service_overrides` 保护条件（§4.3 / §8.5 / §11.3）。
+- §8.5 新增 credential 来源优先级表（env / keychain / file），澄清三者共存行为。
+- §11.1 `stage.failed` 新增 `fatal` 字段，明确"stage 失败是否终止任务"的语义；§5.4 对应补 CLI 行为说明。
+- §8.5 新增下载磁盘空间预检规则。
+- §2 决策表"认证"行注明依赖 G1/G2 前提。
+- §10 开放问题新增 5 项（网关路由形态、submit 失败输出、doctor 加载时机、error message i18n、task_id 格式）。
 
 ## 附：v1 → v2 变更摘要
 
