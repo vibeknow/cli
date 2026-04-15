@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Profile is the canonical profile shape. See spec §4.3 and §11.3.
@@ -22,6 +24,37 @@ type ProfilesFile struct {
 	SchemaVersion string    `yaml:"schema_version"`
 	Current       string    `yaml:"current"`
 	Profiles      []Profile `yaml:"profiles"`
+}
+
+// UnmarshalYAML ensures IsProduction defaults to true when the key is absent,
+// matching the spec §4.3 "default true" protection for service_overrides.
+func (p *Profile) UnmarshalYAML(node *yaml.Node) error {
+	// Shadow type with pointer IsProduction so we can detect absence.
+	type shadow struct {
+		Name             string            `yaml:"name"`
+		APIEndpoint      string            `yaml:"api_endpoint"`
+		CredentialRef    string            `yaml:"credential_ref"`
+		DefaultProject   string            `yaml:"default_project,omitempty"`
+		Trust            string            `yaml:"trust,omitempty"`
+		IsProduction     *bool             `yaml:"is_production,omitempty"`
+		ServiceOverrides map[string]string `yaml:"service_overrides,omitempty"`
+	}
+	var s shadow
+	if err := node.Decode(&s); err != nil {
+		return err
+	}
+	p.Name = s.Name
+	p.APIEndpoint = s.APIEndpoint
+	p.CredentialRef = s.CredentialRef
+	p.DefaultProject = s.DefaultProject
+	p.Trust = s.Trust
+	if s.IsProduction == nil {
+		p.IsProduction = true
+	} else {
+		p.IsProduction = *s.IsProduction
+	}
+	p.ServiceOverrides = s.ServiceOverrides
+	return nil
 }
 
 var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)

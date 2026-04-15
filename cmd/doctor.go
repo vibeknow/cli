@@ -69,7 +69,13 @@ func checkProfiles() error {
 }
 
 func checkKeychain() error {
-	_, err := keychain.OpenFor("vibeknow-doctor-probe")
+	tmp, err := os.MkdirTemp("", "vibeknow-doctor-probe-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	_, err = keychain.OpenFor("vibeknow-doctor-probe",
+		keychain.WithFileBackend(tmp, "probe-passphrase"))
 	return err
 }
 

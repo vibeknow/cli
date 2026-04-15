@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestConfigDir(t *testing.T) {
@@ -63,5 +65,49 @@ func TestProfileValidate(t *testing.T) {
 				t.Errorf("want error containing %q, got %v", c.want, err)
 			}
 		})
+	}
+}
+
+func TestProfileYAMLOmittedIsProduction(t *testing.T) {
+	data := []byte(`
+name: legacy
+api_endpoint: https://api.example.com
+credential_ref: k
+trust: dev
+service_overrides:
+  figlens: http://localhost:9000
+`)
+	var p Profile
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !p.IsProduction {
+		t.Errorf("IsProduction defaulted to %v; want true", p.IsProduction)
+	}
+	// And because IsProduction defaults true, service_overrides must be rejected.
+	if err := p.Validate(); err == nil {
+		t.Error("Validate should reject service_overrides when IsProduction defaulted to true")
+	}
+}
+
+func TestProfileYAMLExplicitIsProductionFalse(t *testing.T) {
+	data := []byte(`
+name: dev
+api_endpoint: https://api.example.com
+credential_ref: k
+trust: dev
+is_production: false
+service_overrides:
+  figlens: http://localhost:9000
+`)
+	var p Profile
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.IsProduction {
+		t.Errorf("IsProduction = true despite explicit false")
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("expected validate ok, got: %v", err)
 	}
 }
