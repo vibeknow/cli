@@ -4,7 +4,7 @@
 - **状态**：Design, pending implementation plan
 - **作者**：nullkey（与 Claude 协作 brainstorm）
 - **参考实现**：[lark-cli](https://github.com/larksuite/cli)（MIT 许可，可直接借鉴代码）
-- **版本**：v2.3（v2.2 基础上基于实际后端拓扑修正架构：多 endpoint 直连为主路径，放弃 Gateway 假设）
+- **版本**：v2.4（v2.3 基础上经 figlens 深度核查后修正 P2 event streaming 方案：不加 DB 字段，扩展既有 SSE `process` 事件的 `step_id` 字段）
 
 ## 1. 背景与目标
 
@@ -188,9 +188,19 @@ vibeknow doctor / update / completion
 | Prereq | 内容 | 若不成立 |
 |---|---|---|
 | **P1** | go-account 签发的 JWT 被所有对外服务信任 | 改造成多 token 模型，重新设计 `client/` 各包鉴权与 credential 存储 |
-| **P2** | go-figlens 暴露（或补成）stage 级任务状态（SSE 或可轮询的细粒度 snapshot） | §5 长耗时任务模型降级为三态（submitted / succeeded / failed），进度条消失 |
+| **P2** | go-figlens pipeline runner 在 14 个节点执行前后 emit 带 `step_id = <node_name>` + `status = start\|success\|error` 的 `process` AssistantEvent | CLI 仍能订阅 SSE 但无法精确映射到 stage，进度条粒度变粗或消失 |
 
-**P1 已确认成立**（2026-04-15 核查）。**P2 待与 figlens owner 对齐**，CLI P2 阶段开工前必须解决；调研显示 go-figlens 目前只有 `/v1/tasks/*` 轮询和 `/v1/assistant/stream` 对话流，没有 task-level 阶段事件流。
+**P1 已确认成立**（2026-04-15 核查）。
+
+**P2 方案细节**（2026-04-15 深度核查确认）：
+
+- **CLI 使用 pipeline 模式**（`/v1/agent3forVideo/stream`），不是 agent 模式（`/v1/agent2forVideo/stream`）也不是轮询 `/v1/tasks/*`。pipeline 模式有 14 个明确节点的 DAG（`prepare` → `knowledge_detail` → `text_speech` → `content_analyze` → `theme_select` → `design` → `tts_generate` → `scene_generate` → `bg_images` → `cover` → `bgm` → `video_package` → `video_finish` → `suggest`）。
+- **figlens 已有完整 SSE + 事件持久化基础设施**：`AssistantEvent` 表记录所有事件，SSE handler 支持从 `lastID=0` 重放（断线重连无事件丢失）。**不需要新增 DB 字段或新 endpoint**。
+- **唯一需要的后端改动**：pipeline runner 在 `handleLifecycleEvent()` 或节点执行 wrapper 里调 `persistProcessEvent(userID, sessionID, &AssistantLog{StepID: nodeName, Status: "start\|success\|error", Message: ...})`。`StepID` 字段已存在于 `model/chat.go:214`，只是当前没被 pipeline runner 一致填充。
+- **工作量**：figlens ~4 小时（单文件 `internal/pipeline/video_pipeline.go` + 新增 node-name → stage 映射），无 DB migration、无 API 响应 schema 变化、无前端影响。
+- **Post-editing 独立路径**：`SceneEdit` / `/v1/scenes/edit/stream` endpoint 是 pipeline 模式的补充功能，**不在 P2 CLI `create` 命令范围**。未来 `vibeknow video edit` 子命令可能触达（另一个 plan）。
+
+**降级路径**：若 P2 prereq 未就绪，CLI 仍可订阅 SSE 并展示通用 `process` 事件的 message 字段，但无法程序化识别 stage —— 进度条退化为"正在处理..."。避免写"靠日志文本匹配解析 stage"的脆弱逻辑。
 
 ### 4.2 主路径认证流程
 
@@ -287,10 +297,25 @@ submit → queued → running(stage_a) → running(stage_b) → ... → succeede
 
 ### 5.3 后端传输协议
 
-- 首选 **SSE**：`GET /tasks/{id}/events`，逐 stage 推送事件。
-- Fallback **轮询**：`GET /tasks/{id}`（任务快照，含所有已发生 stage），间隔默认 2s，可通过 `--poll-interval` 覆盖。
-- 协议选择由 `doctor` 探测网关能力后自动决定；也可通过 `VIBEKNOW_STREAM_MODE=sse|poll` 强制。
-- 断线重连：SSE 带 `Last-Event-ID` header 从上次断点续传，最多重连 3 次，间隔指数退避。
+**CLI 订阅 figlens 现有 SSE**（`GET /v1/agent3forVideo/stream`），**不做轮询**。理由（2026-04-15 深度核查）：
+
+- figlens 已有完整 SSE + `AssistantEvent` 持久化基础设施：所有事件写入 DB，SSE handler 从 `lastID=0` 重放整段历史。
+- 断线重连由服务端天然支持：客户端重新发起 SSE 请求即可获得**完整事件重放**（不依赖 Last-Event-ID header）。
+- 轮询 snapshot 既没性能优势（figlens 的 SSE 本质也是 1s 一次 DB 轮询再推送），又要求新增 DB 字段，属于重复建设。
+
+**CLI → figlens 的 stage 推导**（配合 P2 prereq 的 4h figlens 改造）：
+
+- 订阅 `/v1/agent3forVideo/stream`，过滤 `EventType == "process"` 的事件。
+- 读 `payload.step_id`（14 个 node 名之一） + `payload.status`（`start` / `success` / `error`） + `payload.message`。
+- 用 CLI 内置的 `node → stage` 映射表（14 nodes → 6 stages：parse / outline / tts / render / publish / suggest）把节点事件分组为 stage 事件，转换成 §11.1 的 NDJSON event 输出给 Agent。
+- 终态由 `session_completed` / `error` 事件 / SSE 流关闭决定。
+
+**不需要**：轮询 fallback、`VIBEKNOW_STREAM_MODE` 环境变量、doctor 的协议能力探测 —— 都因为 SSE 是唯一通路而不再必要。
+
+**SSE 中断处理**：
+- 客户端主动重连时，figlens 重放全部历史事件 → CLI 丢弃已处理的事件（按 `event.ID` 去重），继续消费。
+- 最多重连 3 次，间隔指数退避（1s / 2s / 4s）。
+- 3 次重连后仍失败 → CLI exit code 6（流中断，任务状态未知；Agent 应调 `wait` 重试）。
 
 ### 5.4 错误与退出码
 
@@ -511,22 +536,25 @@ A 阶段支持 3 种取值，默认由 TTY 探测决定：
 - ~~G1 网关~~ → §4.1 决定不建 Gateway，采用多 endpoint 直连
 - ~~G2 Token 信任~~ → 已确认成立（重命名为 P1 prereq）
 - ~~登录方式~~ → P1 只支持 `VIBEKNOW_TOKEN` env；P1.5 引入 Device Flow + PAT
+- ~~G3 / P2 figlens 事件流方案~~ → 深度核查后定为"扩展既有 SSE `process` 事件的 `step_id` 字段"（Option 1.5），不加 DB 字段，不新增 endpoint（见 §4.1.2 + §5.3）
+- ~~CLI 轮询 vs SSE 模式选择~~ → 只用 SSE；轮询 fallback 不实现
+- ~~`doctor` 协议能力探测~~ → 不需要（只有 SSE 一条通路）
 
 **仍开放**：
 
-1. **Go module / organization 名**：已定 `github.com/shiliu-ai/vibeknow-cli`（P0 确认）。
-2. **Cloud 默认 endpoint 域名**：§4.3 列的 `account.vibeknow.com` 等是假设值，需和运维对齐真实生产域名。
-3. **P2 prereq：figlens stage 级任务状态**：现状只有 `/v1/tasks/*` 轮询 snapshot + `/v1/assistant/stream` 对话流，无 task-level 阶段事件。CLI P2 开工前必须解决：figlens 补 SSE endpoint，或 CLI 降级为轮询推导 stage。
-4. **vectoria collection 约定**：RAG query 的 collection 命名、租户隔离策略。
-5. **lark-cli 代码复用策略**：vendor / fork / 抽独立包？
-6. **Staging 环境稳定性**：集成测试是否依赖，还是改本地 docker-compose？
-7. **Doc_id 格式规范**：`^doc_[a-zA-Z0-9]{8,}$` 是否匹配 vectoria 实际实现？
-8. **Task_id 格式**：figlens 签发的 task_id 前缀 / 正则需确认（示例里的 `t_123` 是 placeholder）。
-9. **Submit 失败的输出形态**：submit 本身失败（auth / 参数 / 网络），客户端尚无 task_id，一律走 §11.2 Error Object 而非 task event。
-10. **`doctor` 探测是懒加载还是启动前置**：首次 `create` 是否同步跑能力探测并缓存？缓存 TTL？
-11. **`Error Object.message` 的语言**：跟随 `VIBEKNOW_LANG` 还是固定英文？
-12. **P1.5 Device Flow 激活页路径**：`vibeknow.com/activate?user_code=XXXX` 还是别的？前端团队排期？
-13. **后端轻量改动**（P1 前置）：4 个服务共享 go-atlas 层加 `X-Vibeknow-Api-Version` 响应 header、`/v1/health` 扩展 `{status, version, api_version}`、error shape 加 `retryable` 字段 —— 需确认已合并或列入 P1 并行项。
+1. **Cloud 默认 endpoint 域名**：§4.3 列的 `account.vibeknow.com` 等是假设值，需和运维对齐真实生产域名。
+2. **figlens pipeline mode 对外 endpoint**：§5.3 假设 `/v1/agent3forVideo/stream` 是 P2 订阅入口，需 figlens owner 确认这就是 pipeline 模式的稳定对外接口（agent mode `/v1/agent2forVideo/stream` 被明确排除）。
+3. **vectoria collection 约定**：RAG query 的 collection 命名、租户隔离策略。
+4. **lark-cli 代码复用策略**：vendor / fork / 抽独立包？
+5. **Staging 环境稳定性**：集成测试是否依赖，还是改本地 docker-compose？
+6. **Doc_id 格式规范**：`^doc_[a-zA-Z0-9]{8,}$` 是否匹配 vectoria 实际实现？
+7. **figlens task/session id 对外形态**：pipeline 模式 task 有 `Task.ID` + `Session.ID` + `Work.ID`，CLI 对外用哪个作为 `<task_id>`？（决定 `vibeknow video status/wait <id>` 的 id 语义）
+8. **Submit 失败的输出形态**：submit 本身失败（auth / 参数 / 网络），客户端尚无 task_id，一律走 §11.2 Error Object 而非 task event。
+9. **`Error Object.message` 的语言**：跟随 `VIBEKNOW_LANG` 还是固定英文？
+10. **P1.5 Device Flow 激活页路径**：`vibeknow.com/activate?user_code=XXXX` 还是别的？前端团队排期？
+11. **后端轻量改动**（P1 前置）：4 个服务共享 go-atlas 层加 `X-Vibeknow-Api-Version` 响应 header、`/v1/health` 扩展 `{status, version, api_version}`、error shape 加 `retryable` 字段 —— 需确认已合并或列入 P1 并行项。
+12. **AssistantEvent ID 去重策略**：SSE 重放场景下 CLI 按 `event.ID` 去重，需确认 `AssistantEvent.ID` 是单调递增且在 session 内唯一（看起来是，需 figlens owner 确认）。
+13. **Post-edit CLI 命令**（未来）：`vibeknow video edit` 如何映射到 `/v1/scenes/edit/stream`？独立 plan，不在 P2 范围。
 
 ## 11. Canonical Schemas
 
@@ -632,6 +660,17 @@ profiles:
 `vibeknow project show --output json` 返回 `{ "schema_version": "1", "project": { ... } }`。
 
 ---
+
+## 附：v2.3 → v2.4 变更摘要
+
+经 go-figlens 源码深度核查（2026-04-15），发现原 G3/P2 prereq 的"figlens 补 SSE 或轮询快照"方案基于对 figlens 产品模型的不完整理解，实际应采用**扩展既有 SSE 事件**（Option 1.5）：
+
+- **§4.1.2 P2 prereq 重写**：figlens **已有**完整 SSE + 事件持久化（`/v1/agent3forVideo/stream` + `AssistantEvent` 表 + `lastID` 重放），只需在 pipeline runner 的 14 个节点执行前后 emit 已有 `process` 事件类型、填 `step_id` 为节点名 + `status`（~4 小时工作量，无 DB migration、无 API schema 变化）。
+- **§5.3 传输协议重写**：CLI **只订阅 SSE**，不做轮询；断线重连由 figlens 服务端天然支持（重连即重放）；移除 `VIBEKNOW_STREAM_MODE` 环境变量、`doctor` 协议能力探测、轮询 fallback 等基于错误假设的机制。
+- **§5.3 补 CLI 侧 `node → stage` 映射**：14 个 node → 6 个 logical stages（parse / outline / tts / render / publish / suggest）。
+- **澄清 CLI 使用 pipeline 模式**（`agent3forVideo`），明确**不使用** agent 模式（`agent2forVideo`，一把梭黑盒）。
+- **Post-editing** 明确为独立路径（`/v1/scenes/edit/stream`），**不在 P2 `create` 命令范围**；未来 `vibeknow video edit` 子命令独立立项。
+- **§10 开放问题更新**：划掉已解决的（figlens 方案、轮询 vs SSE、doctor 探测）；新增 pipeline 模式 endpoint 稳定性确认、task/session/work id 对外语义、AssistantEvent 去重策略等新问题。
 
 ## 附：v2.2 → v2.3 变更摘要
 
