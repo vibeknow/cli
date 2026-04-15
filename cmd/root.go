@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	authcmd "github.com/shiliu-ai/vibeknow-cli/cmd/auth"
 	configcmd "github.com/shiliu-ai/vibeknow-cli/cmd/config"
 	profilecmd "github.com/shiliu-ai/vibeknow-cli/cmd/profile"
 	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
@@ -33,6 +34,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagOutput, "output", "", "output format: text|json|ndjson (auto-selects based on TTY)")
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "emit request/response summaries (credentials redacted)")
 	rootCmd.Version = version // enables --version
+	rootCmd.AddCommand(authcmd.Cmd)
 	rootCmd.AddCommand(configcmd.Cmd)
 	rootCmd.AddCommand(profilecmd.Cmd)
 }
