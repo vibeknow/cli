@@ -1,0 +1,8 @@
+vibeknow
+/dist/
+/build/
+*.test
+*.out
+.DS_Store
+/node_modules/
+/.vibeknow-test-home/
