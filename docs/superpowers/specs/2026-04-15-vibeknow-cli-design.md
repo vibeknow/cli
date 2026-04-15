@@ -4,7 +4,7 @@
 - **状态**：Design, pending implementation plan
 - **作者**：nullkey（与 Claude 协作 brainstorm）
 - **参考实现**：[lark-cli](https://github.com/larksuite/cli)（MIT 许可，可直接借鉴代码）
-- **版本**：v2.1（v1 → v2 全面修订，v2 → v2.1 修 schema 契约与事件语义）
+- **版本**：v2.2（v2.1 基础上补齐 lark-cli 最佳实践：AGENTS.md、终端输出清理、`--output` 枚举、Skill references 结构）
 
 ## 1. 背景与目标
 
@@ -109,8 +109,8 @@ vibeknow 产品将文档/链接经 pipeline 自动生成视频。现有后端服
 │   ├── vectoria/
 │   ├── account/
 │   └── speech/
-├── skills/                  # A 阶段只发布 4 个 Skill
-│   ├── vibeknow-core/
+├── skills/                  # A 阶段只发布 4 个 Skill；每个 Skill 见 §7 目录结构
+│   ├── vibeknow-core/       # SKILL.md + references/{commands,events,errors,recipes}.md
 │   ├── vibeknow-create/
 │   ├── vibeknow-doc/
 │   └── vibeknow-rag/
@@ -123,6 +123,7 @@ vibeknow 产品将文档/链接经 pipeline 自动生成视频。现有后端服
 ├── Makefile
 ├── README.md
 ├── README.zh.md
+├── AGENTS.md                # 仓库级 Agent 指引（目录速览、命令约定、常见陷阱）
 ├── CHANGELOG.md
 └── LICENSE
 ```
@@ -321,11 +322,26 @@ vibeknow create --from x.pdf --output json
 | `vibeknow-doc` | `doc upload/get` |
 | `vibeknow-rag` | `rag query` |
 
+**Skill 目录结构**（对齐 lark-cli）：
+
+```
+skills/<skill-name>/
+├── SKILL.md           # 主文档：TRIGGER / SKIP / 常见任务食谱 / 核心命令速查
+└── references/
+    ├── commands.md    # 完整命令与 flag 参考（长内容）
+    ├── events.md      # NDJSON event schema 节录
+    ├── errors.md      # error code 清单与 exit code 处理指南
+    └── recipes.md     # 进阶场景 / 组合调用示例
+```
+
+**SKILL.md 本身保持精简**（目标 <200 行），长文档全部放 `references/`，由 Agent 按需加载，避免一次性灌入拉高上下文成本。
+
 **SKILL.md 写作要点**：
 - 明确 **TRIGGER**（何时调用）和 **SKIP**（何时不要调用）。
 - 提供 **常见任务食谱**：自然语言任务 → 对应 CLI 命令序列。
 - 标注 **NDJSON event schema 版本**（引用 §11.1），便于 Agent 流式解析进度。
 - 包含 **exit code 处理指南**（见 §5.4）。
+- 在需要深度信息时**指向 `references/*.md`** 而非把内容内联。
 
 ## 8. 非功能需求
 
@@ -372,6 +388,7 @@ vibeknow create --from x.pdf --output json
 - **本地文件读取**：`--from` 路径校验为 regular file（非 symlink-to-socket / device），大小上限默认 500MB（可配置）。
 - **下载磁盘空间预检**：`video download` 前若 `Content-Length` 已知，检查目标盘剩余空间是否 ≥ `size × 1.1`；不足则 exit 2 并提示。未知 size 时不预检，但写入失败（ENOSPC）时删除半成品并 exit 1。
 - **日志脱敏**：所有日志路径统一经 `internal/redact`，自动抹掉 Authorization / Cookie / token-like 字符串。
+- **终端输出清理**：对齐 lark-cli。所有面向 stdout / stderr 的后端数据统一经 `internal/charcheck` 剥离 ANSI escape、回车覆盖、其它 C0 / C1 控制字符，防止恶意响应伪造终端显示。`--output json|ndjson` 模式下输出由 CLI 自行生成的 JSON，该规则对数据值仍然生效（JSON 字符串字段转义后不含裸控制字符）。
 
 ### 8.6 本地缓存与下载
 
@@ -404,6 +421,21 @@ vibeknow create --from x.pdf --output json
 - **SKILL.md**：A 阶段只出英文版本（Agent 生态 lingua franca），中文版后续补。
 - **错误消息**：所有用户可见 error 必须有对应 key，禁止硬编码字符串。
 - **日志 / 调试输出**：英文硬编码可接受（面向开发者）。
+
+### 8.10 输出格式（`--output` 取值）
+
+A 阶段支持 3 种取值，默认由 TTY 探测决定：
+
+| 值 | 场景 | 内容 |
+|---|---|---|
+| `text`（TTY 下默认） | 人类交互 | 彩色 / 表格 / 进度条；不稳定契约，可随版本调整 |
+| `json`（非 TTY 下默认；`--async` 单次返回） | 结构化一次性输出 | 单个 JSON 对象；带 `schema_version` |
+| `ndjson`（事件流场景，含 `create`、`wait`、`video download` 进度） | 结构化流式输出 | 每行一个 JSON 对象；按 §11.1 / §11.2 契约 |
+
+**规则**：
+- `--output` 未显式指定时，**TTY → `text`；非 TTY → 事件流命令用 `ndjson`，其它用 `json`**。
+- `--output text` 的字段命名 / 顺序不承诺稳定；Agent 严禁 regex 解析 `text` 输出。
+- `table` / `yaml` 等其它格式**不在 A 阶段实现**，留 flag 预占。遇到未支持值时 exit 2 并列出支持清单。
 
 ## 9. 附录：lark-cli 可直接借鉴的模块
 
@@ -541,6 +573,13 @@ profiles:
 `vibeknow project show --output json` 返回 `{ "schema_version": "1", "project": { ... } }`。
 
 ---
+
+## 附：v2.1 → v2.2 变更摘要
+
+- 仓库根部新增 `AGENTS.md`（仓库级 Agent 指引），对齐 lark-cli。
+- §8.5 新增"终端输出清理"（C0/C1 控制字符剥离），对齐 lark-cli 安全姿态。
+- §8.10 新增 `--output` 取值枚举（`text` / `json` / `ndjson`）与 TTY 自动选择规则。
+- §7 新增 Skill 目录结构（`SKILL.md` + `references/`），SKILL.md 精简到 <200 行。
 
 ## 附：v2 → v2.1 变更摘要
 
