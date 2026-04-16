@@ -9,7 +9,10 @@ import (
 	apicmd "github.com/shiliu-ai/vibeknow-cli/cmd/api"
 	authcmd "github.com/shiliu-ai/vibeknow-cli/cmd/auth"
 	configcmd "github.com/shiliu-ai/vibeknow-cli/cmd/config"
+	doccmd "github.com/shiliu-ai/vibeknow-cli/cmd/doc"
 	profilecmd "github.com/shiliu-ai/vibeknow-cli/cmd/profile"
+	videocmd "github.com/shiliu-ai/vibeknow-cli/cmd/video"
+	voicecmd "github.com/shiliu-ai/vibeknow-cli/cmd/voice"
 	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
 )
 
@@ -38,7 +41,11 @@ func init() {
 	rootCmd.AddCommand(apicmd.Cmd)
 	rootCmd.AddCommand(authcmd.Cmd)
 	rootCmd.AddCommand(configcmd.Cmd)
+	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(doccmd.Cmd)
 	rootCmd.AddCommand(profilecmd.Cmd)
+	rootCmd.AddCommand(videocmd.Cmd)
+	rootCmd.AddCommand(voicecmd.Cmd)
 }
 
 func Execute() error {
