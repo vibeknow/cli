@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
+	"github.com/vibeknow/cli/client/figlens"
 )
 
 func TestStreamChat_ProcessEvents(t *testing.T) {

@@ -4,9 +4,9 @@
 package cliauth
 
 import (
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/credential"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 // ResolverFor builds a Resolver that checks VIBEKNOW_TOKEN first, then the

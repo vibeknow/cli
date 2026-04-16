@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/charcheck"
+	"github.com/vibeknow/cli/internal/charcheck"
 )
 
 type textW struct{ w io.Writer }

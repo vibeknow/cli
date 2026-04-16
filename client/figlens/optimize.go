@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/sse"
+	"github.com/vibeknow/cli/internal/sse"
 )
 
 type OptimizeParams struct {

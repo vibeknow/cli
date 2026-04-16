@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var removeCmd = &cobra.Command{

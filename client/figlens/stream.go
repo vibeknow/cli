@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/sse"
-	"github.com/shiliu-ai/vibeknow-cli/internal/stage"
+	"github.com/vibeknow/cli/internal/sse"
+	"github.com/vibeknow/cli/internal/stage"
 )
 
 type StreamParams struct {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/errs"
+	"github.com/vibeknow/cli/internal/errs"
 )
 
 type errObject struct {

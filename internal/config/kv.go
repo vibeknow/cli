@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/lockfile"
+	"github.com/vibeknow/cli/internal/lockfile"
 	"gopkg.in/yaml.v3"
 )
 

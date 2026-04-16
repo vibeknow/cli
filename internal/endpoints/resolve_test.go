@@ -3,7 +3,7 @@ package endpoints
 import (
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/vibeknow/cli/internal/config"
 )
 
 func TestResolveUsesProfileOverride(t *testing.T) {

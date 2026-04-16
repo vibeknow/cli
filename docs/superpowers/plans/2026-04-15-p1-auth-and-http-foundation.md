@@ -511,8 +511,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var addFlags struct {
@@ -656,7 +656,7 @@ package endpoints
 import (
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/vibeknow/cli/internal/config"
 )
 
 func TestResolveUsesProfileOverride(t *testing.T) {
@@ -715,7 +715,7 @@ package endpoints
 import (
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/vibeknow/cli/internal/config"
 )
 
 // Resolve returns the effective URL for the given service in the profile.
@@ -1361,7 +1361,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/redact"
+	"github.com/vibeknow/cli/internal/redact"
 )
 
 // VerboseMiddleware logs request/response summaries to Out.
@@ -1724,7 +1724,7 @@ package account
 import (
 	"net/http"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 type Client struct {
@@ -1818,11 +1818,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/account"
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/client/account"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/credential"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 var whoamiCmd = &cobra.Command{
@@ -1898,9 +1898,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/credential"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 var statusCmd = &cobra.Command{
@@ -1951,8 +1951,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 var logoutCmd = &cobra.Command{
@@ -1993,7 +1993,7 @@ var logoutCmd = &cobra.Command{
 
 - [ ] **Step 5: Register in `cmd/root.go`**
 
-Add import `authcmd "github.com/shiliu-ai/vibeknow-cli/cmd/auth"` and inside `init()`:
+Add import `authcmd "github.com/vibeknow/cli/cmd/auth"` and inside `init()`:
 ```go
 rootCmd.AddCommand(authcmd.Cmd)
 ```
@@ -2062,11 +2062,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/credential"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/credential"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 var callFlags struct {
@@ -2172,7 +2172,7 @@ func readBody(spec string) ([]byte, error) {
 
 - [ ] **Step 3: Register in `cmd/root.go`**
 
-Add import `apicmd "github.com/shiliu-ai/vibeknow-cli/cmd/api"` and inside `init()`:
+Add import `apicmd "github.com/vibeknow/cli/cmd/api"` and inside `init()`:
 ```go
 rootCmd.AddCommand(apicmd.Cmd)
 ```
@@ -2225,11 +2225,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 type check struct {

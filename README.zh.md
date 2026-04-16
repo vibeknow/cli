@@ -55,7 +55,7 @@ npm install -g @vibeknow/cli
 **方式 2 —— 从源码安装：**
 
 ```bash
-git clone https://github.com/shiliu-ai/vibeknow-cli.git
+git clone https://github.com/vibeknow/cli.git
 cd vibeknow-cli
 make install
 ```
@@ -280,11 +280,11 @@ vibeknow-cli 采用**多 endpoint** 架构 —— CLI 连接多个后端服务�
 
 ## 贡献
 
-欢迎在 [github.com/shiliu-ai/vibeknow-cli](https://github.com/shiliu-ai/vibeknow-cli) 提 issue 和 PR。
+欢迎在 [github.com/vibeknow/cli](https://github.com/vibeknow/cli) 提 issue 和 PR。
 
 ```bash
 # 开发环境
-git clone https://github.com/shiliu-ai/vibeknow-cli.git
+git clone https://github.com/vibeknow/cli.git
 cd vibeknow-cli
 make build    # 编译
 make test     # 运行全部测试（含 race detector）

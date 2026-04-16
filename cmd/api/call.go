@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 var callFlags struct {

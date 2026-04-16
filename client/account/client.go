@@ -3,7 +3,7 @@
 package account
 
 import (
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 type Client struct {

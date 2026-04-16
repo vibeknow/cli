@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 func newFiglensClient() (*figlens.Client, error) {

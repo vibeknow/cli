@@ -3,7 +3,7 @@ package endpoints
 import (
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/vibeknow/cli/internal/config"
 )
 
 // Resolve returns the effective URL for the given service in the profile.

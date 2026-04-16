@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 func TestDoUpload(t *testing.T) {

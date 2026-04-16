@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/redact"
+	"github.com/vibeknow/cli/internal/redact"
 )
 
 // VerboseMiddleware logs request/response summaries to Out. If Out is nil,

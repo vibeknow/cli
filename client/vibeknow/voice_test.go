@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vibeknow"
+	"github.com/vibeknow/cli/client/vibeknow"
 )
 
 type staticToken string

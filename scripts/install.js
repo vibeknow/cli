@@ -14,7 +14,7 @@ const PLATFORM_MAP = {
   'win32-x64':     { os: 'windows', arch: 'amd64', ext: '.zip' },
 };
 
-const GITHUB_REPO = 'shiliu-ai/vibeknow-cli';
+const GITHUB_REPO = 'vibeknow/cli';
 
 function getVersion() {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));

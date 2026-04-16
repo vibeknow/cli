@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 func TestDoRaw_ReturnsOpenBody(t *testing.T) {

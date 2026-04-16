@@ -250,7 +250,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/sse"
+	"github.com/vibeknow/cli/internal/sse"
 )
 
 func TestReader_BasicEvents(t *testing.T) {
@@ -468,7 +468,7 @@ package stage_test
 import (
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/stage"
+	"github.com/vibeknow/cli/internal/stage"
 )
 
 func TestNodeToStage(t *testing.T) {
@@ -638,7 +638,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 func TestDoRaw_ReturnsOpenBody(t *testing.T) {
@@ -770,7 +770,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 func TestDoUpload(t *testing.T) {
@@ -933,7 +933,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
+	"github.com/vibeknow/cli/client/vectoria"
 )
 
 func TestCreateKB(t *testing.T) {
@@ -1089,7 +1089,7 @@ package vectoria
 import (
 	"net/http"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 // Client talks to the vectoria service.
@@ -1238,7 +1238,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
+	"github.com/vibeknow/cli/client/figlens"
 )
 
 type staticToken string
@@ -1374,7 +1374,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 // Client talks to go-figlens.
@@ -1414,7 +1414,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 // Client talks to go-figlens.
@@ -1602,7 +1602,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
+	"github.com/vibeknow/cli/client/figlens"
 )
 
 func TestStreamChat_ProcessEvents(t *testing.T) {
@@ -1711,8 +1711,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/sse"
-	"github.com/shiliu-ai/vibeknow-cli/internal/stage"
+	"github.com/vibeknow/cli/internal/sse"
+	"github.com/vibeknow/cli/internal/stage"
 )
 
 // StreamParams are the parameters for the SSE streaming endpoint.
@@ -1892,7 +1892,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vibeknow"
+	"github.com/vibeknow/cli/client/vibeknow"
 )
 
 type staticToken string
@@ -1953,7 +1953,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/httpclient"
 )
 
 // Client talks to go-vibeknow.
@@ -2076,9 +2076,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
+	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/cliauth"
 )
 
 var uploadCmd = &cobra.Command{
@@ -2169,9 +2169,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 var getFlags struct {
@@ -2275,9 +2275,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vibeknow"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/vibeknow/cli/client/vibeknow"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 var listCmd = &cobra.Command{
@@ -2374,9 +2374,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 type staticToken string
@@ -2466,7 +2466,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
+	"github.com/vibeknow/cli/client/figlens"
 )
 
 var waitFlags struct {
@@ -2703,10 +2703,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
-	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 var createFlags struct {
@@ -2988,14 +2988,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	apicmd "github.com/shiliu-ai/vibeknow-cli/cmd/api"
-	authcmd "github.com/shiliu-ai/vibeknow-cli/cmd/auth"
-	configcmd "github.com/shiliu-ai/vibeknow-cli/cmd/config"
-	doccmd "github.com/shiliu-ai/vibeknow-cli/cmd/doc"
-	profilecmd "github.com/shiliu-ai/vibeknow-cli/cmd/profile"
-	videocmd "github.com/shiliu-ai/vibeknow-cli/cmd/video"
-	voicecmd "github.com/shiliu-ai/vibeknow-cli/cmd/voice"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
+	apicmd "github.com/vibeknow/cli/cmd/api"
+	authcmd "github.com/vibeknow/cli/cmd/auth"
+	configcmd "github.com/vibeknow/cli/cmd/config"
+	doccmd "github.com/vibeknow/cli/cmd/doc"
+	profilecmd "github.com/vibeknow/cli/cmd/profile"
+	videocmd "github.com/vibeknow/cli/cmd/video"
+	voicecmd "github.com/vibeknow/cli/cmd/voice"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 ```
 

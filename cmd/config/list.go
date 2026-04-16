@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	intconfig "github.com/shiliu-ai/vibeknow-cli/internal/config"
+	intconfig "github.com/vibeknow/cli/internal/config"
 )
 
 var listCmd = &cobra.Command{

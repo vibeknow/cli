@@ -1,4 +1,4 @@
-module github.com/shiliu-ai/vibeknow-cli
+module github.com/vibeknow/cli
 
 go 1.25.0
 

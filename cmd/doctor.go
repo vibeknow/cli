@@ -12,10 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
-	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 type check struct {

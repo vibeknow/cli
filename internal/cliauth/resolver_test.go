@@ -3,7 +3,7 @@ package cliauth
 import (
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/vibeknow/cli/internal/config"
 )
 
 func TestResolverForWithoutCredentialRef(t *testing.T) {

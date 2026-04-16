@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
-LDFLAGS="-X github.com/shiliu-ai/vibeknow-cli/cmd.version=${VERSION}"
+LDFLAGS="-X github.com/vibeknow/cli/cmd.version=${VERSION}"
 DIST="${DIST:-./dist}"
 mkdir -p "$DIST"
 

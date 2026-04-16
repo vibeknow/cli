@@ -3,7 +3,7 @@ package stage_test
 import (
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/stage"
+	"github.com/vibeknow/cli/internal/stage"
 )
 
 func TestNodeToStage(t *testing.T) {

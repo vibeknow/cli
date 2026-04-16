@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
+	"github.com/vibeknow/cli/client/figlens"
 )
 
 var flagWaitSessionID string

@@ -28,11 +28,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/shiliu-ai/vibeknow-cli.git"
+    "url": "https://github.com/vibeknow/cli.git"
   },
-  "homepage": "https://github.com/shiliu-ai/vibeknow-cli",
+  "homepage": "https://github.com/vibeknow/cli",
   "bugs": {
-    "url": "https://github.com/shiliu-ai/vibeknow-cli/issues"
+    "url": "https://github.com/vibeknow/cli/issues"
   },
   "keywords": [
     "cli",

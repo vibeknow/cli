@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
+	"github.com/vibeknow/cli/client/vectoria"
 )
 
 func TestCreateKB(t *testing.T) {

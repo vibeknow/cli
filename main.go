@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/shiliu-ai/vibeknow-cli/cmd"
+	"github.com/vibeknow/cli/cmd"
 )
 
 func main() {

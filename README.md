@@ -55,7 +55,7 @@ npm install -g @vibeknow/cli
 **Option 2 — From source:**
 
 ```bash
-git clone https://github.com/shiliu-ai/vibeknow-cli.git
+git clone https://github.com/vibeknow/cli.git
 cd vibeknow-cli
 make install
 ```
@@ -280,11 +280,11 @@ The `create` command orchestrates the full pipeline: document upload → video g
 
 ## Contributing
 
-Issues and pull requests are welcome at [github.com/shiliu-ai/vibeknow-cli](https://github.com/shiliu-ai/vibeknow-cli).
+Issues and pull requests are welcome at [github.com/vibeknow/cli](https://github.com/vibeknow/cli).
 
 ```bash
 # Development setup
-git clone https://github.com/shiliu-ai/vibeknow-cli.git
+git clone https://github.com/vibeknow/cli.git
 cd vibeknow-cli
 make build    # build binary
 make test     # run all tests (with race detector)

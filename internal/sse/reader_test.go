@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/sse"
+	"github.com/vibeknow/cli/internal/sse"
 )
 
 func TestReader_BasicEvents(t *testing.T) {

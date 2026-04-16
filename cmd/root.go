@@ -6,14 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	apicmd "github.com/shiliu-ai/vibeknow-cli/cmd/api"
-	authcmd "github.com/shiliu-ai/vibeknow-cli/cmd/auth"
-	configcmd "github.com/shiliu-ai/vibeknow-cli/cmd/config"
-	doccmd "github.com/shiliu-ai/vibeknow-cli/cmd/doc"
-	profilecmd "github.com/shiliu-ai/vibeknow-cli/cmd/profile"
-	videocmd "github.com/shiliu-ai/vibeknow-cli/cmd/video"
-	voicecmd "github.com/shiliu-ai/vibeknow-cli/cmd/voice"
-	"github.com/shiliu-ai/vibeknow-cli/internal/i18n"
+	apicmd "github.com/vibeknow/cli/cmd/api"
+	authcmd "github.com/vibeknow/cli/cmd/auth"
+	configcmd "github.com/vibeknow/cli/cmd/config"
+	doccmd "github.com/vibeknow/cli/cmd/doc"
+	profilecmd "github.com/vibeknow/cli/cmd/profile"
+	videocmd "github.com/vibeknow/cli/cmd/video"
+	voicecmd "github.com/vibeknow/cli/cmd/voice"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var (

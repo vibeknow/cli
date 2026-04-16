@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/keychain"
+	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 var logoutCmd = &cobra.Command{
