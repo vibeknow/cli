@@ -78,3 +78,39 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	}
 	return nil
 }
+
+// DoRaw sends a request through the middleware chain and returns the raw
+// *http.Response with body still open. Caller MUST close resp.Body.
+// Returns an error for HTTP >= 400 (body is read and closed in that case).
+func (c *Client) DoRaw(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	var reader io.Reader
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("httpclient: marshal body: %w", err)
+		}
+		reader = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	if err != nil {
+		return nil, fmt.Errorf("httpclient: new request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		var eo *errObject
+		if errors.As(err, &eo) {
+			return nil, eo
+		}
+		return nil, &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return nil, parseBackendError(resp)
+	}
+	return resp, nil
+}
