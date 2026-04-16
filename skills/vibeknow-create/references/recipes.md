@@ -26,8 +26,9 @@ Exit code 4 means the task failed but is retryable (e.g. transient backend error
 ```bash
 max_retries=3
 for i in $(seq 1 $max_retries); do
-  vibeknow create --from slides.pdf && break
+  vibeknow create --from slides.pdf
   exit_code=$?
+  [ "$exit_code" -eq 0 ] && break
   if [ "$exit_code" -eq 4 ]; then
     echo "Attempt $i failed (retryable), retrying..." >&2
     sleep $((i * 5))

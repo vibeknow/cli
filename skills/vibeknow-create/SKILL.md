@@ -5,7 +5,7 @@ description: "Generate videos from documents/URLs/files, track video task progre
 metadata:
   requires:
     bins: ["vibeknow"]
-  cliHelp: "vibeknow create --help"
+  cliHelp: "vibeknow --help"
 ---
 
 # vibeknow-create (v0.3.0)

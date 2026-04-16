@@ -21,7 +21,8 @@ Exit codes 4, 5, 6 are task-lifecycle codes and do not apply to doc commands.
     "code": "<error_code>",
     "message": "human-readable message",
     "details": {},
-    "retryable": false
+    "retryable": false,
+    "trace_id": "string (if VIBEKNOW_TRACE=1)"
   }
 }
 ```
