@@ -87,7 +87,7 @@ metadata:
 
 - `version` 与 CLI 版本对齐（当前 0.3.0）。
 - `metadata.requires.bins` 声明依赖的二进制。
-- `metadata.cliHelp` 告诉 Agent 如何获取最新帮助。
+- `metadata.cliHelp` 告诉 Agent 如何获取最新帮助。vibeknow-core 跨多个子命令，用 `vibeknow --help`。
 
 ### 5.2 SKILL.md 结构（每个 Skill 统一）
 
@@ -213,8 +213,8 @@ vibeknow-core 和 vibeknow-doc 共享同一套 exit code / error code 体系，�
 | Agent 模式（NDJSON 流） | `vibeknow create --from doc_abc --output ndjson` |
 | 查看任务状态 | `vibeknow video status <task_id>` |
 | 等待任务完成 | `vibeknow video wait <task_id>` |
-| 下载视频 | `vibeknow video download <task_id>` |
-| 断点续传下载 | `vibeknow video download <task_id> --output ./my-video.mp4` |
+| 下载视频 | `vibeknow video download <task_id> --session-id <sid>` |
+| 指定输出路径 | `vibeknow video download <task_id> --session-id <sid> --output ./my-video.mp4` |
 | 列出声音模板 | `vibeknow voice list` |
 
 **Exit Code 速查（任务相关）**:
