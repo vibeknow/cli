@@ -19,6 +19,7 @@ import (
 var (
 	flagCreateFrom    string
 	flagCreateVoiceID string
+	flagCreatePrompt  string
 	flagCreateAsync   bool
 )
 
@@ -92,10 +93,15 @@ var createCmd = &cobra.Command{
 		var taskFailed bool
 		var successSessionID string
 
+		query := flagCreatePrompt
+		if query == "" {
+			query = "请根据文档内容生成视频"
+		}
+
 		err = fc.StreamChat(ctx, figlens.StreamParams{
 			TaskID:      task.TaskID,
 			SessionID:   task.SessionID,
-			Query:       "",
+			Query:       query,
 			KnowledgeID: kbID,
 			DocID:       docID,
 			VoiceID:     flagCreateVoiceID,
@@ -153,6 +159,7 @@ var createCmd = &cobra.Command{
 func init() {
 	createCmd.Flags().StringVar(&flagCreateFrom, "from", "", "doc_id, URL, or local file path (required)")
 	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice template ID")
+	createCmd.Flags().StringVar(&flagCreatePrompt, "prompt", "", "custom prompt for video generation (default: auto-generated)")
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
 }
 
