@@ -6,3 +6,4 @@ vibeknow
 .DS_Store
 /node_modules/
 /.vibeknow-test-home/
+.worktrees/
