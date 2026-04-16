@@ -121,6 +121,8 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 // DoRaw sends a request through the middleware chain and returns the raw
 // *http.Response with body still open. Caller MUST close resp.Body.
 // Returns an error for HTTP >= 400 (body is read and closed in that case).
+// Uses no timeout on the HTTP client (SSE streams can last minutes); rely on
+// ctx for cancellation.
 func (c *Client) DoRaw(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	var reader io.Reader
 	if body != nil {
@@ -139,7 +141,10 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body any) (*htt
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := c.http.Do(req)
+	// Use a separate http.Client with no timeout for streaming responses.
+	// The standard c.http has Timeout=30s which kills SSE streams.
+	streamClient := &http.Client{Transport: c.http.Transport}
+	resp, err := streamClient.Do(req)
 	if err != nil {
 		var eo *errObject
 		if errors.As(err, &eo) {
