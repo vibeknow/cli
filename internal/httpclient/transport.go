@@ -29,6 +29,12 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// RoundTripperFunc adapts a function to http.RoundTripper. Exported for use by
+// service clients that need custom middleware (e.g., vectoria's X-API-Key).
+func RoundTripperFunc(fn func(*http.Request) (*http.Response, error)) http.RoundTripper {
+	return roundTripperFunc(fn)
+}
+
 // StandardChain returns the canonical middleware stack used by all service
 // clients: Auth → TraceID → Verbose → Version → Retry. Pass nil verboseOut
 // to disable verbose logging.
