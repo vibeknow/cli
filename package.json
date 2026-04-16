@@ -1,19 +1,44 @@
 {
-  "name": "@vibeknow/cli",
-  "version": "0.1.0-p0",
-  "description": "vibeknow CLI — turn docs into videos",
+  "name": "vibeknow-cli",
+  "version": "0.1.0",
+  "description": "VibeKnow CLI — turn docs into videos",
   "license": "MIT",
   "bin": {
-    "vibeknow": "scripts/npm-launcher.js"
+    "vibeknow": "scripts/run.js"
   },
   "scripts": {
-    "postinstall": "node scripts/npm-postinstall.js"
+    "postinstall": "node scripts/install.js"
   },
   "files": [
     "scripts/",
-    "dist/"
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ],
   "engines": {
     "node": ">=16"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shiliu-ai/vibeknow-cli.git"
+  },
+  "homepage": "https://github.com/shiliu-ai/vibeknow-cli",
+  "bugs": {
+    "url": "https://github.com/shiliu-ai/vibeknow-cli/issues"
+  },
+  "keywords": [
+    "cli",
+    "video",
+    "ai",
+    "document",
+    "tts"
+  ]
 }
