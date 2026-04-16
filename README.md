@@ -15,7 +15,7 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 - **One Command, Full Video** — `vibeknow create --from report.pdf` handles everything: document parsing, script generation, TTS, scene design, rendering, and packaging
 - **Agent-Native Design** — 3 structured [Skills](./skills/) out of the box, compatible with Claude Code, Cursor, and other AI tools — Agents can create videos with zero extra setup
 - **Real-Time Stage Progress** — SSE streaming with 6-stage progress tracking (parse → outline → tts → render → publish → suggest), both for human progress bars and machine-readable NDJSON
-- **Multi-Service Architecture** — Connects to 4 backend services (vectoria, figlens, vibeknow, account) with per-service endpoint configuration and independent auth
+- **Multi-Service Architecture** — Connects to multiple backend services with per-service endpoint configuration and independent auth
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Secure & Controllable** — OS-native keychain credential storage, ANSI escape sanitization, credential redaction in verbose logs, non-production endpoint trust boundaries
 
@@ -24,14 +24,14 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 | Category | Capabilities |
 |----------|-------------|
 | **Create** | One-command video generation from files, URLs, or doc IDs; custom prompts; voice selection; async mode |
-| **Document** | Upload files/URLs to vectoria, poll parsing status, fetch document details |
-| **Video** | Check task status, stream live progress (SSE), download exported videos with signed URLs |
+| **Document** | Upload files/URLs, poll parsing status, fetch document details |
+| **Video** | Check task status, stream live progress (SSE), download exported videos |
 | **Voice** | List available voice templates with category, tags, and preview URLs |
 | **Auth** | Token-based auth (env var), whoami, credential status, logout; Device Flow planned for v1 |
 | **Profile** | Multi-environment profiles (prod/staging/dev), per-service endpoint overrides, trust boundaries |
 | **Config** | Global key-value config store, persistent across sessions |
-| **Doctor** | Environment diagnostics: config dir, keychain, locale, concurrent endpoint reachability + API version probes |
-| **Raw API** | Escape hatch: `vibeknow api call --service figlens --path /v1/tasks` for any backend endpoint |
+| **Doctor** | Environment diagnostics: config dir, keychain, locale, endpoint reachability checks |
+| **Raw API** | Escape hatch: `vibeknow api call` for direct backend access |
 
 ## Installation & Quick Start
 
@@ -63,19 +63,19 @@ make install
 #### Configure
 
 ```bash
-# 1. Add a profile
+# 1. Add a profile (get endpoints from your VibeKnow dashboard)
 vibeknow profile add prod \
-  --endpoint-account https://account.vibeknow.com \
-  --endpoint-vectoria https://vectoria.vibeknow.com \
-  --endpoint-figlens https://figlens.vibeknow.com \
-  --endpoint-vibeknow https://api.vibeknow.com \
+  --endpoint-account <account-endpoint> \
+  --endpoint-vectoria <vectoria-endpoint> \
+  --endpoint-figlens <figlens-endpoint> \
+  --endpoint-vibeknow <vibeknow-endpoint> \
   --credential-ref vibeknow.prod
 
 # 2. Set your token (from web dashboard)
 export VIBEKNOW_TOKEN="your-jwt-token-here"
 
-# 3. Set vectoria API key
-export VECTORIA_API_KEY="your-vectoria-api-key"
+# 3. Set document service API key
+export VECTORIA_API_KEY="your-api-key"
 
 # 4. Verify
 vibeknow auth whoami
@@ -98,14 +98,14 @@ vibeknow create --from https://example.com/article --voice t260312180132IV37e611
 npm install -g @vibeknow/cli
 ```
 
-**Step 2 — Configure profile** (adjust endpoints to your environment)
+**Step 2 — Configure profile** (get endpoints from your VibeKnow dashboard)
 
 ```bash
 vibeknow profile add prod \
-  --endpoint-account https://account.vibeknow.com \
-  --endpoint-vectoria https://vectoria.vibeknow.com \
-  --endpoint-figlens https://figlens.vibeknow.com \
-  --endpoint-vibeknow https://api.vibeknow.com \
+  --endpoint-account <account-endpoint> \
+  --endpoint-vectoria <vectoria-endpoint> \
+  --endpoint-figlens <figlens-endpoint> \
+  --endpoint-vibeknow <vibeknow-endpoint> \
   --credential-ref vibeknow.prod
 ```
 
@@ -129,7 +129,7 @@ vibeknow voice list
 |-------|-------------|
 | `vibeknow-core` | Profile setup, auth management, environment diagnostics, credential configuration |
 | `vibeknow-create` | End-to-end video generation: `create` command, `video status/wait/download`, voice selection, async workflows |
-| `vibeknow-doc` | Document upload (file + URL), parsing status polling, document retrieval from vectoria |
+| `vibeknow-doc` | Document upload (file + URL), parsing status polling, document retrieval |
 
 Skills are located in [`./skills/`](./skills/) and follow the `SKILL.md` + `references/` structure. Each skill includes trigger/skip conditions, command recipes, and error handling guides.
 
@@ -139,8 +139,8 @@ vibeknow-cli currently supports token-based authentication via environment varia
 
 | Method | Usage |
 |--------|-------|
-| `VIBEKNOW_TOKEN` env var | JWT token for account/figlens/vibeknow services |
-| `VECTORIA_API_KEY` env var | API key for the vectoria document service |
+| `VIBEKNOW_TOKEN` env var | JWT token for VibeKnow services |
+| `VECTORIA_API_KEY` env var | API key for the document service |
 | Keychain storage | Token persisted in OS keychain via `credential_ref` in profile |
 
 ```bash
@@ -154,7 +154,7 @@ vibeknow auth status
 vibeknow auth logout
 ```
 
-> **Coming in v1:** Interactive `auth login` via OAuth Device Flow + Personal Access Tokens (PAT). See the [design spec](./docs/superpowers/specs/2026-04-15-vibeknow-cli-design.md) §4.2.
+> **Coming in v1:** Interactive `auth login` via OAuth Device Flow + Personal Access Tokens (PAT).
 
 ## Command Reference
 
@@ -213,7 +213,7 @@ vibeknow voice list
 ```bash
 # Add a dev profile with local endpoint overrides
 vibeknow profile add dev \
-  --endpoint-figlens http://localhost:20067 \
+  --endpoint-figlens http://localhost:<port> \
   --credential-ref vibeknow.dev \
   --trust dev --is-production=false
 
@@ -231,13 +231,13 @@ vibeknow profile list
 
 ```bash
 # Call any backend endpoint directly
-vibeknow api call --service figlens --method GET --path /v1/tasks?offset=0&limit=10
+vibeknow api call --service <service> --method GET --path /v1/<resource>
 
 # POST with JSON body
-vibeknow api call --service vectoria --method POST --path /v1/knowledgebases --body '{"name":"my-kb"}'
+vibeknow api call --service <service> --method POST --path /v1/<resource> --body '{"key":"value"}'
 
 # POST with body from file
-vibeknow api call --service figlens --method POST --path /v1/tasks/init --body @request.json
+vibeknow api call --service <service> --method POST --path /v1/<resource> --body @request.json
 ```
 
 ## Advanced Usage
@@ -260,35 +260,23 @@ vibeknow voice list | jq '.list[0].name'
 | Variable | Purpose |
 |----------|---------|
 | `VIBEKNOW_TOKEN` | JWT token (highest priority credential source) |
-| `VECTORIA_API_KEY` | vectoria service API key |
+| `VECTORIA_API_KEY` | Document service API key |
 | `VIBEKNOW_CONFIG_HOME` | Override config directory (default: `~/.config/vibeknow`) |
-| `VIBEKNOW_TRACE` | Set to `1` to display trace IDs for backend correlation |
-| `VIBEKNOW_DEBUG` | Set to `1` for request/response body logging (use with care) |
+| `VIBEKNOW_TRACE` | Set to `1` to display trace IDs for debugging |
+| `VIBEKNOW_DEBUG` | Set to `1` for verbose logging (use with care) |
 
 ### Diagnostics
 
 ```bash
-# Full environment check
+# Full environment check (config, credentials, endpoint reachability)
 vibeknow doctor
-
-# Verify endpoints are reachable
-vibeknow doctor  # includes concurrent health probes for all 4 services
 ```
 
 ## Architecture
 
-vibeknow-cli uses a **multi-endpoint direct-connect** architecture — the CLI talks to 4 backend services independently:
+vibeknow-cli uses a **multi-endpoint** architecture — the CLI connects to multiple backend services, each responsible for a specific domain (auth, documents, video pipeline, etc.). Services are configured via profiles, allowing per-environment endpoint overrides.
 
-| Service | Purpose | Auth |
-|---------|---------|------|
-| **account** | User auth, profile | JWT (`X-Authorization-Token`) |
-| **vectoria** | Document parsing, RAG | API Key (`X-API-Key`) |
-| **figlens** | Video pipeline, SSE streaming | JWT (`X-Authorization-Token`) |
-| **vibeknow** | Billing, voice management | JWT (`X-Authorization-Token`) |
-
-The `create` command orchestrates across services: vectoria (upload) → figlens (generate via SSE) → figlens (export + download).
-
-For the full design, see the [spec](./docs/superpowers/specs/2026-04-15-vibeknow-cli-design.md).
+The `create` command orchestrates the full pipeline: document upload → video generation (SSE) → export & download.
 
 ## Contributing
 
