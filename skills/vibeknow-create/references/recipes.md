@@ -40,19 +40,26 @@ done
 
 ## Recover from Exit Code 6 (Stream Interrupted)
 
-Exit code 6 means the SSE stream broke. The task may still be running. **Never re-submit** — use `wait` to reconnect:
+Exit code 6 means the SSE stream broke during a sync `create` or `video wait`. The task may still be running server-side. **Never re-submit** — use `wait` to reconnect:
 
 ```bash
-vibeknow create --from slides.pdf --async --output json > /tmp/submit.json
-task_id=$(jq -r '.task_id' /tmp/submit.json)
-session_id=$(jq -r '.session_id' /tmp/submit.json)
-
-# If wait exits 6, retry wait (not create)
+# Sync create exits 6 — the task was submitted but we lost the stream.
+# The task_id and session_id were printed before the stream started.
+# Use them to reconnect:
 vibeknow video wait "$task_id" --session-id "$session_id"
 if [ $? -eq 6 ]; then
   sleep 10
   vibeknow video wait "$task_id" --session-id "$session_id"
 fi
+```
+
+To make recovery easier, use `--async` to capture IDs before streaming:
+
+```bash
+vibeknow create --from slides.pdf --async --output json > /tmp/submit.json
+task_id=$(jq -r '.task_id' /tmp/submit.json)
+session_id=$(jq -r '.session_id' /tmp/submit.json)
+vibeknow video wait "$task_id" --session-id "$session_id"
 ```
 
 ## Batch Create (Multiple Documents)

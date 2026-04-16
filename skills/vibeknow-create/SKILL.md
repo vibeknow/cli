@@ -121,7 +121,7 @@ Key events:
 | `task.succeeded` | `video_url`, `duration_ms` | **Terminal**: video ready |
 | `task.failed` | `failed_stage`, `error_code`, `error_message`, `retryable` | **Terminal**: task failed |
 
-Full schema and parsing examples in [events.md](references/events.md).
+See [events.md](references/events.md) for the complete list (including `task.queued`, `stage.failed`, `task.cancelled`) and parsing examples.
 
 ## References
 

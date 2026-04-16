@@ -100,7 +100,7 @@ For full exit code and error code reference, see [errors.md](references/errors.m
 
 ## Output Formats
 
-All core commands support `--output text|json`:
+All core commands support `--output text|json|ndjson`:
 
 ```bash
 vibeknow auth status --output json    # structured output
@@ -109,5 +109,5 @@ vibeknow profile list --output json   # machine-readable profile list
 
 ## References
 
-- [commands.md](references/commands.md) — Full flag reference for all 13 subcommands
+- [commands.md](references/commands.md) — Full flag reference for all 12 subcommands
 - [errors.md](references/errors.md) — Exit codes, error codes, and Error Object schema

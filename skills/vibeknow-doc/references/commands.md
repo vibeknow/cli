@@ -4,7 +4,7 @@
 
 | Flag | Description |
 |------|-------------|
-| `--output string` | Output format: `text\|json` (auto-selects based on TTY) |
+| `--output string` | Output format: `text\|json\|ndjson` (auto-selects based on TTY) |
 | `--profile string` | Override active profile for this command |
 | `--verbose` | Emit request/response summaries (credentials redacted) |
 
