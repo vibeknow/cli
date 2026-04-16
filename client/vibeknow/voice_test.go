@@ -24,11 +24,11 @@ func TestListVoiceTemplates(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"code": 200,
+			"code": 0,
 			"data": map[string]any{
-				"items": []map[string]any{
-					{"id": "v_1", "name": "Alice", "language": "en", "gender": "female"},
-					{"id": "v_2", "name": "Bob", "language": "zh", "gender": "male"},
+				"list": []map[string]any{
+					{"id": 1, "name": "Alice", "category": "female", "tags": []string{"清新"}, "speech_voice_id": "sv_1"},
+					{"id": 2, "name": "Bob", "category": "male", "tags": []string{"浑厚"}, "speech_voice_id": "sv_2"},
 				},
 			},
 		})
@@ -43,7 +43,7 @@ func TestListVoiceTemplates(t *testing.T) {
 	if len(voices) != 2 {
 		t.Fatalf("expected 2 voices, got %d", len(voices))
 	}
-	if voices[0].ID != "v_1" || voices[0].Name != "Alice" {
+	if voices[0].ID != 1 || voices[0].Name != "Alice" {
 		t.Fatalf("voice[0] = %+v", voices[0])
 	}
 }

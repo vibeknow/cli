@@ -14,7 +14,7 @@ import (
 
 func TestCreateKB(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/knowledgebases" {
+		if r.Method != "POST" || r.URL.Path != "/v1/knowledgebases" {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		if r.Header.Get("X-API-Key") != "test-key" {
@@ -45,7 +45,7 @@ func TestUploadDoc(t *testing.T) {
 		if r.Method != "POST" {
 			t.Fatalf("unexpected method %s", r.Method)
 		}
-		if !strings.HasPrefix(r.URL.Path, "/knowledgebases/kb_1/documents/file") {
+		if !strings.HasPrefix(r.URL.Path, "/v1/knowledgebases/kb_1/documents/file") {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 		if r.Header.Get("X-API-Key") != "test-key" {
@@ -68,7 +68,7 @@ func TestUploadDoc(t *testing.T) {
 
 func TestUploadURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/knowledgebases/kb_1/documents/url") {
+		if !strings.HasPrefix(r.URL.Path, "/v1/knowledgebases/kb_1/documents/url") {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 		var body map[string]string

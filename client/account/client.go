@@ -12,5 +12,5 @@ type Client struct {
 
 // New constructs an account client with the standard middleware chain.
 func New(baseURL string, tokenProvider httpclient.TokenProvider) *Client {
-	return &Client{http: httpclient.New(baseURL).WithTransport(httpclient.StandardChain(tokenProvider, nil))}
+	return &Client{http: httpclient.New(baseURL).WithEnvelope().WithTransport(httpclient.StandardChain(tokenProvider, nil))}
 }

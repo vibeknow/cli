@@ -55,6 +55,27 @@ func parseBackendError(resp *http.Response) error {
 	}
 }
 
+// mapEnvelopeCode maps a backend envelope code + HTTP status to a CLI error code.
+// Backend aether codes: 40xxx = 4xx class, 50xxx = 5xx class, 100xxx+ = business errors.
+func mapEnvelopeCode(envCode, httpStatus int) string {
+	switch {
+	case envCode >= 40100 && envCode < 40200:
+		return "auth_required"
+	case envCode >= 40300 && envCode < 40400:
+		return "permission_denied"
+	case envCode >= 40400 && envCode < 40500:
+		return "not_found"
+	case envCode >= 42900 && envCode < 43000:
+		return "rate_limited"
+	case envCode >= 50000 && envCode < 60000:
+		return "internal_error"
+	case envCode >= 100000:
+		return "business_error"
+	default:
+		return mapHTTPCode(httpStatus)
+	}
+}
+
 func mapHTTPCode(status int) string {
 	switch {
 	case status == http.StatusUnauthorized:

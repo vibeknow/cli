@@ -16,7 +16,7 @@ func (c *Client) CreateKB(ctx context.Context, name string) (string, error) {
 	var resp struct {
 		ID string `json:"id"`
 	}
-	if err := c.http.Do(ctx, "POST", "/knowledgebases", map[string]string{"name": name}, &resp); err != nil {
+	if err := c.http.Do(ctx, "POST", "/v1/knowledgebases", map[string]string{"name": name}, &resp); err != nil {
 		return "", fmt.Errorf("create knowledgebase: %w", err)
 	}
 	return resp.ID, nil
@@ -24,7 +24,7 @@ func (c *Client) CreateKB(ctx context.Context, name string) (string, error) {
 
 func (c *Client) UploadDoc(ctx context.Context, kbID, fileName string, file io.Reader) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/knowledgebases/%s/documents/file", kbID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/file", kbID)
 	if err := c.http.DoUpload(ctx, path, "file", fileName, file, &doc); err != nil {
 		return nil, fmt.Errorf("upload document: %w", err)
 	}
@@ -33,7 +33,7 @@ func (c *Client) UploadDoc(ctx context.Context, kbID, fileName string, file io.R
 
 func (c *Client) UploadURL(ctx context.Context, kbID, url string) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/knowledgebases/%s/documents/url", kbID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/url", kbID)
 	if err := c.http.Do(ctx, "POST", path, map[string]string{"url": url}, &doc); err != nil {
 		return nil, fmt.Errorf("upload URL: %w", err)
 	}
@@ -42,7 +42,7 @@ func (c *Client) UploadURL(ctx context.Context, kbID, url string) (*Document, er
 
 func (c *Client) GetDocStatus(ctx context.Context, kbID, docID string) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/knowledgebases/%s/documents/%s", kbID, docID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", kbID, docID)
 	if err := c.http.Do(ctx, "GET", path, nil, &doc); err != nil {
 		return nil, fmt.Errorf("get document status: %w", err)
 	}
@@ -50,7 +50,7 @@ func (c *Client) GetDocStatus(ctx context.Context, kbID, docID string) (*Documen
 }
 
 func (c *Client) DeleteDoc(ctx context.Context, kbID, docID string) error {
-	path := fmt.Sprintf("/knowledgebases/%s/documents/%s", kbID, docID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", kbID, docID)
 	if err := c.http.Do(ctx, "DELETE", path, nil, nil); err != nil {
 		return fmt.Errorf("delete document: %w", err)
 	}

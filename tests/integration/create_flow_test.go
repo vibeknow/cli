@@ -21,7 +21,7 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 	vectoria := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/knowledgebases":
+		case r.Method == "POST" && r.URL.Path == "/v1/knowledgebases":
 			json.NewEncoder(w).Encode(map[string]string{"id": "kb_test123"})
 		case r.Method == "POST" && strings.Contains(r.URL.Path, "/documents/file"):
 			r.ParseMultipartForm(32 << 20)
@@ -40,8 +40,8 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 		switch {
 		case r.URL.Path == "/v1/tasks/init":
 			json.NewEncoder(w).Encode(map[string]any{
-				"code": 200,
-				"data": map[string]any{"task_id": 42, "session_id": "s_integ", "work_id": "w_integ"},
+				"code": 0,
+				"data": map[string]any{"task_id": 42, "session_id": "s_integ", "work_id": 43, "v": 3},
 			})
 		case r.URL.Path == "/v1/agent3forVideo/stream":
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -62,9 +62,9 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 			}
 		case r.URL.Path == "/v1/works/detailBySession":
 			json.NewEncoder(w).Encode(map[string]any{
-				"code": 200,
+				"code": 0,
 				"data": map[string]any{
-					"id": "w_integ", "title": "Integration Test Video",
+					"id": 43, "title": "Integration Test Video",
 					"video_path": "/test.mp4", "cover_url": "", "duration": 30,
 				},
 			})
@@ -116,7 +116,7 @@ profiles:
 	if !strings.Contains(output, "task_id=42") {
 		t.Errorf("expected task_id=42 in output:\n%s", output)
 	}
-	if !strings.Contains(output, "work_id=w_integ") {
-		t.Errorf("expected work_id=w_integ in output:\n%s", output)
+	if !strings.Contains(output, "Integration Test Video") {
+		t.Errorf("expected video title in output:\n%s", output)
 	}
 }

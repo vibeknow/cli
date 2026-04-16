@@ -18,14 +18,18 @@ func TestWhoami(t *testing.T) {
 			http.Error(w, "wrong path", 404)
 			return
 		}
-		if r.Header.Get("Authorization") != "Bearer tok_xyz" {
+		if r.Header.Get("X-Authorization-Token") != "tok_xyz" {
 			http.Error(w, "no auth", 401)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"uid":      "u_123",
-			"nickname": "alice",
-			"email":    "alice@example.com",
+			"code": 0,
+			"message": "ok",
+			"data": map[string]any{
+				"uid":      123,
+				"nickname": "alice",
+				"email":    "alice@example.com",
+			},
 		})
 	}))
 	defer srv.Close()
@@ -35,7 +39,7 @@ func TestWhoami(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.UID != "u_123" || u.Nickname != "alice" {
+	if u.UID != 123 || u.Nickname != "alice" {
 		t.Errorf("unexpected user: %+v", u)
 	}
 }

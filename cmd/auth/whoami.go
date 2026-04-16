@@ -32,7 +32,7 @@ var whoamiCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("uid: %s\nnickname: %s\nemail: %s\nphone: %s\n", u.UID, u.Nickname, u.Email, u.Phone)
+		fmt.Printf("uid: %d\nnickname: %s\nemail: %s\nphone: %s\n", u.UID, u.Nickname, u.Email, u.Phone)
 		return nil
 	},
 }

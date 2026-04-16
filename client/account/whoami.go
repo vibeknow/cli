@@ -3,10 +3,12 @@ package account
 import "context"
 
 type User struct {
-	UID      string `json:"uid"`
+	UID      int64  `json:"uid"`
 	Nickname string `json:"nickname"`
 	Email    string `json:"email,omitempty"`
 	Phone    string `json:"phone,omitempty"`
+	Avatar   string `json:"avatar,omitempty"`
+	Status   int    `json:"status,omitempty"`
 }
 
 func (c *Client) Whoami(ctx context.Context) (*User, error) {

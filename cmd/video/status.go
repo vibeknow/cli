@@ -30,7 +30,7 @@ var statusCmd = &cobra.Command{
 
 		fmt.Printf("task_id=%s\n", args[0])
 		fmt.Printf("session_id=%s\n", flagStatusSessionID)
-		fmt.Printf("work_id=%s\n", w.ID)
+		fmt.Printf("work_id=%d\n", w.ID)
 		fmt.Printf("title=%s\n", w.Title)
 		if w.VideoPath != "" {
 			fmt.Printf("video_path=%s\n", w.VideoPath)

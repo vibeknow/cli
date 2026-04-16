@@ -17,8 +17,17 @@ import (
 const ClientAPIVersion = "v1"
 
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL  string
+	http     *http.Client
+	envelope bool // if true, unwrap {"code":0,"data":{...}} envelope (Go services)
+}
+
+// envelope is the common response wrapper used by Go backend services
+// (account, vibeknow, figlens). vectoria does NOT use this.
+type envelope struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
 }
 
 func New(baseURL string) *Client {
@@ -26,6 +35,13 @@ func New(baseURL string) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// WithEnvelope enables {"code":0,"data":{...}} unwrapping for Go backend services.
+func (c *Client) WithEnvelope() *Client {
+	nc := *c
+	nc.envelope = true
+	return &nc
 }
 
 func (c *Client) WithTransport(rt http.RoundTripper) *Client {
@@ -73,6 +89,29 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
+
+	if c.envelope {
+		// Go services wrap responses in {"code":0,"message":"...","data":{...}}
+		var env envelope
+		if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+			return &errObject{Code: "unknown", Message: "decode envelope: " + err.Error()}
+		}
+		if env.Code != 0 {
+			return &errObject{
+				Code:    mapEnvelopeCode(env.Code, resp.StatusCode),
+				Message: env.Message,
+			}
+		}
+		if len(env.Data) == 0 || string(env.Data) == "null" {
+			return nil
+		}
+		if err := json.Unmarshal(env.Data, out); err != nil {
+			return &errObject{Code: "unknown", Message: "decode envelope data: " + err.Error()}
+		}
+		return nil
+	}
+
+	// No envelope (e.g., vectoria) — decode body directly.
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return &errObject{Code: "unknown", Message: "decode response: " + err.Error()}
 	}

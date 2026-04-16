@@ -37,9 +37,9 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tLANGUAGE\tGENDER")
+		fmt.Fprintln(w, "ID\tNAME\tCATEGORY\tSPEECH_VOICE_ID")
 		for _, t := range templates {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Language, t.Gender)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", t.ID, t.Name, t.Category, t.SpeechVoiceID)
 		}
 		return w.Flush()
 	},

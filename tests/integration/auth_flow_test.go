@@ -16,15 +16,19 @@ func TestAuthWhoamiAgainstFakeAccount(t *testing.T) {
 			http.Error(w, "not found", 404)
 			return
 		}
-		if r.Header.Get("Authorization") != "Bearer e2e-token" {
+		if r.Header.Get("X-Authorization-Token") != "e2e-token" {
 			http.Error(w, "forbidden", 401)
 			return
 		}
 		w.Header().Set("X-Vibeknow-Api-Version", "v1")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"uid":      "u_e2e",
-			"nickname": "e2eUser",
-			"email":    "e2e@example.com",
+			"code":    0,
+			"message": "ok",
+			"data": map[string]any{
+				"uid":      1859355825733634,
+				"nickname": "e2eUser",
+				"email":    "e2e@example.com",
+			},
 		})
 	}))
 	defer srv.Close()
@@ -56,7 +60,7 @@ func TestAuthWhoamiAgainstFakeAccount(t *testing.T) {
 		t.Fatalf("whoami: err=%v out=%s", err, string(out))
 	}
 	s := string(out)
-	if !strings.Contains(s, "u_e2e") || !strings.Contains(s, "e2eUser") {
+	if !strings.Contains(s, "1859355825733634") || !strings.Contains(s, "e2eUser") {
 		t.Errorf("whoami output missing user info: %q", s)
 	}
 }

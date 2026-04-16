@@ -16,7 +16,7 @@ func (s staticToken) Token(ctx context.Context) (string, error) { return string(
 
 func figlensResp(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": data})
+	json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": data})
 }
 
 func TestInitTask(t *testing.T) {
@@ -25,7 +25,7 @@ func TestInitTask(t *testing.T) {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		figlensResp(w, map[string]any{
-			"task_id": 123, "session_id": "s_abc", "work_id": "w_xyz",
+			"task_id": 123, "session_id": "s_abc", "work_id": 456, "v": 3,
 		})
 	}))
 	defer srv.Close()
@@ -49,7 +49,7 @@ func TestGetWorkBySession(t *testing.T) {
 			t.Fatalf("unexpected session_id query param")
 		}
 		figlensResp(w, map[string]any{
-			"id": "w_xyz", "title": "Test Video", "video_path": "/videos/test.mp4",
+			"id": 456, "title": "Test Video", "video_path": "/videos/test.mp4",
 			"cover_url": "https://cover.jpg", "duration": 120,
 		})
 	}))
@@ -60,7 +60,7 @@ func TestGetWorkBySession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWorkBySession: %v", err)
 	}
-	if work.ID != "w_xyz" || work.Duration != 120 {
+	if work.ID != 456 || work.Duration != 120 {
 		t.Fatalf("work = %+v", work)
 	}
 }

@@ -43,7 +43,7 @@ func TestStandardChainRetriesAndInjectsAuth(t *testing.T) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
-		authSeen = r.Header.Get("Authorization")
+		authSeen = r.Header.Get("X-Authorization-Token")
 		w.Header().Set("X-Vibeknow-Api-Version", "v1")
 		w.WriteHeader(200)
 	}))
@@ -54,7 +54,7 @@ func TestStandardChainRetriesAndInjectsAuth(t *testing.T) {
 	if err := c.Do(context.Background(), "GET", "/", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if authSeen != "Bearer abc" {
+	if authSeen != "abc" {
 		t.Errorf("auth not injected: %q", authSeen)
 	}
 	if atomic.LoadInt32(&hits) != 2 {

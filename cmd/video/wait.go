@@ -23,7 +23,7 @@ var waitCmd = &cobra.Command{
 		}
 
 		taskIDStr := args[0]
-		taskID, err := strconv.Atoi(taskIDStr)
+		taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
 		if err != nil {
 			return fmt.Errorf("task_id must be an integer: %w", err)
 		}
@@ -77,7 +77,7 @@ var waitCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Printf("work_id=%s\n", w.ID)
+			fmt.Printf("work_id=%d\n", w.ID)
 			fmt.Printf("title=%s\n", w.Title)
 			if w.VideoPath != "" {
 				fmt.Printf("video_path=%s\n", w.VideoPath)

@@ -12,12 +12,13 @@ import (
 )
 
 type StreamParams struct {
-	TaskID      int    `json:"task_id"`
+	TaskID      int64  `json:"task_id"`
 	SessionID   string `json:"session_id"`
 	Query       string `json:"query"`
 	KnowledgeID string `json:"knowledge_id,omitempty"`
 	DocID       string `json:"doc_id,omitempty"`
 	VoiceID     string `json:"voice_id,omitempty"`
+	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
 }
 
 type StreamEvent struct {

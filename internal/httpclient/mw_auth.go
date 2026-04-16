@@ -16,7 +16,7 @@ func (m AuthMiddleware) Wrap(next http.RoundTripper) http.RoundTripper {
 		if m.Provider != nil {
 			tok, err := m.Provider.Token(r.Context())
 			if err == nil && tok != "" {
-				r.Header.Set("Authorization", "Bearer "+tok)
+				r.Header.Set("X-Authorization-Token", tok)
 			}
 		}
 		return next.RoundTrip(r)
