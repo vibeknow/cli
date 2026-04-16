@@ -1,0 +1,21 @@
+{
+  "name": "vibeknow",
+  "version": "0.0.1",
+  "description": "This package has moved to vibeknow-cli. Install with: npm i -g vibeknow-cli",
+  "license": "MIT",
+  "dependencies": {
+    "vibeknow-cli": "*"
+  },
+  "bin": {
+    "vibeknow": "./node_modules/vibeknow-cli/scripts/run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibeknow/cli.git"
+  },
+  "keywords": [
+    "cli",
+    "video",
+    "ai"
+  ]
+}
