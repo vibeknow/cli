@@ -24,6 +24,21 @@ func (e *errObject) Error() string {
 
 func (e *errObject) IsRetryable() bool { return e.Retryable }
 
+// As supports errors.As conversion to *errs.Object.
+func (e *errObject) As(target any) bool {
+	if t, ok := target.(**errs.Object); ok {
+		*t = &errs.Object{
+			SchemaVersion: "1",
+			Code:          e.Code,
+			Message:       e.Message,
+			TraceID:       e.TraceID,
+			Retryable:     e.Retryable,
+		}
+		return true
+	}
+	return false
+}
+
 // AsErrsObject converts to the canonical user-facing Error Object (spec §11.2).
 func (e *errObject) AsErrsObject() *errs.Object {
 	return &errs.Object{
@@ -69,6 +84,13 @@ func mapEnvelopeCode(envCode, httpStatus int) string {
 		return "rate_limited"
 	case envCode >= 50000 && envCode < 60000:
 		return "internal_error"
+	// Business errors (100xxx).
+	case envCode == 100001:
+		return "insufficient_credits"
+	case envCode == 100002:
+		return "freeze_not_found"
+	case envCode == 100003:
+		return "concurrent_work_limit"
 	case envCode >= 100000:
 		return "business_error"
 	default:

@@ -43,11 +43,11 @@ data: [DONE]
 	if len(events) < 3 {
 		t.Fatalf("expected >= 3 events, got %d", len(events))
 	}
-	if events[0].Type != "stage.started" || events[0].Stage != "parse" {
+	if events[0].Type != "node.started" || events[0].Node != "prepare" {
 		t.Fatalf("event[0] = %+v", events[0])
 	}
-	if events[1].Type != "stage.succeeded" {
-		t.Fatalf("event[1].Type = %q", events[1].Type)
+	if events[1].Type != "node.succeeded" || events[1].Node != "prepare" {
+		t.Fatalf("event[1] = %+v", events[1])
 	}
 	if events[2].Type != "task.succeeded" || events[2].SessionID != "s_abc" {
 		t.Fatalf("event[2] = %+v", events[2])

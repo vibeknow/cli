@@ -44,12 +44,12 @@ var waitCmd = &cobra.Command{
 			Query:     "",
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
-			case "stage.started":
-				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Stage)
-			case "stage.succeeded":
-				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Stage)
-			case "stage.failed":
-				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Stage, ev.Message)
+			case "node.started":
+				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Node)
+			case "node.succeeded":
+				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Node)
+			case "node.failed":
+				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
 			case "task.succeeded":
 				taskSucceeded = true
 				successSessionID = ev.SessionID

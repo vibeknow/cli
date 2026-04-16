@@ -47,6 +47,20 @@ type processLog struct {
 	Message string `json:"message"`
 }
 
+// mapSSECode maps a backend envelope code from an SSE payload to a CLI error code string.
+func mapSSECode(code int) string {
+	switch code {
+	case 100001:
+		return "insufficient_credits"
+	case 100002:
+		return "freeze_not_found"
+	case 100003:
+		return "concurrent_work_limit"
+	default:
+		return "business_error"
+	}
+}
+
 func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent func(StreamEvent)) error {
 	resp, err := c.http.DoRaw(ctx, "POST", "/v1/agent3forVideo/stream", params)
 	if err != nil {
@@ -55,7 +69,6 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 	defer resp.Body.Close()
 
 	reader := sse.NewReader(resp.Body)
-	stageStarted := map[string]bool{}
 
 	for {
 		ev, err := reader.Next()
@@ -77,6 +90,21 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 			continue
 		}
 
+		// Check for business errors in the SSE payload (e.g. insufficient credits).
+		// Backend uses code 0 or 200 for success; anything else is an error.
+		if payload.Code != 0 && payload.Code != 200 {
+			msg := "business error"
+			if len(payload.Data) > 0 {
+				var d sseData
+				if json.Unmarshal(payload.Data, &d) == nil && d.Message != "" {
+					msg = d.Message
+				}
+			}
+			code := mapSSECode(payload.Code)
+			onEvent(StreamEvent{Type: "task.failed", Message: fmt.Sprintf("[%s] %s", code, msg)})
+			return nil
+		}
+
 		var d sseData
 		if err := json.Unmarshal(payload.Data, &d); err != nil {
 			continue
@@ -88,29 +116,27 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 			if err := json.Unmarshal(d.Log, &log); err != nil {
 				continue
 			}
-			stageName, ok := stage.FromNode(log.StepID)
-			if !ok {
+			if !stage.IsKnownNode(log.StepID) {
 				continue
 			}
+			displayName := stage.DisplayName(log.StepID)
+			stageName, _ := stage.FromNode(log.StepID)
 
 			switch log.Status {
 			case "start":
-				if !stageStarted[stageName] {
-					stageStarted[stageName] = true
-					onEvent(StreamEvent{
-						Type: "stage.started", Stage: stageName,
-						Node: log.StepID, Message: log.Message,
-					})
-				}
+				onEvent(StreamEvent{
+					Type: "node.started", Stage: stageName,
+					Node: displayName, Message: log.Message,
+				})
 			case "success":
 				onEvent(StreamEvent{
-					Type: "stage.succeeded", Stage: stageName,
-					Node: log.StepID, Message: log.Message,
+					Type: "node.succeeded", Stage: stageName,
+					Node: displayName, Message: log.Message,
 				})
 			case "error":
 				onEvent(StreamEvent{
-					Type: "stage.failed", Stage: stageName,
-					Node: log.StepID, Message: log.Message,
+					Type: "node.failed", Stage: stageName,
+					Node: displayName, Message: log.Message,
 				})
 			}
 

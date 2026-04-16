@@ -1,7 +1,10 @@
 // Package errs defines the canonical Error Object (spec §11.2).
 package errs
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Object struct {
 	SchemaVersion string         `json:"schema_version"`
@@ -23,4 +26,13 @@ func (o *Object) IsRetryable() bool { return o.Retryable }
 
 func New(code, message string) *Object {
 	return &Object{SchemaVersion: "1", Code: code, Message: message}
+}
+
+// HasCode reports whether err is an *Object with the given code.
+func HasCode(err error, code string) bool {
+	var o *Object
+	if errors.As(err, &o) {
+		return o.Code == code
+	}
+	return false
 }

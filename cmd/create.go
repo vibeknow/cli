@@ -14,6 +14,7 @@ import (
 	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
 	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
 	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
+	"github.com/shiliu-ai/vibeknow-cli/internal/errs"
 )
 
 var (
@@ -67,19 +68,41 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		// Step 2: init figlens task.
+		// Step 2: optimize prompt (skip if user provided --prompt).
 		fc, err := newCreateFiglensClient()
 		if err != nil {
 			return err
 		}
 
+		query := flagCreatePrompt
+		if query == "" && kbID != "" && docID != "" {
+			fmt.Fprintf(os.Stderr, "optimising prompt...\n")
+			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
+				KnowledgeID: kbID,
+				DocID:       docID,
+			}, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "prompt optimisation failed, using default: %s\n", err)
+				query = "根据文档内容生成视频"
+			} else {
+				query = optimized
+				fmt.Fprintf(os.Stderr, "prompt: %s\n", query)
+			}
+		} else if query == "" {
+			query = "根据文档内容生成视频"
+		}
+
+		// Step 3: init figlens task.
 		fmt.Fprintf(os.Stderr, "initialising task...\n")
 		task, err := fc.InitTask(ctx)
 		if err != nil {
+			if errs.HasCode(err, "insufficient_credits") {
+				return fmt.Errorf("积分不足，请充值后再试")
+			}
 			return err
 		}
 
-		// Step 3: async or sync.
+		// Step 4: async or sync.
 		if flagCreateAsync {
 			fmt.Printf("task_id=%d\nsession_id=%s\n", task.TaskID, task.SessionID)
 			fmt.Fprintf(os.Stderr, "hint: run `vibeknow video wait %d --session-id %s` to track progress\n",
@@ -87,16 +110,11 @@ var createCmd = &cobra.Command{
 			return nil
 		}
 
-		// Step 4: stream with progress.
+		// Step 5: stream with progress.
 		fmt.Fprintf(os.Stderr, "generating video (task_id=%d session_id=%s)...\n", task.TaskID, task.SessionID)
 
 		var taskFailed bool
 		var successSessionID string
-
-		query := flagCreatePrompt
-		if query == "" {
-			query = "请根据文档内容生成视频"
-		}
 
 		err = fc.StreamChat(ctx, figlens.StreamParams{
 			TaskID:      task.TaskID,
@@ -107,12 +125,12 @@ var createCmd = &cobra.Command{
 			VoiceID:     flagCreateVoiceID,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
-			case "stage.started":
-				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Stage)
-			case "stage.succeeded":
-				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Stage)
-			case "stage.failed":
-				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Stage, ev.Message)
+			case "node.started":
+				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Node)
+			case "node.succeeded":
+				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Node)
+			case "node.failed":
+				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
 			case "task.succeeded":
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
@@ -121,10 +139,18 @@ var createCmd = &cobra.Command{
 				fmt.Fprintf(os.Stderr, "task succeeded\n")
 			case "task.failed":
 				taskFailed = true
-				fmt.Fprintf(os.Stderr, "task failed: %s\n", ev.Message)
+				if strings.Contains(ev.Message, "insufficient_credits") {
+					fmt.Fprintf(os.Stderr, "积分不足，请充值后再试\n")
+				} else {
+					fmt.Fprintf(os.Stderr, "task failed: %s\n", ev.Message)
+				}
 			}
 		})
 		if err != nil {
+			if errs.HasCode(err, "insufficient_credits") {
+				fmt.Fprintf(os.Stderr, "积分不足，请充值后再试\n")
+				os.Exit(5)
+			}
 			// Stream interrupted — exit 6.
 			fmt.Fprintf(os.Stderr, "stream interrupted: %s\n", err)
 			os.Exit(6)
