@@ -13,7 +13,6 @@ import (
 	"github.com/shiliu-ai/vibeknow-cli/client/figlens"
 	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
 	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
 	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
 )
 
@@ -252,7 +251,14 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 
 func newVectoriaClient() (*vectoria.Client, error) {
 	apiKey := os.Getenv("VECTORIA_API_KEY")
-	url, err := endpoints.Resolve(config.Profile{}, "vectoria")
+	if apiKey == "" {
+		return nil, fmt.Errorf("VECTORIA_API_KEY env var is required")
+	}
+	p, err := cliauth.CurrentProfile()
+	if err != nil {
+		return nil, err
+	}
+	url, err := endpoints.Resolve(p, "vectoria")
 	if err != nil {
 		return nil, err
 	}

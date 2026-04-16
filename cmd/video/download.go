@@ -62,6 +62,9 @@ var downloadCmd = &cobra.Command{
 				switch result.Status {
 				case "completed", "success":
 					videoPath = result.VideoPath
+					if videoPath == "" {
+						return fmt.Errorf("export completed but no video_path returned")
+					}
 				case "failed", "error":
 					return fmt.Errorf("export failed")
 				default:
@@ -70,10 +73,7 @@ var downloadCmd = &cobra.Command{
 					continue
 				}
 
-				if videoPath != "" {
-					break
-				}
-				time.Sleep(3 * time.Second)
+				break
 			}
 		}
 

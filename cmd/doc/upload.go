@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shiliu-ai/vibeknow-cli/client/vectoria"
-	"github.com/shiliu-ai/vibeknow-cli/internal/config"
+	"github.com/shiliu-ai/vibeknow-cli/internal/cliauth"
 	"github.com/shiliu-ai/vibeknow-cli/internal/endpoints"
 )
 
@@ -29,8 +29,15 @@ var uploadCmd = &cobra.Command{
 		}
 
 		apiKey := os.Getenv("VECTORIA_API_KEY")
+		if apiKey == "" {
+			return fmt.Errorf("VECTORIA_API_KEY env var is required")
+		}
 
-		url, err := endpoints.Resolve(config.Profile{}, "vectoria")
+		p, err := cliauth.CurrentProfile()
+		if err != nil {
+			return err
+		}
+		url, err := endpoints.Resolve(p, "vectoria")
 		if err != nil {
 			return err
 		}
