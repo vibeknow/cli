@@ -4,7 +4,8 @@
   "description": "VibeKnow CLI — turn docs / URLs into videos",
   "license": "MIT",
   "bin": {
-    "vibeknow": "scripts/run.js"
+    "vibeknow": "scripts/run.js",
+    "vk": "scripts/run.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"

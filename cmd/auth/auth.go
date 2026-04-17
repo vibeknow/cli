@@ -13,4 +13,5 @@ func init() {
 	Cmd.AddCommand(whoamiCmd)
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(logoutCmd)
+	Cmd.AddCommand(loginCmd)
 }

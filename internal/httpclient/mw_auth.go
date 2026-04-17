@@ -9,6 +9,13 @@ type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
+// RefreshableTokenProvider extends TokenProvider with refresh capability.
+type RefreshableTokenProvider interface {
+	TokenProvider
+	TokenType() string                               // "oauth" or "pat"
+	ForceRefresh(ctx context.Context) (string, error) // force refresh, return new access_token
+}
+
 type AuthMiddleware struct{ Provider TokenProvider }
 
 func (m AuthMiddleware) Wrap(next http.RoundTripper) http.RoundTripper {

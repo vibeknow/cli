@@ -24,7 +24,20 @@ func (k KeychainSource) Get() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	st := ParseStored(string(data))
+	return st.AccessToken, nil
+}
+
+// GetStored returns the full StoredToken from the keychain entry.
+func (k KeychainSource) GetStored() (StoredToken, error) {
+	if k.Keychain == nil || k.Entry == "" {
+		return StoredToken{}, ErrNotFound
+	}
+	data, err := k.Keychain.Get(k.Entry)
+	if err != nil {
+		return StoredToken{}, err
+	}
+	return ParseStored(string(data)), nil
 }
 
 // FileSource wraps a *FileStore (nil means unavailable).
