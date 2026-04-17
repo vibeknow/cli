@@ -172,6 +172,9 @@ var createCmd = &cobra.Command{
 			fmt.Printf("title=%s\n", w.Title)
 			if w.VideoPath != "" {
 				fmt.Printf("video_path=%s\n", w.VideoPath)
+				if signedURL, err := fc.GetVideoURL(ctx, w.ID); err == nil && signedURL != "" {
+					fmt.Printf("video_url=%s\n", signedURL)
+				}
 			}
 			if w.Duration > 0 {
 				fmt.Printf("duration=%d\n", w.Duration)

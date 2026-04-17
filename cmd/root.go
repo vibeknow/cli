@@ -9,6 +9,7 @@ import (
 	apicmd "github.com/vibeknow/cli/cmd/api"
 	authcmd "github.com/vibeknow/cli/cmd/auth"
 	configcmd "github.com/vibeknow/cli/cmd/config"
+	creditscmd "github.com/vibeknow/cli/cmd/credits"
 	doccmd "github.com/vibeknow/cli/cmd/doc"
 	profilecmd "github.com/vibeknow/cli/cmd/profile"
 	videocmd "github.com/vibeknow/cli/cmd/video"
@@ -42,6 +43,7 @@ func init() {
 	rootCmd.AddCommand(authcmd.Cmd)
 	rootCmd.AddCommand(configcmd.Cmd)
 	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(creditscmd.Cmd)
 	rootCmd.AddCommand(doccmd.Cmd)
 	rootCmd.AddCommand(profilecmd.Cmd)
 	rootCmd.AddCommand(videocmd.Cmd)
