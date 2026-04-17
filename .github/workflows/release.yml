@@ -72,6 +72,6 @@ jobs:
 
       - name: Publish vibeknow (redirect package)
         working-directory: npm/vibeknow
-        run: npm publish --access public
+        run: npm publish --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
