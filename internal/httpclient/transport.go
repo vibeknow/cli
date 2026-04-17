@@ -41,6 +41,7 @@ func RoundTripperFunc(fn func(*http.Request) (*http.Response, error)) http.Round
 func StandardChain(tp TokenProvider, verboseOut io.Writer) http.RoundTripper {
 	return Chain(http.DefaultTransport,
 		AuthMiddleware{Provider: tp},
+		RefreshRetryMiddleware{Provider: tp},
 		TraceIDMiddleware{},
 		VerboseMiddleware{Out: verboseOut},
 		VersionMiddleware{Expected: ClientAPIVersion},
