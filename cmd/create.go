@@ -12,6 +12,7 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/errs"
@@ -288,7 +289,7 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 func newVectoriaClient() (*vectoria.Client, error) {
 	apiKey := os.Getenv("VECTORIA_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("VECTORIA_API_KEY env var is required")
+		return nil, clerr.New("文档服务认证失败").WithHint("请设置 VECTORIA_API_KEY 环境变量，或等待后续版本支持统一认证")
 	}
 	p, err := cliauth.CurrentProfile()
 	if err != nil {
@@ -308,7 +309,7 @@ func newCreateFiglensClient() (*figlens.Client, error) {
 	}
 	tok, _, err := cliauth.ResolverFor(p).Resolve()
 	if err != nil {
-		return nil, fmt.Errorf("no credential available; set VIBEKNOW_TOKEN env var")
+		return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
 	}
 	url, err := endpoints.Resolve(p, "figlens")
 	if err != nil {

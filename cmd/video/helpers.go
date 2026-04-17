@@ -2,9 +2,9 @@ package video
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 )
@@ -16,7 +16,7 @@ func newFiglensClient() (*figlens.Client, error) {
 	}
 	tok, _, err := cliauth.ResolverFor(p).Resolve()
 	if err != nil {
-		return nil, fmt.Errorf("no credential available; set VIBEKNOW_TOKEN env var")
+		return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
 	}
 	url, err := endpoints.Resolve(p, "figlens")
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 )
@@ -30,7 +31,7 @@ var uploadCmd = &cobra.Command{
 
 		apiKey := os.Getenv("VECTORIA_API_KEY")
 		if apiKey == "" {
-			return fmt.Errorf("VECTORIA_API_KEY env var is required")
+			return clerr.New("文档服务认证失败").WithHint("请设置 VECTORIA_API_KEY 环境变量")
 		}
 
 		p, err := cliauth.CurrentProfile()

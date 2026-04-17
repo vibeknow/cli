@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -14,6 +13,7 @@ import (
 	profilecmd "github.com/vibeknow/cli/cmd/profile"
 	videocmd "github.com/vibeknow/cli/cmd/video"
 	voicecmd "github.com/vibeknow/cli/cmd/voice"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/i18n"
 )
 
@@ -48,12 +48,14 @@ func init() {
 	rootCmd.AddCommand(profilecmd.Cmd)
 	rootCmd.AddCommand(videocmd.Cmd)
 	rootCmd.AddCommand(voicecmd.Cmd)
+	rootCmd.AddCommand(initCmd)
 }
 
 func Execute() error {
+	rootCmd.SilenceErrors = true
 	err := rootCmd.Execute()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		clerr.Render(os.Stderr, err)
 	}
 	return err
 }
