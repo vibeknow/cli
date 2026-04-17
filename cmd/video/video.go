@@ -11,4 +11,6 @@ func init() {
 	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(waitCmd)
 	Cmd.AddCommand(downloadCmd)
+	Cmd.AddCommand(listCmd)
+	Cmd.AddCommand(urlCmd)
 }
