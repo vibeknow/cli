@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.25-blue.svg)](https://go.dev/)
-[![npm version](https://img.shields.io/npm/v/@vibeknow/cli.svg)](https://www.npmjs.com/package/@vibeknow/cli)
+[![npm version](https://img.shields.io/npm/v/vibeknow-cli.svg)](https://www.npmjs.com/package/vibeknow-cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
@@ -49,7 +49,7 @@
 **方式 1 —— npm 安装（推荐）：**
 
 ```bash
-npm install -g @vibeknow/cli
+npm install -g vibeknow-cli
 ```
 
 **方式 2 —— 从源码安装：**
@@ -95,7 +95,7 @@ vibeknow create --from https://example.com/article --voice t260312180132IV37e611
 **第 1 步 —— 安装**
 
 ```bash
-npm install -g @vibeknow/cli
+npm install -g vibeknow-cli
 ```
 
 **第 2 步 —— 配置 profile**（从 VibeKnow 控制台获取 endpoint）

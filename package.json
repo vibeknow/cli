@@ -1,7 +1,7 @@
 {
   "name": "vibeknow-cli",
-  "version": "0.1.0",
-  "description": "VibeKnow CLI — turn docs into videos",
+  "version": "0.1.1",
+  "description": "VibeKnow CLI — turn docs / URLs into videos",
   "license": "MIT",
   "bin": {
     "vibeknow": "scripts/run.js"
@@ -39,6 +39,10 @@
     "video",
     "ai",
     "document",
-    "tts"
+    "url",
+    "tts",
+    "video-generation",
+    "automation",
+    "agent"
   ]
 }

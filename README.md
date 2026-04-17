@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.25-blue.svg)](https://go.dev/)
-[![npm version](https://img.shields.io/npm/v/@vibeknow/cli.svg)](https://www.npmjs.com/package/@vibeknow/cli)
+[![npm version](https://img.shields.io/npm/v/vibeknow-cli.svg)](https://www.npmjs.com/package/vibeknow-cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
@@ -49,7 +49,7 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 **Option 1 — From npm (recommended):**
 
 ```bash
-npm install -g @vibeknow/cli
+npm install -g vibeknow-cli
 ```
 
 **Option 2 — From source:**
@@ -95,7 +95,7 @@ vibeknow create --from https://example.com/article --voice t260312180132IV37e611
 **Step 1 — Install**
 
 ```bash
-npm install -g @vibeknow/cli
+npm install -g vibeknow-cli
 ```
 
 **Step 2 — Configure profile** (get endpoints from your VibeKnow dashboard)
