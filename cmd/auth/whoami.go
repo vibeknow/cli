@@ -8,6 +8,7 @@ import (
 
 	"github.com/vibeknow/cli/client/account"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/endpoints"
 )
 
@@ -21,7 +22,7 @@ var whoamiCmd = &cobra.Command{
 		}
 		tok, _, err := cliauth.ResolverFor(p).Resolve()
 		if err != nil {
-			return fmt.Errorf("no credential available; set VIBEKNOW_TOKEN env var")
+			return clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
 		}
 		url, err := endpoints.Resolve(p, "account")
 		if err != nil {

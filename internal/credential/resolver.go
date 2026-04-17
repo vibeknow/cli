@@ -72,5 +72,5 @@ func (r Resolver) Resolve() (string, string, error) {
 	if tok, err := r.File.Get(); err == nil {
 		return tok, "file", nil
 	}
-	return "", "", fmt.Errorf("no credential available (checked env, keychain, file)")
+	return "", "", fmt.Errorf("未登录，请运行 `vk auth login` 或 `vk init`")
 }

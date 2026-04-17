@@ -51,7 +51,7 @@ func CurrentProfile() (config.Profile, error) {
 type NoActiveProfileError struct{}
 
 func (*NoActiveProfileError) Error() string {
-	return "no active profile; set one with `vibeknow profile use <name>`"
+	return "尚未初始化，请先运行 `vk init` 完成设置"
 }
 
 type ProfileNotFoundError struct{ Name string }

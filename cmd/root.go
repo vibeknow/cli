@@ -14,7 +14,9 @@ import (
 	profilecmd "github.com/vibeknow/cli/cmd/profile"
 	videocmd "github.com/vibeknow/cli/cmd/video"
 	voicecmd "github.com/vibeknow/cli/cmd/voice"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/update"
 )
 
 var (
@@ -48,12 +50,37 @@ func init() {
 	rootCmd.AddCommand(profilecmd.Cmd)
 	rootCmd.AddCommand(videocmd.Cmd)
 	rootCmd.AddCommand(voicecmd.Cmd)
+	rootCmd.AddCommand(initCmd)
+}
+
+func setupUpdateNotice() {
+	// Sync: check cache (fast, no network)
+	if info := update.CheckCached(version); info != nil {
+		update.SetPending(info)
+	}
+
+	// Async: refresh cache for future runs
+	go func() {
+		defer func() { recover() }()
+		update.RefreshCache(version)
+		if update.GetPending() == nil {
+			if info := update.CheckCached(version); info != nil {
+				update.SetPending(info)
+			}
+		}
+	}()
 }
 
 func Execute() error {
+	setupUpdateNotice()
+	rootCmd.SilenceErrors = true
 	err := rootCmd.Execute()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		clerr.Render(os.Stderr, err)
+	}
+	// Show update notice at the end (stderr, non-blocking)
+	if info := update.GetPending(); info != nil {
+		fmt.Fprintf(os.Stderr, "\n提示: %s\n", info.Message())
 	}
 	return err
 }
