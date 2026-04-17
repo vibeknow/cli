@@ -87,8 +87,18 @@ function install() {
   const binName = 'vibeknow' + (process.platform === 'win32' ? '.exe' : '');
   const binPath = path.join(binDir, binName);
 
+  // Check if existing binary matches current version — skip download if so.
   if (fs.existsSync(binPath)) {
-    return;
+    try {
+      const out = execSync(`"${binPath}" version`, { encoding: 'utf8', timeout: 5000 }).trim();
+      if (out === version) {
+        return; // already up to date
+      }
+      console.log(`[vibeknow] upgrading from ${out} to ${version}...`);
+    } catch {
+      // can't determine version, re-download
+    }
+    fs.unlinkSync(binPath);
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibeknow-'));
