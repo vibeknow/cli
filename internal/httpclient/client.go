@@ -54,6 +54,9 @@ func (c *Client) WithTransport(rt http.RoundTripper) *Client {
 // that still traverse the middleware chain.
 func (c *Client) Transport() http.RoundTripper { return c.http.Transport }
 
+// BaseURL returns the base URL for this client.
+func (c *Client) BaseURL() string { return c.baseURL }
+
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
