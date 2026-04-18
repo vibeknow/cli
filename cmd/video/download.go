@@ -26,7 +26,7 @@ var downloadCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagDownloadSessionID == "" {
-			return fmt.Errorf("--session-id is required")
+			return clerr.Validation("--session-id is required")
 		}
 
 		c, err := newFiglensClient()

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/clerr"
 )
 
 var flagWaitSessionID string
@@ -19,13 +20,13 @@ var waitCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagWaitSessionID == "" {
-			return fmt.Errorf("--session-id is required")
+			return clerr.Validation("--session-id is required")
 		}
 
 		taskIDStr := args[0]
 		taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
 		if err != nil {
-			return fmt.Errorf("task_id must be an integer: %w", err)
+			return clerr.Validationf("task_id must be an integer: %v", err)
 		}
 
 		c, err := newFiglensClient()

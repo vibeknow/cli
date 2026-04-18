@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+
+	"github.com/vibeknow/cli/internal/clerr"
 )
 
 var urlCmd = &cobra.Command{
@@ -15,7 +17,7 @@ var urlCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		workID, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
-			return fmt.Errorf("invalid work_id: %s", args[0])
+			return clerr.Validationf("invalid work_id: %s", args[0])
 		}
 
 		c, err := newFiglensClient()
