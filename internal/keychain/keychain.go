@@ -1,61 +1,144 @@
-// Package keychain wraps an OS-native secret store (delegating to
-// 99designs/keyring). See spec §4.2.
+// Package keychain provides cross-platform secure storage for credentials.
+// macOS stores an AES-256 master key in the system Keychain (via
+// zalando/go-keyring, no cgo) and encrypts tokens with AES-256-GCM on disk.
+// Linux / BSDs store both the master key and tokens on disk. Windows uses
+// DPAPI + HKCU registry.
 package keychain
 
 import (
-	"fmt"
-
-	"github.com/99designs/keyring"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
 )
 
-type Keychain struct{ ring keyring.Keyring }
+// ErrNotFound is returned by Get when no entry exists for the given account.
+var ErrNotFound = errors.New("keychain: item not found")
 
-type Option func(*keyring.Config)
+// errNotInitialized is an internal sentinel used when a master key is missing
+// and creation has not been requested.
+var errNotInitialized = errors.New("keychain: not initialized")
 
-// WithFileBackend forces the encrypted FileBackend rooted at dir with the
-// given passphrase. Intended for tests and the Linux-headless fallback
-// described in spec §4.2.
-func WithFileBackend(dir, passphrase string) Option {
-	return func(c *keyring.Config) {
-		c.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-		c.FileDir = dir
-		c.FilePasswordFunc = keyring.FixedStringPrompt(passphrase)
-	}
-}
+const (
+	masterKeyBytes = 32
+	ivBytes        = 12
+	tagBytes       = 16
+)
 
-// OpenFor opens (or creates) a keychain scoped to service. Production callers
-// pass no options — the 99designs library will try Keychain / WinCred /
-// SecretService / FileBackend in that order.
+// Keychain is a handle scoped to a service name. Operations are stateless;
+// the handle is cheap to create and safe to share.
+type Keychain struct{ service string }
+
+// Option customizes a Keychain. Reserved for forward compatibility.
+type Option func(*Keychain)
+
+// OpenFor returns a Keychain scoped to service. It does not touch the
+// underlying store until Get/Set/Delete is called.
 func OpenFor(service string, opts ...Option) (*Keychain, error) {
-	cfg := keyring.Config{
-		ServiceName: service,
-		AllowedBackends: []keyring.BackendType{
-			keyring.KeychainBackend,
-			keyring.WinCredBackend,
-			keyring.SecretServiceBackend,
-			keyring.FileBackend,
-		},
-	}
+	k := &Keychain{service: service}
 	for _, o := range opts {
-		o(&cfg)
+		o(k)
 	}
-	r, err := keyring.Open(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("keychain open: %w", err)
-	}
-	return &Keychain{ring: r}, nil
+	return k, nil
 }
 
-func (k *Keychain) Set(key string, data []byte) error {
-	return k.ring.Set(keyring.Item{Key: key, Data: data})
+func (k *Keychain) Set(account string, data []byte) error {
+	return platformSet(k.service, account, data)
 }
 
-func (k *Keychain) Get(key string) ([]byte, error) {
-	item, err := k.ring.Get(key)
+func (k *Keychain) Get(account string) ([]byte, error) {
+	return platformGet(k.service, account)
+}
+
+func (k *Keychain) Delete(account string) error {
+	return platformRemove(k.service, account)
+}
+
+var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+
+func safeFileName(account string) string {
+	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
+}
+
+func randomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func encryptData(plaintext, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
-	return item.Data, nil
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	iv, err := randomBytes(ivBytes)
+	if err != nil {
+		return nil, err
+	}
+	ct := aead.Seal(nil, iv, plaintext, nil)
+	out := make([]byte, 0, ivBytes+len(ct))
+	out = append(out, iv...)
+	out = append(out, ct...)
+	return out, nil
 }
 
-func (k *Keychain) Delete(key string) error { return k.ring.Remove(key) }
+func decryptData(data, key []byte) ([]byte, error) {
+	if len(data) < ivBytes+tagBytes {
+		return nil, os.ErrInvalid
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	return aead.Open(nil, data[:ivBytes], data[ivBytes:], nil)
+}
+
+// writeFileAtomic writes data to path via a sibling tempfile + rename, so
+// readers never observe a half-written file. The parent directory is created
+// with 0700 if missing.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	success = true
+	return nil
+}

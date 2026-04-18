@@ -78,14 +78,23 @@ func checkProfiles() error {
 }
 
 func checkKeychain() error {
-	tmp, err := os.MkdirTemp("", "vibeknow-doctor-probe-*")
+	kc, err := keychain.OpenFor("vibeknow")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
-	_, err = keychain.OpenFor("vibeknow-doctor-probe",
-		keychain.WithFileBackend(tmp, "probe-passphrase"))
-	return err
+	const probe = "__doctor_probe__"
+	if err := kc.Set(probe, []byte("ok")); err != nil {
+		return err
+	}
+	defer func() { _ = kc.Delete(probe) }()
+	got, err := kc.Get(probe)
+	if err != nil {
+		return err
+	}
+	if string(got) != "ok" {
+		return fmt.Errorf("round-trip mismatch: got %q", got)
+	}
+	return nil
 }
 
 func checkLocale() error {
