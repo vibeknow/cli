@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/output"
 )
 
 var urlCmd = &cobra.Command{
@@ -30,6 +31,13 @@ var urlCmd = &cobra.Command{
 			return err
 		}
 
+		format, _ := cmd.Flags().GetString("output")
+		if format == "json" {
+			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
+				"work_id": workID,
+				"url":     url,
+			})
+		}
 		fmt.Println(url)
 		return nil
 	},

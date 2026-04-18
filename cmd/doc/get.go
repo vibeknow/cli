@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/output"
 )
 
 var flagGetKBID string
@@ -18,7 +20,7 @@ var getCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docID := args[0]
 		if flagGetKBID == "" {
-			return fmt.Errorf("--kb-id is required")
+			return clerr.Validation("--kb-id is required")
 		}
 
 		c, err := cliauth.NewVectoriaClient()
@@ -28,6 +30,18 @@ var getCmd = &cobra.Command{
 		d, err := c.GetDocStatus(context.Background(), flagGetKBID, docID)
 		if err != nil {
 			return err
+		}
+
+		format, _ := cmd.Flags().GetString("output")
+		if format == "json" {
+			payload := map[string]any{
+				"doc_id": d.ID,
+				"status": d.Status,
+			}
+			if d.Error != "" {
+				payload["error"] = d.Error
+			}
+			return output.NewJSON(cmd.OutOrStdout()).Object(payload)
 		}
 
 		fmt.Printf("doc_id=%s\nstatus=%s\n", d.ID, d.Status)

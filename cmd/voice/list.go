@@ -10,6 +10,7 @@ import (
 
 	"github.com/vibeknow/cli/client/vibeknow"
 	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/output"
 )
 
 var listCmd = &cobra.Command{
@@ -25,6 +26,22 @@ var listCmd = &cobra.Command{
 		templates, err := c.ListVoiceTemplates(context.Background())
 		if err != nil {
 			return err
+		}
+
+		format, _ := cmd.Flags().GetString("output")
+		if format == "json" {
+			items := make([]map[string]any, 0, len(templates))
+			for _, t := range templates {
+				items = append(items, map[string]any{
+					"id":              t.ID,
+					"name":            t.Name,
+					"category":        t.Category,
+					"speech_voice_id": t.SpeechVoiceID,
+				})
+			}
+			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
+				"templates": items,
+			})
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
