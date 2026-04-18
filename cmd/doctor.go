@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -106,37 +105,10 @@ func checkLocale() error {
 	return nil
 }
 
-// healthProbePaths is the ordered list of paths doctor tries on each service
-// before concluding the service has no reachable health endpoint. Order
-// matters: atlas-based services expose /healthz at the service base group
-// (post go-atlas v0.3.5); older services kept /v1/health; some Python
-// services ship /health at root.
-var healthProbePaths = []string{"/healthz", "/v1/health", "/health"}
-
-// probeResult tracks the outcome of probing one service.
-type probeResult struct {
-	svc    string
-	url    string
-	status probeStatus
-	detail string
-}
-
-type probeStatus int
-
-const (
-	probeOK probeStatus = iota
-	// probeNoHealthEndpoint: every tried path 404'd but the host is reachable
-	// (at least one response came back). Not a CLI failure — the service is
-	// simply not exposing a health endpoint the CLI recognizes. Reported as
-	// WARN rather than FAIL.
-	probeNoHealthEndpoint
-	probeFail
-)
-
-// checkEndpoints resolves each service endpoint and probes health concurrently.
-// Returns the number of hard failures (transport errors, 5xx, malformed
-// envelopes). "Health endpoint not found" is surfaced as a warning and does
-// not count toward the failure total.
+// checkEndpoints resolves each service endpoint and probes /healthz
+// concurrently. Every backend runs go-atlas ≥ v0.3.6, which registers health
+// routes under the service base group and responds with {"status":"healthy"}
+// on 200 or {"status":"unhealthy"} on 503.
 func checkEndpoints() int {
 	f, err := config.LoadProfiles()
 	if err != nil || f.Current == "" {
@@ -153,13 +125,24 @@ func checkEndpoints() int {
 		return 0
 	}
 	services := []string{"account", "vectoria", "figlens", "vibeknow"}
-	results := make([]probeResult, len(services))
+	type result struct {
+		svc, url string
+		ok       bool
+		detail   string
+	}
+	results := make([]result, len(services))
 	var wg sync.WaitGroup
 	for i, svc := range services {
 		wg.Add(1)
 		go func(i int, svc string) {
 			defer wg.Done()
-			results[i] = probeService(*prof, svc)
+			url, err := endpoints.Resolve(*prof, svc)
+			if err != nil {
+				results[i] = result{svc: svc, detail: err.Error()}
+				return
+			}
+			results[i] = result{svc: svc, url: url}
+			results[i].ok, results[i].detail = probeHealth(url)
 		}(i, svc)
 	}
 	wg.Wait()
@@ -167,12 +150,9 @@ func checkEndpoints() int {
 	failed := 0
 	for _, r := range results {
 		name := fmt.Sprintf("%s endpoint %s", r.svc, r.url)
-		switch r.status {
-		case probeOK:
+		if r.ok {
 			fmt.Println(i18n.T("doctor.ok", name+"  "+r.detail))
-		case probeNoHealthEndpoint:
-			fmt.Println(i18n.T("doctor.warn", name, r.detail))
-		case probeFail:
+		} else {
 			fmt.Println(i18n.T("doctor.fail", name, r.detail))
 			failed++
 		}
@@ -180,99 +160,28 @@ func checkEndpoints() int {
 	return failed
 }
 
-// probeService tries the configured health paths in order. The first path
-// returning 200 with a recognizable "ok" body wins. If every path returns 404,
-// the service is classified as probeNoHealthEndpoint (warn, not fail). Any
-// other failure (transport error, 5xx, malformed body on 200) is a hard fail
-// reported by the first path that produced it.
-func probeService(prof config.Profile, svc string) probeResult {
-	url, err := endpoints.Resolve(prof, svc)
+// probeHealth GETs /healthz and returns (ok, detail). A response is healthy
+// iff it returns HTTP 200 and a body with `"status": "healthy"`.
+func probeHealth(baseURL string) (bool, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", baseURL+"/healthz", nil)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return probeResult{svc: svc, status: probeFail, detail: err.Error()}
+		return false, err.Error()
 	}
-	res := probeResult{svc: svc, url: url}
+	defer resp.Body.Close()
 
-	var firstHardFail string
-	all404 := true
-
-	for _, path := range healthProbePaths {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		req, _ := http.NewRequestWithContext(ctx, "GET", url+path, nil)
-		client := &http.Client{Timeout: 3 * time.Second}
-		resp, rerr := client.Do(req)
-		cancel()
-		if rerr != nil {
-			// Transport error (DNS, TLS, timeout) — no point trying more paths;
-			// they'll all fail the same way.
-			res.status = probeFail
-			res.detail = rerr.Error()
-			return res
-		}
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		gotVer := resp.Header.Get("X-Vibeknow-Api-Version")
-
-		if resp.StatusCode == 404 {
-			continue
-		}
-		all404 = false
-
-		if resp.StatusCode == 200 && parseHealthOK(body) {
-			res.status = probeOK
-			res.detail = fmt.Sprintf("path=%s api=%s", path, gotVer)
-			return res
-		}
-
-		// Got a response but not a good one. Remember the first one so we can
-		// report it if no later path works.
-		if firstHardFail == "" {
-			firstHardFail = fmt.Sprintf("path=%s http=%d body=%s", path, resp.StatusCode, truncateForLog(body, 80))
-		}
-	}
-
-	if all404 {
-		res.status = probeNoHealthEndpoint
-		res.detail = "health endpoint not exposed (tried " + strings.Join(healthProbePaths, ", ") + ")"
-		return res
-	}
-	res.status = probeFail
-	res.detail = firstHardFail
-	return res
-}
-
-// parseHealthOK accepts both shapes:
-//   - flat:     {"status":"ok", ...}
-//   - envelope: {"code":0,"data":{"status":"ok",...}, ...}
-func parseHealthOK(body []byte) bool {
-	var flat struct {
+	body, _ := io.ReadAll(resp.Body)
+	var shape struct {
 		Status string `json:"status"`
 	}
-	if err := json.Unmarshal(body, &flat); err == nil && flat.Status == "ok" {
-		return true
-	}
-	var envelope struct {
-		Code int `json:"code"`
-		Data struct {
-			Status string `json:"status"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &envelope); err == nil && envelope.Code == 0 && envelope.Data.Status == "ok" {
-		return true
-	}
-	// Atlas framework livez/healthz bodies use "healthy" rather than "ok".
-	var atlasShape struct {
-		Status string `json:"status"`
-	}
-	if err := json.Unmarshal(body, &atlasShape); err == nil && atlasShape.Status == "healthy" {
-		return true
-	}
-	return false
-}
+	_ = json.Unmarshal(body, &shape)
 
-func truncateForLog(b []byte, n int) string {
-	s := string(b)
-	if len(s) <= n {
-		return s
+	if resp.StatusCode == 200 && shape.Status == "healthy" {
+		return true, "api=" + resp.Header.Get("X-Vibeknow-Api-Version")
 	}
-	return s[:n] + "…"
+	return false, fmt.Sprintf("http=%d status=%q", resp.StatusCode, shape.Status)
 }
