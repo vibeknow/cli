@@ -15,6 +15,7 @@ import (
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 type IOStreams struct {
@@ -79,7 +80,7 @@ func (f *Factory) TokenProvider() (httpclient.TokenProvider, error) {
 	if tp := f.TokenFn(p); tp != nil {
 		return tp, nil
 	}
-	return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
+	return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
 }
 
 // Endpoint resolves a service URL for the active profile.

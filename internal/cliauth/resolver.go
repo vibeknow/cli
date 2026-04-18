@@ -13,6 +13,7 @@ import (
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/keychain"
 )
 
@@ -59,8 +60,8 @@ func (e *NoActiveProfileError) Unwrap() error { return e.Err }
 
 func newNoActiveProfileError() *NoActiveProfileError {
 	return &NoActiveProfileError{
-		Err: clerr.Auth("尚未初始化，请先运行 `vk init` 完成设置").
-			WithHint("运行 `vk init` 启动初始化向导"),
+		Err: clerr.Auth(i18n.T("auth.not_initialized")).
+			WithHint(i18n.T("auth.not_initialized.hint")),
 	}
 }
 

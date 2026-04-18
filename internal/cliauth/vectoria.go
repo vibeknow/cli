@@ -4,6 +4,7 @@ import (
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 // NewVectoriaClient builds a vectoria client for the active profile, using the
@@ -19,7 +20,7 @@ func NewVectoriaClient() (*vectoria.Client, error) {
 	}
 	tp := TokenProviderFor(p)
 	if tp == nil {
-		return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
+		return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
 	}
 	return vectoria.New(url, tp), nil
 }

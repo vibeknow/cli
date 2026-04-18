@@ -26,6 +26,9 @@ func init() {
 		// auth
 		"auth.not_logged_in":          "not signed in",
 		"auth.not_logged_in.hint":     "run `vk auth login` or `vk init` to sign in",
+		"auth.not_initialized":        "not initialized yet; run `vk init` first",
+		"auth.not_initialized.hint":   "run `vk init` to start the setup wizard",
+		"auth.not_signed_in_short":    "not signed in; run `vk auth login` or `vk init`",
 		"auth.login.tty_required":     "sign-in requires a terminal; use --with-token or --no-wait for non-interactive flows",
 		"auth.login.already_prompt":   "Signed in as %s. Re-authenticate? (y/N) ",
 		"auth.login.cancelled":        "cancelled",
@@ -133,6 +136,9 @@ func init() {
 		// auth
 		"auth.not_logged_in":          "未登录",
 		"auth.not_logged_in.hint":     "运行 `vk auth login` 或 `vk init` 完成登录",
+		"auth.not_initialized":        "尚未初始化，请先运行 `vk init` 完成设置",
+		"auth.not_initialized.hint":   "运行 `vk init` 启动初始化向导",
+		"auth.not_signed_in_short":    "未登录，请运行 `vk auth login` 或 `vk init`",
 		"auth.login.tty_required":     "请使用 --with-token 或 --no-wait 进行非交互式登录",
 		"auth.login.already_prompt":   "已登录为 %s，是否重新登录？(y/N) ",
 		"auth.login.cancelled":        "已取消",

@@ -1,6 +1,10 @@
 package credential
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/vibeknow/cli/internal/i18n"
+)
 
 // KeychainAccess is the subset of internal/keychain we need, broken out so
 // tests can substitute a fake.
@@ -72,5 +76,5 @@ func (r Resolver) Resolve() (string, string, error) {
 	if tok, err := r.File.Get(); err == nil {
 		return tok, "file", nil
 	}
-	return "", "", fmt.Errorf("未登录，请运行 `vk auth login` 或 `vk init`")
+	return "", "", fmt.Errorf("%s", i18n.T("auth.not_signed_in_short"))
 }

@@ -33,6 +33,11 @@ var rootCmd = &cobra.Command{
 	SilenceErrors: false,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		i18n.Init()
+		// --verbose is sugar for VIBEKNOW_DEBUG=1; the HTTP middleware reads
+		// the env var at request time, so setting it here propagates.
+		if flagVerbose {
+			_ = os.Setenv("VIBEKNOW_DEBUG", "1")
+		}
 	},
 }
 
