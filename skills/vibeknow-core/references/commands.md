@@ -27,10 +27,10 @@ No command-specific flags.
 Profile:    dev
 Source:     keychain (vibeknow.dev)
 Endpoints:
-  account:  https://account.vibeknow.com
+  account:  https://beta.lab.shiliu.chat/account
   figlens:  http://localhost:20067
-  vectoria: https://vectoria.vibeknow.com
-  vibeknow: https://api.vibeknow.com
+  vectoria: https://beta.lab.shiliu.chat/vectoria
+  vibeknow: https://beta.lab.shiliu.chat/vibeknow
 ```
 
 **JSON output example:**
