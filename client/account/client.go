@@ -1,5 +1,4 @@
-// Package account is the CLI client for go-account.
-// P1 implements only Whoami; login endpoints are P1.5 scope.
+// Package account is the CLI client for the Account service.
 package account
 
 import (

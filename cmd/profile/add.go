@@ -59,10 +59,10 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	addCmd.Flags().StringVar(&addFlags.endpointAccount, "endpoint-account", "", "go-account URL override (optional; default uses cloud)")
-	addCmd.Flags().StringVar(&addFlags.endpointVectoria, "endpoint-vectoria", "", "go-vectoria URL override")
-	addCmd.Flags().StringVar(&addFlags.endpointFiglens, "endpoint-figlens", "", "go-figlens URL override")
-	addCmd.Flags().StringVar(&addFlags.endpointVibeknow, "endpoint-vibeknow", "", "go-vibeknow URL override")
+	addCmd.Flags().StringVar(&addFlags.endpointAccount, "endpoint-account", "", "Account service URL override (optional; default uses cloud)")
+	addCmd.Flags().StringVar(&addFlags.endpointVectoria, "endpoint-vectoria", "", "Vectoria service URL override")
+	addCmd.Flags().StringVar(&addFlags.endpointFiglens, "endpoint-figlens", "", "Figlens service URL override")
+	addCmd.Flags().StringVar(&addFlags.endpointVibeknow, "endpoint-vibeknow", "", "VibeKnow API URL override")
 	addCmd.Flags().StringVar(&addFlags.apiEndpoint, "api-endpoint", "", "DEPRECATED: alias for --endpoint-vibeknow")
 	addCmd.Flags().StringVar(&addFlags.credentialRef, "credential-ref", "", "keychain entry name or file:// path (required)")
 	addCmd.Flags().StringVar(&addFlags.defaultProject, "default-project", "", "optional default project name")

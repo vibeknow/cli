@@ -1,4 +1,4 @@
-// Package figlens is the CLI client for the go-figlens video pipeline service.
+// Package figlens is the CLI client for the Figlens video pipeline service.
 package figlens
 
 import (

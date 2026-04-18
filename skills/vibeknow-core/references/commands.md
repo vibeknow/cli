@@ -69,10 +69,10 @@ vibeknow profile add NAME [flags]
 | Flag | Description |
 |------|-------------|
 | `--credential-ref string` | Keychain entry name or `file://` path **(required)** |
-| `--endpoint-account string` | go-account URL override (optional; default uses cloud) |
-| `--endpoint-figlens string` | go-figlens URL override |
-| `--endpoint-vectoria string` | go-vectoria URL override |
-| `--endpoint-vibeknow string` | go-vibeknow URL override |
+| `--endpoint-account string` | Account service URL override (optional; default uses cloud) |
+| `--endpoint-figlens string` | Figlens service URL override |
+| `--endpoint-vectoria string` | Vectoria service URL override |
+| `--endpoint-vibeknow string` | VibeKnow API URL override |
 | `--default-project string` | Optional default project name |
 | `--trust string` | `user\|dev` (default: `"user"`) |
 | `--is-production` | Treat as production (default: `true`). Must be `false` for non-prod endpoint overrides |

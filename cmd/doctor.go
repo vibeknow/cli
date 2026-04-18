@@ -106,9 +106,9 @@ func checkLocale() error {
 }
 
 // checkEndpoints resolves each service endpoint and probes /healthz
-// concurrently. Every backend runs go-atlas ≥ v0.3.6, which registers health
-// routes under the service base group and responds with {"status":"healthy"}
-// on 200 or {"status":"unhealthy"} on 503.
+// concurrently. Each backend is expected to expose a /healthz that returns
+// HTTP 200 with {"status":"healthy"} when up, and HTTP 503 with
+// {"status":"unhealthy"} when down.
 func checkEndpoints() int {
 	f, err := config.LoadProfiles()
 	if err != nil || f.Current == "" {

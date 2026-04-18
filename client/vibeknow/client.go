@@ -1,4 +1,4 @@
-// Package vibeknow is the CLI client for the go-vibeknow service
+// Package vibeknow is the CLI client for the VibeKnow API service
 // (billing, voice clone, credits).
 package vibeknow
 

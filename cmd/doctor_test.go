@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// The doctor expects every backend to be running go-atlas ≥ v0.3.6, which
-// exposes /healthz under the service base group and responds with
+// The doctor expects every backend to expose /healthz and respond with
 // {"status":"healthy"} on 200 or {"status":"unhealthy"} on 503.
 
 func TestProbeHealthHealthy(t *testing.T) {
