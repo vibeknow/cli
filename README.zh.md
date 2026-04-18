@@ -27,7 +27,7 @@
 | **文档** | 上传文件/URL、轮询解析状态、获取文档详情 |
 | **视频** | 查看任务状态、流式实时进度（SSE）、下载已导出视频 |
 | **音色** | 列出可用音色模板（分类、标签、预览地址） |
-| **认证** | Token 认证（环境变量）、whoami、凭证状态查看、登出；Device Flow 计划在 v1 支持 |
+| **认证** | 基于浏览器的 Device Flow 登录（`vibeknow init` / `vibeknow auth login`）；双阶段 Agent 流程（`--no-wait` / `--device-code`）；通过 stdin 提供 PAT；CI 使用 `VIBEKNOW_TOKEN` 环境变量 |
 | **Profile** | 多环境 profile（prod/staging/dev）、按服务覆盖 endpoint、信任边界 |
 | **配置** | 全局 key-value 配置存储，跨会话持久化 |
 | **诊断** | 环境自检：配置目录、keychain、locale、endpoint 可达性检查 |
@@ -44,15 +44,20 @@
 
 > **AI 助手请注意：** 如果你是在帮用户安装，请直接跳到 [快速开始（AI Agent）](#快速开始ai-agent)。
 
-#### 安装
-
-**方式 1 —— npm 安装（推荐）：**
-
 ```bash
+# 1. 安装
 npm install -g vibeknow-cli
+
+# 2. 登录 —— 自动创建默认 profile 并引导你完成浏览器认证
+vibeknow init
+
+# 3. 生成视频
+vibeknow create --from https://example.com/article
 ```
 
-**方式 2 —— 从源码安装：**
+就这么简单。`vibeknow init` 负责创建 profile、打开浏览器完成 Device Flow 认证，并把 token 存入系统密钥链。
+
+**从源码安装**（只有需要自己构建 Go 二进制时才用）：
 
 ```bash
 git clone https://github.com/vibeknow/cli.git
@@ -60,64 +65,39 @@ cd vibeknow-cli
 make install
 ```
 
-#### 配置
-
-```bash
-# 1. 添加 profile（从 VibeKnow 控制台获取 endpoint）
-vibeknow profile add prod \
-  --endpoint-account <account-endpoint> \
-  --endpoint-vectoria <vectoria-endpoint> \
-  --endpoint-figlens <figlens-endpoint> \
-  --endpoint-vibeknow <vibeknow-endpoint> \
-  --credential-ref vibeknow.prod
-
-# 2. 设置 token（从 Web 端登录后获取，覆盖所有服务）
-export VIBEKNOW_TOKEN="your-jwt-token-here"
-
-# 3. 验证
-vibeknow auth whoami
-vibeknow doctor
-```
-
-#### 生成第一个视频
-
-```bash
-vibeknow create --from https://example.com/article --voice t260312180132IV37e611
-```
-
 ### 快速开始（AI Agent）
 
-> 每一步执行后请验证再继续。
-
-**第 1 步 —— 安装**
+`vibeknow init` 需要 TTY，Agent 改用双阶段 Device Flow：由人类在浏览器中点击一次验证链接，之后 Agent 可全程无人值守。
 
 ```bash
+# 1. 安装
 npm install -g vibeknow-cli
-```
 
-**第 2 步 —— 配置 profile**（从 VibeKnow 控制台获取 endpoint）
+# 2. 非阻塞地发起 device-code 流程 —— 输出 JSON，包含 verification_uri
+#    和 device_code。Agent 提取这两个字段。
+vibeknow auth login --no-wait
+# 示例输出：
+# {
+#   "device_code":      "dc_2913bcc...",
+#   "user_code":        "UWWA-R8KS",
+#   "verification_uri": "https://beta.lab.shiliu.chat/account/device",
+#   "expires_in":       900,
+#   "hint":             "请访问 https://... 并输入验证码 UWWA-R8KS"
+# }
 
-```bash
-vibeknow profile add prod \
-  --endpoint-account <account-endpoint> \
-  --endpoint-vectoria <vectoria-endpoint> \
-  --endpoint-figlens <figlens-endpoint> \
-  --endpoint-vibeknow <vibeknow-endpoint> \
-  --credential-ref vibeknow.prod
-```
+# 3. Agent 把 verification_uri 展示给人类，由对方在浏览器中打开并授权。
+#    （一个 token 一次人工交互，不是每次调用都要交互。）
 
-**第 3 步 —— 设置凭证**（从 Web 端或 CI secrets 获取）
+# 4. 用第 2 步得到的 device_code 恢复轮询 —— 阻塞直到被授权。
+vibeknow auth login --device-code dc_2913bcc...
 
-```bash
-export VIBEKNOW_TOKEN="<jwt>"
-```
-
-**第 4 步 —— 验证**
-
-```bash
+# 5. Token 已写入系统密钥链，后续所有命令自动携带认证。
 vibeknow auth whoami
-vibeknow voice list
+vibeknow auth status --output json   # 可解析的登录态
+vibeknow create --from report.pdf
 ```
+
+CI / 容器环境如果已经持有 JWT，可以跳过 Device Flow —— 见下方 [环境变量](#环境变量)。
 
 ## Agent 技能
 
@@ -131,25 +111,26 @@ vibeknow voice list
 
 ## 认证
 
-vibeknow-cli 目前支持基于 Token 的环境变量认证：
+vibeknow-cli 提供三条认证路径，分别适配人类、AI Agent 和 CI 场景：
 
-| 方式 | 用法 |
-|------|------|
-| `VIBEKNOW_TOKEN` 环境变量 | 所有 VibeKnow 服务（account / vectoria / figlens）共用的 JWT token |
-| Keychain 存储 | 通过 profile 中的 `credential_ref` 将 token 持久化到 OS keychain |
+| 方式 | 使用场景 | 存储 |
+|------|---------|------|
+| `vibeknow init` / `vibeknow auth login` | 人类交互式首次设置（浏览器 Device Flow） | 系统密钥链 |
+| `vibeknow auth login --no-wait` 配合 `--device-code <code>` | AI Agent —— 非阻塞发起，人类授权后恢复轮询 | 系统密钥链 |
+| `VIBEKNOW_TOKEN=<jwt>` 环境变量 | CI 流水线、容器、短期脚本（绕过密钥链） | 无（单次调用） |
+| `vibeknow auth login --with-token`（从 stdin 读取 PAT） | 脚本化安装 + 预签发 token | 系统密钥链 |
 
 ```bash
-# 查看当前登录身份
+# 当前登录身份
 vibeknow auth whoami
 
-# 查看凭证来源（env / keychain / 无）
+# Token 来源、profile、过期时间 —— Agent 可加 --output json
 vibeknow auth status
+vibeknow auth status --output json
 
-# 清除存储的凭证
+# 清除已存凭证
 vibeknow auth logout
 ```
-
-> **v1 计划：** 交互式 `auth login`，支持 OAuth Device Flow + Personal Access Token（PAT）。
 
 ## 命令参考
 
@@ -159,8 +140,9 @@ vibeknow auth logout
 # 从 URL 生成视频
 vibeknow create --from https://example.com/article
 
-# 从本地文件生成，指定音色
-vibeknow create --from report.pdf --voice t260312180132IV37e611
+# 先列出可用的 voice ID，再通过 --voice 传入
+vibeknow voice list
+vibeknow create --from report.pdf --voice <上面列出的 voice-id>
 
 # 自定义 prompt
 vibeknow create --from data.csv --prompt "制作一个两分钟的讲解视频"
