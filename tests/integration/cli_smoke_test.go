@@ -53,7 +53,7 @@ func TestCLISmoke(t *testing.T) {
 	// profile add
 	_, _, code = run(t, bin, home,
 		"profile", "add", "dev",
-		"--api-endpoint", "https://staging.example.com",
+		"--endpoint-vibeknow", "https://staging.example.com",
 		"--credential-ref", "vibeknow.dev",
 		"--trust", "dev",
 		"--is-production=false",
