@@ -4,7 +4,6 @@
 package cliauth
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 
@@ -88,7 +87,7 @@ func newProfileNotFoundError(name string) *ProfileNotFoundError {
 func TokenProviderFor(p config.Profile) httpclient.TokenProvider {
 	// Env var takes priority — plain token, no refresh.
 	if tok := os.Getenv("VIBEKNOW_TOKEN"); tok != "" {
-		return staticEnvToken(tok)
+		return httpclient.StaticToken(tok)
 	}
 	if p.CredentialRef == "" {
 		return nil
@@ -108,6 +107,3 @@ func TokenProviderFor(p config.Profile) httpclient.TokenProvider {
 	)
 }
 
-type staticEnvToken string
-
-func (s staticEnvToken) Token(_ context.Context) (string, error) { return string(s), nil }

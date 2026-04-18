@@ -11,8 +11,6 @@ type textW struct{ w io.Writer }
 
 func NewText(w io.Writer) *textW { return &textW{w: w} }
 
-func (t *textW) Format() string { return "text" }
-
 // Print writes args concatenated, stripping control chars.
 func (t *textW) Print(args ...any) {
 	s := fmt.Sprint(args...)

@@ -17,6 +17,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/errs"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 )
 
@@ -312,9 +313,5 @@ func newCreateFiglensClient() (*figlens.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return figlens.New(url, createStaticToken(tok)), nil
+	return figlens.New(url, httpclient.StaticToken(tok)), nil
 }
-
-type createStaticToken string
-
-func (s createStaticToken) Token(_ context.Context) (string, error) { return string(s), nil }

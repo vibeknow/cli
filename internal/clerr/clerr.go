@@ -9,17 +9,13 @@ import (
 )
 
 // Error types — communicated to scripts via the JSON envelope's "type" field.
-// Exit codes are coarser (see Exit* constants below); the type field lets
-// callers distinguish e.g. permission vs. rate_limit without needing more
-// exit codes.
+// Exit codes are coarser (see Exit* constants below); additional types can
+// be added here when a distinct category actually ships.
 const (
-	TypePermission = "permission"
 	TypeValidation = "validation"
 	TypeAuth       = "auth"
 	TypeNetwork    = "network"
 	TypeAPI        = "api"
-	TypeNotFound   = "not_found"
-	TypeRateLimit  = "rate_limit"
 	TypeInternal   = "internal"
 )
 

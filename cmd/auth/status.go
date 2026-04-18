@@ -13,6 +13,7 @@ import (
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/keychain"
 	"github.com/vibeknow/cli/internal/output"
@@ -64,7 +65,7 @@ var statusCmd = &cobra.Command{
 		var nickname, email string
 		if authenticated && f.Current != "" {
 			if url, urlErr := endpoints.Resolve(p, "account"); urlErr == nil {
-				c := account.New(url, staticToken(tok))
+				c := account.New(url, httpclient.StaticToken(tok))
 				if u, whoamiErr := c.Whoami(context.Background()); whoamiErr == nil {
 					nickname = u.Nickname
 					email = u.Email

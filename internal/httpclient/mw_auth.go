@@ -9,6 +9,13 @@ type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
+// StaticToken is a TokenProvider that always returns the same bearer token
+// and never refreshes. Use it for env-var PATs or tokens already resolved
+// from the keychain when refresh isn't needed.
+type StaticToken string
+
+func (s StaticToken) Token(_ context.Context) (string, error) { return string(s), nil }
+
 // RefreshableTokenProvider extends TokenProvider with refresh capability.
 type RefreshableTokenProvider interface {
 	TokenProvider

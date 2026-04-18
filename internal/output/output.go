@@ -8,28 +8,15 @@ import (
 	"strings"
 )
 
-type Writer interface {
-	Format() string
-}
-
-// Select resolves a user-supplied --output flag value with TTY and streaming
-// context into a concrete format. See §8.10.
-func Select(flag string, isTTY, streaming bool) string {
-	if flag != "" {
-		return flag
-	}
-	if isTTY {
-		return "text"
-	}
-	if streaming {
-		return "ndjson"
-	}
-	return "json"
-}
+// Writer is the marker interface for a format-specific output writer. Each
+// concrete writer (NewText/NewJSON/NewNDJSON) exposes format-specific
+// methods (Print / Object / Event) — the interface is kept narrow so
+// consumers type-assert to the concrete writer they need.
+type Writer interface{}
 
 // New creates a writer for the given format. Returns an error for
 // unsupported formats so the CLI can exit 2 with a clear message.
-func New(format string, w io.Writer, isTTY, streaming bool) (Writer, error) {
+func New(format string, w io.Writer) (Writer, error) {
 	switch strings.ToLower(format) {
 	case "text":
 		return NewText(w), nil

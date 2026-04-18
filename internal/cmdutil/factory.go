@@ -4,7 +4,6 @@
 package cmdutil
 
 import (
-	"context"
 	"io"
 	"os"
 	"sync"
@@ -27,12 +26,6 @@ type IOStreams struct {
 func DefaultIOStreams() IOStreams {
 	return IOStreams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
 }
-
-// StaticToken is a bearer token that never refreshes — env PATs or already
-// resolved OAuth access tokens.
-type StaticToken string
-
-func (s StaticToken) Token(_ context.Context) (string, error) { return string(s), nil }
 
 // Factory is a DI container; every Fn field is overridable in tests.
 type Factory struct {
@@ -81,15 +74,6 @@ func (f *Factory) TokenProvider() (httpclient.TokenProvider, error) {
 		return tp, nil
 	}
 	return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
-}
-
-// Endpoint resolves a service URL for the active profile.
-func (f *Factory) Endpoint(service string) (string, error) {
-	p, err := f.RequireProfile()
-	if err != nil {
-		return "", err
-	}
-	return f.EndpointFn(p, service)
 }
 
 // Service returns (profile, url, tokenProvider) for the named service — the

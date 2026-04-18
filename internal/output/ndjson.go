@@ -14,8 +14,6 @@ func NewNDJSON(w io.Writer) *ndjsonW {
 	return &ndjsonW{enc: enc}
 }
 
-func (n *ndjsonW) Format() string { return "ndjson" }
-
 func (n *ndjsonW) Event(evt map[string]any) error {
 	out := map[string]any{
 		"schema_version": schemaVersion,

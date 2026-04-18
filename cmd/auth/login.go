@@ -20,6 +20,7 @@ import (
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/keychain"
 )
@@ -93,7 +94,7 @@ func loginInteractive(cmd *cobra.Command) error {
 	// Check if already logged in.
 	r := cliauth.ResolverFor(p)
 	if tok, _, resolveErr := r.Resolve(); resolveErr == nil {
-		c := account.New(accountURL, staticToken(tok))
+		c := account.New(accountURL, httpclient.StaticToken(tok))
 		if u, whoamiErr := c.Whoami(context.Background()); whoamiErr == nil {
 			name := u.Nickname
 			if name == "" {
@@ -174,7 +175,7 @@ func loginWithToken(cmd *cobra.Command) error {
 	}
 
 	// Verify token via whoami.
-	c := account.New(accountURL, staticToken(token))
+	c := account.New(accountURL, httpclient.StaticToken(token))
 	u, err := c.Whoami(context.Background())
 	if err != nil {
 		return fmt.Errorf("token verification failed: %w", err)
@@ -395,7 +396,7 @@ func isTerminal() bool {
 
 func finishLogin(cmd *cobra.Command, profile config.Profile, accountURL string, tokenResp *account.DeviceTokenResponse, quiet bool) error {
 	// Verify token via whoami.
-	c := account.New(accountURL, staticToken(tokenResp.AccessToken))
+	c := account.New(accountURL, httpclient.StaticToken(tokenResp.AccessToken))
 	u, err := c.Whoami(context.Background())
 	if err != nil {
 		return fmt.Errorf("token verification failed: %w", err)

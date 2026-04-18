@@ -12,6 +12,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/tui"
 	"golang.org/x/term"
@@ -45,7 +46,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		tok, _, resolveErr := cliauth.ResolverFor(p).Resolve()
 		if resolveErr == nil && tok != "" {
 			accountURL, _ := endpoints.Resolve(p, "account")
-			ac := account.New(accountURL, initStaticToken(tok))
+			ac := account.New(accountURL, httpclient.StaticToken(tok))
 			if u, whoamiErr := ac.Whoami(context.Background()); whoamiErr == nil {
 				display := u.Nickname
 				if u.Email != "" {
@@ -164,7 +165,7 @@ func showBalance(p config.Profile, tok string) {
 	if err != nil {
 		return
 	}
-	vc := vibeknow.New(vkURL, initStaticToken(tok))
+	vc := vibeknow.New(vkURL, httpclient.StaticToken(tok))
 	b, err := vc.GetBalance(context.Background())
 	if err != nil {
 		return
@@ -172,6 +173,3 @@ func showBalance(p config.Profile, tok string) {
 	fmt.Fprintln(os.Stderr, i18n.T("init.credits.available", b.TotalBalance))
 }
 
-type initStaticToken string
-
-func (s initStaticToken) Token(_ context.Context) (string, error) { return string(s), nil }

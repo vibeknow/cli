@@ -14,7 +14,6 @@ var addFlags struct {
 	endpointVectoria string
 	endpointFiglens  string
 	endpointVibeknow string
-	apiEndpoint      string
 	credentialRef    string
 	defaultProject   string
 	trust            string
@@ -39,9 +38,6 @@ var addCmd = &cobra.Command{
 		if addFlags.endpointVibeknow != "" {
 			endpoints["vibeknow"] = addFlags.endpointVibeknow
 		}
-		if addFlags.apiEndpoint != "" && endpoints["vibeknow"] == "" {
-			endpoints["vibeknow"] = addFlags.apiEndpoint
-		}
 		p := config.Profile{
 			Name:           args[0],
 			Endpoints:      endpoints,
@@ -63,7 +59,6 @@ func init() {
 	addCmd.Flags().StringVar(&addFlags.endpointVectoria, "endpoint-vectoria", "", "Vectoria service URL override")
 	addCmd.Flags().StringVar(&addFlags.endpointFiglens, "endpoint-figlens", "", "Figlens service URL override")
 	addCmd.Flags().StringVar(&addFlags.endpointVibeknow, "endpoint-vibeknow", "", "VibeKnow API URL override")
-	addCmd.Flags().StringVar(&addFlags.apiEndpoint, "api-endpoint", "", "DEPRECATED: alias for --endpoint-vibeknow")
 	addCmd.Flags().StringVar(&addFlags.credentialRef, "credential-ref", "", "keychain entry name or file:// path (required)")
 	addCmd.Flags().StringVar(&addFlags.defaultProject, "default-project", "", "optional default project name")
 	addCmd.Flags().StringVar(&addFlags.trust, "trust", "user", "user|dev")

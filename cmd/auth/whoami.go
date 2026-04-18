@@ -10,6 +10,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 )
 
@@ -29,7 +30,7 @@ var whoamiCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c := account.New(url, staticToken(tok))
+		c := account.New(url, httpclient.StaticToken(tok))
 		u, err := c.Whoami(context.Background())
 		if err != nil {
 			return err
@@ -39,6 +40,3 @@ var whoamiCmd = &cobra.Command{
 	},
 }
 
-type staticToken string
-
-func (s staticToken) Token(ctx context.Context) (string, error) { return string(s), nil }

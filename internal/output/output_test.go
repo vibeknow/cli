@@ -6,28 +6,6 @@ import (
 	"testing"
 )
 
-func TestSelectFormat(t *testing.T) {
-	cases := []struct {
-		flag, expected string
-		isTTY          bool
-		streaming      bool
-	}{
-		{"", "text", true, false},
-		{"", "json", false, false},
-		{"", "ndjson", false, true},
-		{"json", "json", true, true},
-		{"ndjson", "ndjson", false, false},
-		{"text", "text", false, false},
-	}
-	for _, c := range cases {
-		got := Select(c.flag, c.isTTY, c.streaming)
-		if got != c.expected {
-			t.Errorf("Select(%q, tty=%v, stream=%v) = %q, want %q",
-				c.flag, c.isTTY, c.streaming, got, c.expected)
-		}
-	}
-}
-
 func TestTextStripsControl(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewText(&buf)
@@ -64,7 +42,7 @@ func TestNDJSONEvent(t *testing.T) {
 }
 
 func TestUnsupportedFormat(t *testing.T) {
-	if _, err := New("yaml", nil, false, false); err == nil {
+	if _, err := New("yaml", nil); err == nil {
 		t.Error("expected error for unsupported format")
 	}
 }
