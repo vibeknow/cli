@@ -20,6 +20,7 @@ import (
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/keychain"
 )
 
@@ -76,7 +77,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 func loginInteractive(cmd *cobra.Command) error {
 	if !isTerminal() {
-		return fmt.Errorf("请使用 --with-token 或 --no-wait 进行非交互式登录")
+		return fmt.Errorf("%s", i18n.T("auth.login.tty_required"))
 	}
 
 	// Warn if env var is set.
@@ -98,12 +99,12 @@ func loginInteractive(cmd *cobra.Command) error {
 			if name == "" {
 				name = u.Email
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "已登录为 %s，是否重新登录？(y/N) ", name)
+			fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.already_prompt", name))
 			reader := bufio.NewReader(os.Stdin)
 			answer, _ := reader.ReadString('\n')
 			answer = strings.TrimSpace(strings.ToLower(answer))
 			if answer != "y" && answer != "yes" {
-				fmt.Fprintln(cmd.ErrOrStderr(), "cancelled")
+				fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("auth.login.cancelled"))
 				return nil
 			}
 		}
@@ -116,9 +117,9 @@ func loginInteractive(cmd *cobra.Command) error {
 		return fmt.Errorf("device code request failed: %w", err)
 	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "\n请在浏览器中输入验证码: %s\n", dcResp.UserCode)
-	fmt.Fprintf(cmd.ErrOrStderr(), "验证地址: %s\n\n", dcResp.VerificationURI)
-	fmt.Fprint(cmd.ErrOrStderr(), "按 Enter 键打开浏览器...")
+	fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.enter_code", dcResp.UserCode))
+	fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.verify_uri", dcResp.VerificationURI))
+	fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.press_enter"))
 
 	// Wait for Enter.
 	reader := bufio.NewReader(os.Stdin)
@@ -126,7 +127,7 @@ func loginInteractive(cmd *cobra.Command) error {
 
 	// Open browser.
 	if err := openBrowser(dcResp.VerificationURI); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "无法打开浏览器: %v\n请手动打开上方链接完成验证。\n", err)
+		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.browser_failed", err))
 	}
 
 	// Poll for token.
@@ -146,7 +147,7 @@ func loginWithToken(cmd *cobra.Command) error {
 	var token string
 
 	if isTerminal() {
-		fmt.Fprint(cmd.ErrOrStderr(), "请输入 Personal Access Token: ")
+		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.token_prompt"))
 		raw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Fprintln(cmd.ErrOrStderr()) // newline after hidden input
 		if err != nil {
@@ -188,7 +189,7 @@ func loginWithToken(cmd *cobra.Command) error {
 	if name == "" {
 		name = u.Email
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "✓ 已登录为 %s (PAT)\n", name)
+	fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.signed_in_pat", name))
 	return nil
 }
 
@@ -213,7 +214,7 @@ func loginNoWait(cmd *cobra.Command) error {
 		"user_code":        dcResp.UserCode,
 		"verification_uri": dcResp.VerificationURI,
 		"expires_in":       dcResp.ExpiresIn,
-		"hint":             fmt.Sprintf("请访问 %s 并输入验证码 %s", dcResp.VerificationURI, dcResp.UserCode),
+		"hint":             i18n.T("auth.login.hint.visit_code", dcResp.VerificationURI, dcResp.UserCode),
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
@@ -321,11 +322,11 @@ func pollDeviceToken(cmd *cobra.Command, client *account.Client, deviceCode stri
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("device code expired; please try again")
+			return nil, fmt.Errorf("%s", i18n.T("auth.login.code_expired"))
 		}
 
 		remaining := time.Until(deadline).Truncate(time.Second)
-		fmt.Fprintf(cmd.ErrOrStderr(), "\r⏳ 等待授权... 剩余 %s  ", remaining)
+		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.waiting", remaining))
 
 		time.Sleep(pollInterval)
 
@@ -341,10 +342,10 @@ func pollDeviceToken(cmd *cobra.Command, client *account.Client, deviceCode stri
 					continue
 				case account.PollExpired:
 					fmt.Fprintln(cmd.ErrOrStderr())
-					return nil, fmt.Errorf("device code expired; please try again")
+					return nil, fmt.Errorf("%s", i18n.T("auth.login.code_expired"))
 				case account.PollDenied:
 					fmt.Fprintln(cmd.ErrOrStderr())
-					return nil, fmt.Errorf("authorization denied by user")
+					return nil, fmt.Errorf("%s", i18n.T("auth.login.denied"))
 				}
 			}
 			return nil, fmt.Errorf("poll device token: %w", err)
@@ -415,7 +416,7 @@ func finishLogin(cmd *cobra.Command, profile config.Profile, accountURL string, 
 		if name == "" {
 			name = u.Email
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "✓ 欢迎, %s!\n", name)
+		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.welcome", name))
 	}
 	return nil
 }

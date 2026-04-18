@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var (
@@ -29,12 +31,18 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(works) == 0 {
-			fmt.Println("暂无作品")
+			fmt.Println(i18n.T("video.list.empty"))
 			return nil
 		}
 
 		// Table header
-		fmt.Printf("%-8s  %-30s  %-8s  %-6s  %s\n", "ID", "标题", "时长", "状态", "创建时间")
+		fmt.Println(i18n.T("video.list.header",
+			i18n.T("video.list.header.id"),
+			i18n.T("video.list.header.title"),
+			i18n.T("video.list.header.duration"),
+			i18n.T("video.list.header.status"),
+			i18n.T("video.list.header.created"),
+		))
 		fmt.Println(strings.Repeat("-", 80))
 
 		for _, w := range works {
@@ -51,16 +59,16 @@ var listCmd = &cobra.Command{
 				duration = fmt.Sprintf("%d:%02d", minutes, seconds)
 			}
 
-			status := "未知"
+			status := i18n.T("video.list.status.unknown")
 			switch w.Status {
 			case 0:
-				status = "生成中"
+				status = i18n.T("video.list.status.running")
 			case 1:
-				status = "完成"
+				status = i18n.T("video.list.status.done")
 			case 2:
-				status = "已删除"
+				status = i18n.T("video.list.status.deleted")
 			case 3:
-				status = "失败"
+				status = i18n.T("video.list.status.failed")
 			}
 
 			createdAt := w.CreatedAt
@@ -71,7 +79,7 @@ var listCmd = &cobra.Command{
 			fmt.Printf("%-8d  %-30s  %-8s  %-6s  %s\n", w.ID, title, duration, status, createdAt)
 		}
 
-		fmt.Printf("\n共 %d 条，第 %d 页\n", total, flagListPage)
+		fmt.Println(i18n.T("video.list.footer", total, flagListPage))
 		return nil
 	},
 }

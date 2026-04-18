@@ -12,6 +12,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/tui"
 	"golang.org/x/term"
 )
@@ -33,8 +34,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "  欢迎使用 VibeKnow CLI!")
-	fmt.Fprintln(os.Stderr, "  让我们花一分钟完成初始化设置。")
+	fmt.Fprintln(os.Stderr, i18n.T("init.welcome"))
+	fmt.Fprintln(os.Stderr, i18n.T("init.welcome.sub"))
 	fmt.Fprintln(os.Stderr, "")
 
 	// Step 1: Check existing setup
@@ -46,15 +47,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 			accountURL, _ := endpoints.Resolve(p, "account")
 			ac := account.New(accountURL, initStaticToken(tok))
 			if u, whoamiErr := ac.Whoami(context.Background()); whoamiErr == nil {
-				fmt.Fprintf(os.Stderr, "  ✓ 已登录为 %s", u.Nickname)
+				display := u.Nickname
 				if u.Email != "" {
-					fmt.Fprintf(os.Stderr, " (%s)", u.Email)
+					display = fmt.Sprintf("%s (%s)", u.Nickname, u.Email)
 				}
-				fmt.Fprintln(os.Stderr)
-				fmt.Fprintf(os.Stderr, "  ✓ Active profile: %s\n", p.Name)
+				fmt.Fprintln(os.Stderr, i18n.T("init.logged_in_as", display))
+				fmt.Fprintln(os.Stderr, i18n.T("init.profile", p.Name))
 				showBalance(p, tok)
 				fmt.Fprintln(os.Stderr, "")
-				fmt.Fprintln(os.Stderr, "  开始使用: vk create --from <file-or-url>")
+				fmt.Fprintln(os.Stderr, i18n.T("init.start_hint"))
 				fmt.Fprintln(os.Stderr, "")
 				return nil
 			}
@@ -66,7 +67,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if profileErr != nil {
 		return profileErr
 	}
-	fmt.Fprintf(os.Stderr, "  ✓ Profile: %s\n", p.Name)
+	fmt.Fprintln(os.Stderr, i18n.T("init.profile", p.Name))
 
 	// Step 3: Login
 	fmt.Fprintln(os.Stderr, "")
@@ -75,10 +76,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("选择登录方式").
+				Title(i18n.T("init.login.prompt")).
 				Options(
-					huh.NewOption("浏览器登录 (推荐)", "browser"),
-					huh.NewOption("粘贴 Token", "token"),
+					huh.NewOption(i18n.T("init.login.opt.browser"), "browser"),
+					huh.NewOption(i18n.T("init.login.opt.token"), "token"),
 				).
 				Value(&loginMethod),
 		),
@@ -115,7 +116,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "  开始使用: vk create --from <file-or-url>")
+	fmt.Fprintln(os.Stderr, i18n.T("init.start_hint"))
 	fmt.Fprintln(os.Stderr, "")
 	return nil
 }
@@ -168,7 +169,7 @@ func showBalance(p config.Profile, tok string) {
 	if err != nil {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "  ✓ 可用积分: %d\n", b.TotalBalance)
+	fmt.Fprintln(os.Stderr, i18n.T("init.credits.available", b.TotalBalance))
 }
 
 type initStaticToken string

@@ -8,6 +8,7 @@ import (
 
 	"github.com/vibeknow/cli/client/vibeknow"
 	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var balanceCmd = &cobra.Command{
@@ -24,9 +25,9 @@ var balanceCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("可用积分: %d\n", b.TotalBalance)
+		fmt.Println(i18n.T("credits.available", b.TotalBalance))
 		if b.TotalFrozen > 0 {
-			fmt.Printf("冻结积分: %d\n", b.TotalFrozen)
+			fmt.Println(i18n.T("credits.frozen", b.TotalFrozen))
 		}
 		return nil
 	},

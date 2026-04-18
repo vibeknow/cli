@@ -10,6 +10,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var whoamiCmd = &cobra.Command{
@@ -22,7 +23,7 @@ var whoamiCmd = &cobra.Command{
 		}
 		tok, _, err := cliauth.ResolverFor(p).Resolve()
 		if err != nil {
-			return clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
+			return clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
 		}
 		url, err := endpoints.Resolve(p, "account")
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/keychain"
 	"github.com/vibeknow/cli/internal/output"
 )
@@ -96,7 +97,7 @@ var statusCmd = &cobra.Command{
 				"source":        src,
 			}
 			if !authenticated {
-				payload["hint"] = "运行 `vibeknow auth login` 或设置 VIBEKNOW_TOKEN 环境变量"
+				payload["hint"] = i18n.T("auth.status.json.hint")
 			} else {
 				if p.CredentialRef != "" {
 					payload["credential_ref"] = p.CredentialRef
@@ -122,8 +123,8 @@ var statusCmd = &cobra.Command{
 
 		// --- default: text mode (unchanged behavior) ---
 		if !authenticated {
-			fmt.Fprintln(cmd.OutOrStdout(), "未登录")
-			fmt.Fprintln(cmd.OutOrStdout(), "  运行 `vibeknow auth login` 或设置 VIBEKNOW_TOKEN 环境变量")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.not_logged_in"))
+			fmt.Fprintln(cmd.OutOrStdout(), "  "+i18n.T("auth.status.json.hint"))
 			return nil
 		}
 
@@ -134,37 +135,37 @@ var statusCmd = &cobra.Command{
 			userInfo = nickname
 		}
 		if userInfo != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "✓ 已登录为 %s\n", userInfo)
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.signed_in_as", userInfo))
 		} else {
-			fmt.Fprintln(cmd.OutOrStdout(), "✓ 已登录")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.signed_in"))
 		}
 
 		textAuthMethod := "PAT"
 		if authMethod == "device_code" {
 			textAuthMethod = "Device Code Flow"
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  - 认证方式: %s\n", textAuthMethod)
+		fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.method", textAuthMethod))
 
 		if src == "env" {
-			fmt.Fprintln(cmd.OutOrStdout(), "  - Token 来源: 环境变量 (VIBEKNOW_TOKEN)")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.source.env"))
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - Token 来源: 系统密钥链 (%s)\n", p.CredentialRef)
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.source.keychain", p.CredentialRef))
 		}
 
 		switch tokenStatus {
 		case "valid":
 			if !stored.ExpiresAt.IsZero() {
-				fmt.Fprintf(cmd.OutOrStdout(), "  - Token 状态: 有效 (%s后过期)\n", formatDuration(time.Until(stored.ExpiresAt)))
+				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.valid", formatDuration(time.Until(stored.ExpiresAt))))
 			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "  - Token 状态: 有效 (永不过期)")
+				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.forever"))
 			}
 		case "needs_refresh":
-			fmt.Fprintln(cmd.OutOrStdout(), "  - Token 状态: 需要刷新")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.refresh"))
 		case "expired":
-			fmt.Fprintln(cmd.OutOrStdout(), "  - Token 状态: 已过期")
+			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.expired"))
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "  - Active profile: %s\n", orNone(f.Current))
+		fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.profile", orNone(f.Current)))
 		return nil
 	},
 }
@@ -178,12 +179,12 @@ func orNone(s string) string {
 
 func formatDuration(d time.Duration) string {
 	if d < 0 {
-		return "0分"
+		return i18n.T("auth.duration.m", 0)
 	}
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
 	if h > 0 {
-		return fmt.Sprintf("%d小时%d分", h, m)
+		return i18n.T("auth.duration.hm", h, m)
 	}
-	return fmt.Sprintf("%d分", m)
+	return i18n.T("auth.duration.m", m)
 }

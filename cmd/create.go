@@ -17,6 +17,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/errs"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 var (
@@ -81,10 +82,10 @@ var createCmd = &cobra.Command{
 			streaming := term.IsTerminal(int(os.Stderr.Fd()))
 			var onDelta func(string)
 			if streaming {
-				fmt.Fprint(os.Stderr, "prompt: ")
+				fmt.Fprint(os.Stderr, i18n.T("create.prompt_prefix"))
 				onDelta = func(s string) { fmt.Fprint(os.Stderr, s) }
 			} else {
-				fmt.Fprintf(os.Stderr, "optimising prompt...\n")
+				fmt.Fprintln(os.Stderr, i18n.T("create.optimising_prompt"))
 			}
 			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
 				KnowledgeID: kbID,
@@ -94,24 +95,24 @@ var createCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr)
 			}
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "prompt optimisation failed, using default: %s\n", err)
-				query = "根据文档内容生成视频"
+				fmt.Fprintln(os.Stderr, i18n.T("create.prompt_fallback", err))
+				query = i18n.T("create.default_query")
 			} else {
 				query = optimized
 				if !streaming {
-					fmt.Fprintf(os.Stderr, "prompt: %s\n", query)
+					fmt.Fprintf(os.Stderr, "%s%s\n", i18n.T("create.prompt_prefix"), query)
 				}
 			}
 		} else if query == "" {
-			query = "根据文档内容生成视频"
+			query = i18n.T("create.default_query")
 		}
 
 		// Step 3: init figlens task.
-		fmt.Fprintf(os.Stderr, "initialising task...\n")
+		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
 		task, err := fc.InitTask(ctx)
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
-				return fmt.Errorf("积分不足，请充值后再试")
+				return fmt.Errorf("%s", i18n.T("credits.insufficient"))
 			}
 			return err
 		}
@@ -119,13 +120,12 @@ var createCmd = &cobra.Command{
 		// Step 4: async or sync.
 		if flagCreateAsync {
 			fmt.Printf("task_id=%d\nsession_id=%s\n", task.TaskID, task.SessionID)
-			fmt.Fprintf(os.Stderr, "hint: run `vibeknow video wait %d --session-id %s` to track progress\n",
-				task.TaskID, task.SessionID)
+			fmt.Fprintln(os.Stderr, i18n.T("create.async.hint", task.TaskID, task.SessionID))
 			return nil
 		}
 
 		// Step 5: stream with progress.
-		fmt.Fprintf(os.Stderr, "generating video (task_id=%d session_id=%s)...\n", task.TaskID, task.SessionID)
+		fmt.Fprintln(os.Stderr, i18n.T("create.generating", task.TaskID, task.SessionID))
 
 		var taskFailed bool
 		var successSessionID string
@@ -140,33 +140,33 @@ var createCmd = &cobra.Command{
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
 			case "node.started":
-				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Node)
+				fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
 			case "node.succeeded":
-				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Node)
+				fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
 			case "node.failed":
-				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
+				fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
 			case "task.succeeded":
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
 					successSessionID = task.SessionID
 				}
-				fmt.Fprintf(os.Stderr, "task succeeded\n")
+				fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 			case "task.failed":
 				taskFailed = true
 				if strings.Contains(ev.Message, "insufficient_credits") {
-					fmt.Fprintf(os.Stderr, "积分不足，请充值后再试\n")
+					fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
 				} else {
-					fmt.Fprintf(os.Stderr, "task failed: %s\n", ev.Message)
+					fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
 				}
 			}
 		})
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
-				fmt.Fprintf(os.Stderr, "积分不足，请充值后再试\n")
+				fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
 				os.Exit(5)
 			}
 			// Stream interrupted — exit 6.
-			fmt.Fprintf(os.Stderr, "stream interrupted: %s\n", err)
+			fmt.Fprintln(os.Stderr, i18n.T("create.stream_interrupted", err))
 			os.Exit(6)
 		}
 
@@ -222,7 +222,7 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 	}
 
 	kbName := fmt.Sprintf("vibeknow-cli-%d", time.Now().Unix())
-	fmt.Fprintf(os.Stderr, "creating knowledge base %q...\n", kbName)
+	fmt.Fprintln(os.Stderr, i18n.T("create.creating_kb", kbName))
 	kbID, err := vc.CreateKB(ctx, kbName)
 	if err != nil {
 		return "", "", err
@@ -234,7 +234,7 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 	}
 	defer f.Close()
 
-	fmt.Fprintf(os.Stderr, "uploading %q...\n", fi.Name())
+	fmt.Fprintln(os.Stderr, i18n.T("create.uploading_file", fi.Name()))
 	doc, err := vc.UploadDoc(ctx, kbID, fi.Name(), f)
 	if err != nil {
 		return "", "", err
@@ -255,13 +255,13 @@ func uploadURL(ctx context.Context, url string) (string, string, error) {
 	}
 
 	kbName := fmt.Sprintf("vibeknow-cli-%d", time.Now().Unix())
-	fmt.Fprintf(os.Stderr, "creating knowledge base %q...\n", kbName)
+	fmt.Fprintln(os.Stderr, i18n.T("create.creating_kb", kbName))
 	kbID, err := vc.CreateKB(ctx, kbName)
 	if err != nil {
 		return "", "", err
 	}
 
-	fmt.Fprintf(os.Stderr, "uploading URL %q...\n", url)
+	fmt.Fprintln(os.Stderr, i18n.T("create.uploading_url", url))
 	doc, err := vc.UploadURL(ctx, kbID, url)
 	if err != nil {
 		return "", "", err
@@ -276,11 +276,11 @@ func uploadURL(ctx context.Context, url string) (string, string, error) {
 
 // pollDocReady polls until the document is completed or fails.
 func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) (string, error) {
-	fmt.Fprintf(os.Stderr, "doc_id: %s — polling for completion...\n", docID)
+	fmt.Fprintln(os.Stderr, i18n.T("create.doc_polling", docID))
 	deadline := time.Now().Add(10 * time.Minute)
 	for {
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("timed out waiting for document processing (10m)")
+			return "", fmt.Errorf("%s", i18n.T("create.doc_timeout"))
 		}
 		d, err := vc.GetDocStatus(ctx, kbID, docID)
 		if err != nil {
@@ -288,12 +288,12 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 		}
 		switch d.Status {
 		case "completed":
-			fmt.Fprintf(os.Stderr, "document ready\n")
+			fmt.Fprintln(os.Stderr, i18n.T("create.doc_ready"))
 			return d.ID, nil
 		case "failed", "error":
-			return "", fmt.Errorf("document processing failed: %s", d.Error)
+			return "", fmt.Errorf("%s", i18n.T("create.doc_failed", d.Error))
 		default:
-			fmt.Fprintf(os.Stderr, "document status: %s\n", d.Status)
+			fmt.Fprintln(os.Stderr, i18n.T("create.doc_status", d.Status))
 			time.Sleep(2 * time.Second)
 		}
 	}
@@ -306,7 +306,7 @@ func newCreateFiglensClient() (*figlens.Client, error) {
 	}
 	tok, _, err := cliauth.ResolverFor(p).Resolve()
 	if err != nil {
-		return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
+		return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
 	}
 	url, err := endpoints.Resolve(p, "figlens")
 	if err != nil {

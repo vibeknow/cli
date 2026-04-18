@@ -102,7 +102,7 @@ func Execute() error {
 	// read the envelope's _notice field instead).
 	if flagOutput != "json" {
 		if info := update.GetPending(); info != nil {
-			fmt.Fprintf(os.Stderr, "\n提示: %s\n", info.Message())
+			fmt.Fprint(os.Stderr, i18n.T("root.update_notice", info.Message()))
 		}
 	}
 	return err
