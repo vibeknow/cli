@@ -27,7 +27,7 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 | **Document** | Upload files/URLs, poll parsing status, fetch document details |
 | **Video** | Check task status, stream live progress (SSE), download exported videos |
 | **Voice** | List available voice templates with category, tags, and preview URLs |
-| **Auth** | Token-based auth (env var), whoami, credential status, logout; Device Flow planned for v1 |
+| **Auth** | Browser-based Device Flow login (`vibeknow init` / `vibeknow auth login`); two-phase agent flow (`--no-wait` / `--device-code`); PAT via stdin; `VIBEKNOW_TOKEN` env var for CI |
 | **Profile** | Multi-environment profiles (prod/staging/dev), per-service endpoint overrides, trust boundaries |
 | **Config** | Global key-value config store, persistent across sessions |
 | **Doctor** | Environment diagnostics: config dir, keychain, locale, endpoint reachability checks |
@@ -44,15 +44,20 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 
 > **Note for AI assistants:** If you are an AI Agent helping the user with installation, jump directly to [Quick Start (AI Agent)](#quick-start-ai-agent).
 
-#### Install
-
-**Option 1 — From npm (recommended):**
-
 ```bash
+# 1. Install
 npm install -g vibeknow-cli
+
+# 2. Log in — creates the default profile and walks you through browser auth
+vibeknow init
+
+# 3. Make a video
+vibeknow create --from https://example.com/article
 ```
 
-**Option 2 — From source:**
+That's the whole flow. `vibeknow init` handles profile creation, opens the browser for Device Flow authentication, and stores the token in your OS keychain.
+
+**From source** (only needed if you want to build the Go binary yourself):
 
 ```bash
 git clone https://github.com/vibeknow/cli.git
@@ -60,64 +65,39 @@ cd vibeknow-cli
 make install
 ```
 
-#### Configure
-
-```bash
-# 1. Add a profile (get endpoints from your VibeKnow dashboard)
-vibeknow profile add prod \
-  --endpoint-account <account-endpoint> \
-  --endpoint-vectoria <vectoria-endpoint> \
-  --endpoint-figlens <figlens-endpoint> \
-  --endpoint-vibeknow <vibeknow-endpoint> \
-  --credential-ref vibeknow.prod
-
-# 2. Set your token (from web dashboard) — used for all services
-export VIBEKNOW_TOKEN="your-jwt-token-here"
-
-# 3. Verify
-vibeknow auth whoami
-vibeknow doctor
-```
-
-#### Create Your First Video
-
-```bash
-vibeknow create --from https://example.com/article --voice t260312180132IV37e611
-```
-
 ### Quick Start (AI Agent)
 
-> Run each step and verify before proceeding.
-
-**Step 1 — Install**
+`vibeknow init` requires a TTY, so agents use the two-phase Device Flow instead. One human in the loop clicks a verification URL once; after that the agent runs unattended.
 
 ```bash
+# 1. Install
 npm install -g vibeknow-cli
-```
 
-**Step 2 — Configure profile** (get endpoints from your VibeKnow dashboard)
+# 2. Start a device-code flow WITHOUT blocking — prints JSON with the
+#    verification_uri and device_code. The agent extracts both.
+vibeknow auth login --no-wait
+# Sample output:
+# {
+#   "device_code":      "dc_2913bcc...",
+#   "user_code":        "UWWA-R8KS",
+#   "verification_uri": "https://beta.lab.shiliu.chat/account/device",
+#   "expires_in":       900,
+#   "hint":             "请访问 https://... 并输入验证码 UWWA-R8KS"
+# }
 
-```bash
-vibeknow profile add prod \
-  --endpoint-account <account-endpoint> \
-  --endpoint-vectoria <vectoria-endpoint> \
-  --endpoint-figlens <figlens-endpoint> \
-  --endpoint-vibeknow <vibeknow-endpoint> \
-  --credential-ref vibeknow.prod
-```
+# 3. The agent shows the verification_uri to the human operator, who opens
+#    it in a browser and approves. (One interaction per token, not per call.)
 
-**Step 3 — Set credentials** (obtain from web dashboard or CI secrets)
+# 4. Resume polling with the device_code from step 2 — blocks until approved.
+vibeknow auth login --device-code dc_2913bcc...
 
-```bash
-export VIBEKNOW_TOKEN="<jwt>"
-```
-
-**Step 4 — Verify**
-
-```bash
+# 5. Token is now in the OS keychain; every subsequent command is authenticated.
 vibeknow auth whoami
-vibeknow voice list
+vibeknow auth status --output json   # machine-parseable login state
+vibeknow create --from report.pdf
 ```
+
+For CI / container environments with a pre-issued JWT, skip the Device Flow entirely — see [Environment Variables](#environment-variables) below.
 
 ## Agent Skills
 
@@ -131,25 +111,26 @@ Skills are located in [`./skills/`](./skills/) and follow the `SKILL.md` + `refe
 
 ## Authentication
 
-vibeknow-cli currently supports token-based authentication via environment variables:
+vibeknow-cli supports three authentication paths, covering humans, AI Agents, and CI.
 
-| Method | Usage |
-|--------|-------|
-| `VIBEKNOW_TOKEN` env var | JWT token for all VibeKnow services (account / vectoria / figlens) |
-| Keychain storage | Token persisted in OS keychain via `credential_ref` in profile |
+| Method | When to use | Storage |
+|--------|-------------|---------|
+| `vibeknow init` / `vibeknow auth login` | Interactive human setup (Device Flow via browser) | OS keychain |
+| `vibeknow auth login --no-wait` then `--device-code <code>` | AI Agents — initiate without blocking, resume after human approval | OS keychain |
+| `VIBEKNOW_TOKEN=<jwt>` env var | CI pipelines, containers, short-lived scripts (bypasses keychain) | None (per-invocation) |
+| `vibeknow auth login --with-token` (reads PAT from stdin) | Scripted install with a pre-issued token | OS keychain |
 
 ```bash
-# Check who you're logged in as
+# Who am I?
 vibeknow auth whoami
 
-# Show credential source (env / keychain / none)
+# Token source, profile, expiry — add --output json for agents
 vibeknow auth status
+vibeknow auth status --output json
 
 # Clear stored credentials
 vibeknow auth logout
 ```
-
-> **Coming in v1:** Interactive `auth login` via OAuth Device Flow + Personal Access Tokens (PAT).
 
 ## Command Reference
 
@@ -159,8 +140,9 @@ vibeknow auth logout
 # Generate video from a URL
 vibeknow create --from https://example.com/article
 
-# Generate from a local file with specific voice
-vibeknow create --from report.pdf --voice t260312180132IV37e611
+# List available voice IDs first, then pass one via --voice
+vibeknow voice list
+vibeknow create --from report.pdf --voice <voice-id-from-above>
 
 # Custom prompt
 vibeknow create --from data.csv --prompt "Create a 2-minute explainer video"
