@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.2] — 2026-04-18
+### Fixed
+- `vibeknow doctor` no longer reports spurious `[fail]` lines against services whose health endpoints live at `/healthz` or `/health` or return envelope-wrapped JSON. Probes `/healthz` → `/v1/health` → `/health` in order, accepts flat / envelope / atlas-style response shapes, and reports services with no exposed health endpoint as `[warn]` (not counted toward the failure exit code).
+
 ## [0.3.1] — 2026-04-18
 ### Fixed
 - `CloudDefaults` pointed at unreachable placeholder hostnames (`*.vibeknow.com`). Fresh `npm install -g vibeknow-cli && vibeknow init` now reaches the device-code step against the beta cluster instead of failing DNS resolution.

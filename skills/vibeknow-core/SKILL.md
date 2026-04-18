@@ -1,6 +1,6 @@
 ---
 name: vibeknow-core
-version: 0.3.1
+version: 0.3.2
 description: "vibeknow CLI setup, authentication, profile management, and diagnostics. Use when: first-time setup, auth errors, switching environments, diagnosing connection issues."
 metadata:
   requires:
