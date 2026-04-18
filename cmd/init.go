@@ -24,6 +24,10 @@ var initCmd = &cobra.Command{
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	if os.Getenv("VIBEKNOW_TOKEN") != "" {
+		fmt.Fprintln(os.Stderr, "warning: VIBEKNOW_TOKEN environment variable is set; it will take priority over stored credentials")
+	}
+
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return fmt.Errorf("init requires an interactive terminal; use `vibeknow auth login --with-token` for non-interactive setup")
 	}
