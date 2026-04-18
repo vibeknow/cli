@@ -104,7 +104,6 @@ profiles:
 	cmd := exec.Command(bin, "create", "--from", testFile)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
-		"VECTORIA_API_KEY=fake-key",
 		"XDG_CONFIG_HOME="+filepath.Join(tmpDir, "config"),
 	)
 	out, err := cmd.CombinedOutput()

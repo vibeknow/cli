@@ -8,10 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/vibeknow/cli/client/vectoria"
-	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
-	"github.com/vibeknow/cli/internal/endpoints"
 )
 
 var uploadCmd = &cobra.Command{
@@ -29,21 +26,10 @@ var uploadCmd = &cobra.Command{
 			return fmt.Errorf("%q is not a regular file", filePath)
 		}
 
-		apiKey := os.Getenv("VECTORIA_API_KEY")
-		if apiKey == "" {
-			return clerr.New("文档服务认证失败").WithHint("请设置 VECTORIA_API_KEY 环境变量")
-		}
-
-		p, err := cliauth.CurrentProfile()
+		c, err := cliauth.NewVectoriaClient()
 		if err != nil {
 			return err
 		}
-		url, err := endpoints.Resolve(p, "vectoria")
-		if err != nil {
-			return err
-		}
-
-		c := vectoria.New(url, apiKey)
 		ctx := context.Background()
 
 		kbName := fmt.Sprintf("vibeknow-cli-%d", time.Now().Unix())

@@ -216,7 +216,7 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 		return "", "", fmt.Errorf("%q is not a regular file", filePath)
 	}
 
-	vc, err := newVectoriaClient()
+	vc, err := cliauth.NewVectoriaClient()
 	if err != nil {
 		return "", "", err
 	}
@@ -249,7 +249,7 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 
 // uploadURL uploads a URL to vectoria and returns kb_id + doc_id.
 func uploadURL(ctx context.Context, url string) (string, string, error) {
-	vc, err := newVectoriaClient()
+	vc, err := cliauth.NewVectoriaClient()
 	if err != nil {
 		return "", "", err
 	}
@@ -297,22 +297,6 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 			time.Sleep(2 * time.Second)
 		}
 	}
-}
-
-func newVectoriaClient() (*vectoria.Client, error) {
-	apiKey := os.Getenv("VECTORIA_API_KEY")
-	if apiKey == "" {
-		return nil, clerr.New("文档服务认证失败").WithHint("请设置 VECTORIA_API_KEY 环境变量，或等待后续版本支持统一认证")
-	}
-	p, err := cliauth.CurrentProfile()
-	if err != nil {
-		return nil, err
-	}
-	url, err := endpoints.Resolve(p, "vectoria")
-	if err != nil {
-		return nil, err
-	}
-	return vectoria.New(url, apiKey), nil
 }
 
 func newCreateFiglensClient() (*figlens.Client, error) {

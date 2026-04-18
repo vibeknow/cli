@@ -12,13 +12,17 @@ import (
 	"github.com/vibeknow/cli/client/vectoria"
 )
 
+type staticToken string
+
+func (s staticToken) Token(context.Context) (string, error) { return string(s), nil }
+
 func TestCreateKB(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v1/knowledgebases" {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
-		if r.Header.Get("X-API-Key") != "test-key" {
-			t.Fatalf("missing X-API-Key header")
+		if r.Header.Get("X-Authorization-Token") != "test-jwt" {
+			t.Fatalf("missing X-Authorization-Token header")
 		}
 		var body map[string]string
 		json.NewDecoder(r.Body).Decode(&body)
@@ -30,7 +34,7 @@ func TestCreateKB(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	id, err := c.CreateKB(context.Background(), "test-kb")
 	if err != nil {
 		t.Fatalf("CreateKB: %v", err)
@@ -48,15 +52,15 @@ func TestUploadDoc(t *testing.T) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/knowledgebases/kb_1/documents/file") {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		if r.Header.Get("X-API-Key") != "test-key" {
-			t.Fatalf("missing X-API-Key header")
+		if r.Header.Get("X-Authorization-Token") != "test-jwt" {
+			t.Fatalf("missing X-Authorization-Token header")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"id": "doc_xyz", "status": "processing"})
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	doc, err := c.UploadDoc(context.Background(), "kb_1", "test.pdf", strings.NewReader("pdf-data"))
 	if err != nil {
 		t.Fatalf("UploadDoc: %v", err)
@@ -81,7 +85,7 @@ func TestUploadURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	doc, err := c.UploadURL(context.Background(), "kb_1", "https://example.com")
 	if err != nil {
 		t.Fatalf("UploadURL: %v", err)
@@ -98,7 +102,7 @@ func TestGetDocStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	doc, err := c.GetDocStatus(context.Background(), "kb_1", "doc_1")
 	if err != nil {
 		t.Fatalf("GetDocStatus: %v", err)
@@ -117,7 +121,7 @@ func TestDeleteDoc(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	err := c.DeleteDoc(context.Background(), "kb_1", "doc_1")
 	if err != nil {
 		t.Fatalf("DeleteDoc: %v", err)
@@ -139,7 +143,7 @@ func TestUploadDoc_FileContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := vectoria.New(srv.URL, "test-key")
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
 	c.UploadDoc(context.Background(), "kb_1", "test.txt", strings.NewReader("hello world"))
 	if gotContent != "hello world" {
 		t.Fatalf("file content = %q, want 'hello world'", gotContent)

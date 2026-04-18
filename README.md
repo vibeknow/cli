@@ -71,13 +71,10 @@ vibeknow profile add prod \
   --endpoint-vibeknow <vibeknow-endpoint> \
   --credential-ref vibeknow.prod
 
-# 2. Set your token (from web dashboard)
+# 2. Set your token (from web dashboard) — used for all services
 export VIBEKNOW_TOKEN="your-jwt-token-here"
 
-# 3. Set document service API key
-export VECTORIA_API_KEY="your-api-key"
-
-# 4. Verify
+# 3. Verify
 vibeknow auth whoami
 vibeknow doctor
 ```
@@ -113,7 +110,6 @@ vibeknow profile add prod \
 
 ```bash
 export VIBEKNOW_TOKEN="<jwt>"
-export VECTORIA_API_KEY="<key>"
 ```
 
 **Step 4 — Verify**
@@ -139,8 +135,7 @@ vibeknow-cli currently supports token-based authentication via environment varia
 
 | Method | Usage |
 |--------|-------|
-| `VIBEKNOW_TOKEN` env var | JWT token for VibeKnow services |
-| `VECTORIA_API_KEY` env var | API key for the document service |
+| `VIBEKNOW_TOKEN` env var | JWT token for all VibeKnow services (account / vectoria / figlens) |
 | Keychain storage | Token persisted in OS keychain via `credential_ref` in profile |
 
 ```bash
@@ -259,8 +254,7 @@ vibeknow voice list | jq '.list[0].name'
 
 | Variable | Purpose |
 |----------|---------|
-| `VIBEKNOW_TOKEN` | JWT token (highest priority credential source) |
-| `VECTORIA_API_KEY` | Document service API key |
+| `VIBEKNOW_TOKEN` | JWT token for all services (highest priority credential source) |
 | `VIBEKNOW_CONFIG_HOME` | Override config directory (default: `~/.config/vibeknow`) |
 | `VIBEKNOW_TRACE` | Set to `1` to display trace IDs for debugging |
 | `VIBEKNOW_DEBUG` | Set to `1` for verbose logging (use with care) |

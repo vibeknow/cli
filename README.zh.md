@@ -71,13 +71,10 @@ vibeknow profile add prod \
   --endpoint-vibeknow <vibeknow-endpoint> \
   --credential-ref vibeknow.prod
 
-# 2. 设置 token（从 Web 端登录后获取）
+# 2. 设置 token（从 Web 端登录后获取，覆盖所有服务）
 export VIBEKNOW_TOKEN="your-jwt-token-here"
 
-# 3. 设置文档服务 API key
-export VECTORIA_API_KEY="your-api-key"
-
-# 4. 验证
+# 3. 验证
 vibeknow auth whoami
 vibeknow doctor
 ```
@@ -113,7 +110,6 @@ vibeknow profile add prod \
 
 ```bash
 export VIBEKNOW_TOKEN="<jwt>"
-export VECTORIA_API_KEY="<key>"
 ```
 
 **第 4 步 —— 验证**
@@ -139,8 +135,7 @@ vibeknow-cli 目前支持基于 Token 的环境变量认证：
 
 | 方式 | 用法 |
 |------|------|
-| `VIBEKNOW_TOKEN` 环境变量 | VibeKnow 服务的 JWT token |
-| `VECTORIA_API_KEY` 环境变量 | 文档服务的 API key |
+| `VIBEKNOW_TOKEN` 环境变量 | 所有 VibeKnow 服务（account / vectoria / figlens）共用的 JWT token |
 | Keychain 存储 | 通过 profile 中的 `credential_ref` 将 token 持久化到 OS keychain |
 
 ```bash
@@ -259,8 +254,7 @@ vibeknow voice list | jq '.list[0].name'
 
 | 变量 | 用途 |
 |------|------|
-| `VIBEKNOW_TOKEN` | JWT token（最高优先级凭证来源） |
-| `VECTORIA_API_KEY` | 文档服务 API key |
+| `VIBEKNOW_TOKEN` | 所有服务共用的 JWT token（最高优先级凭证来源） |
 | `VIBEKNOW_CONFIG_HOME` | 覆盖配置目录（默认：`~/.config/vibeknow`） |
 | `VIBEKNOW_TRACE` | 设为 `1` 显示 trace ID 用于调试 |
 | `VIBEKNOW_DEBUG` | 设为 `1` 打印详细日志（谨慎使用） |

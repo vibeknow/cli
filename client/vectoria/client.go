@@ -1,5 +1,8 @@
 // Package vectoria is the CLI client for the vectoria document/RAG service.
-// Auth uses X-API-Key header (not JWT Bearer).
+//
+// Auth: JWT via X-Authorization-Token, same mechanism as figlens/account.
+// The backend also accepts X-API-Key as a fallback, but the CLI does not
+// expose it — credentials flow through VIBEKNOW_TOKEN or the OS keychain.
 package vectoria
 
 import (
@@ -12,20 +15,12 @@ type Client struct {
 	http *httpclient.Client
 }
 
-func New(baseURL, apiKey string) *Client {
+// New creates a vectoria client using the same JWT-based auth chain as other
+// CLI services. Pass nil for tp only in tests where the server ignores auth.
+func New(baseURL string, tp httpclient.TokenProvider) *Client {
 	chain := httpclient.Chain(http.DefaultTransport,
-		apiKeyMiddleware{key: apiKey},
+		httpclient.AuthMiddleware{Provider: tp},
+		httpclient.RefreshRetryMiddleware{Provider: tp},
 	)
 	return &Client{http: httpclient.New(baseURL).WithTransport(chain)}
-}
-
-type apiKeyMiddleware struct{ key string }
-
-func (m apiKeyMiddleware) Wrap(next http.RoundTripper) http.RoundTripper {
-	return httpclient.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		if m.key != "" {
-			r.Header.Set("X-API-Key", m.key)
-		}
-		return next.RoundTrip(r)
-	})
 }
