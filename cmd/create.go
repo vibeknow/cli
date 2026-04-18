@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
@@ -77,17 +78,29 @@ var createCmd = &cobra.Command{
 
 		query := flagCreatePrompt
 		if query == "" && kbID != "" && docID != "" {
-			fmt.Fprintf(os.Stderr, "optimising prompt...\n")
+			streaming := term.IsTerminal(int(os.Stderr.Fd()))
+			var onDelta func(string)
+			if streaming {
+				fmt.Fprint(os.Stderr, "prompt: ")
+				onDelta = func(s string) { fmt.Fprint(os.Stderr, s) }
+			} else {
+				fmt.Fprintf(os.Stderr, "optimising prompt...\n")
+			}
 			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
 				KnowledgeID: kbID,
 				DocID:       docID,
-			}, nil)
+			}, onDelta)
+			if streaming {
+				fmt.Fprintln(os.Stderr)
+			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "prompt optimisation failed, using default: %s\n", err)
 				query = "根据文档内容生成视频"
 			} else {
 				query = optimized
-				fmt.Fprintf(os.Stderr, "prompt: %s\n", query)
+				if !streaming {
+					fmt.Fprintf(os.Stderr, "prompt: %s\n", query)
+				}
 			}
 		} else if query == "" {
 			query = "根据文档内容生成视频"
