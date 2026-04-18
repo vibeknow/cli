@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 const cacheTTL = 24 * time.Hour
@@ -26,9 +27,9 @@ type Info struct {
 	Latest  string
 }
 
-// Message returns a human-readable upgrade notice.
+// Message returns a localized human-readable upgrade notice.
 func (i *Info) Message() string {
-	return fmt.Sprintf("新版本 %s 可用 (当前 %s)，运行 `npm update -g vibeknow-cli` 升级", i.Latest, i.Current)
+	return i18n.T("update.available", i.Latest, i.Current)
 }
 
 var pending atomic.Pointer[Info]
@@ -92,6 +93,22 @@ func RefreshCache(currentVersion string) {
 		return
 	}
 	saveState(&state{LatestVersion: latest, CheckedAt: time.Now().Unix()})
+}
+
+// CheckLatest performs a synchronous, cache-bypassing upgrade check against
+// the npm registry. Returns (info, ok). `ok` is false if the registry query
+// failed; caller should surface a friendly "could not reach npm" message.
+// When the installed version is already latest, returns (nil, true).
+func CheckLatest(currentVersion string) (*Info, bool) {
+	latest := fetchLatestVersion()
+	if latest == "" {
+		return nil, false
+	}
+	saveState(&state{LatestVersion: latest, CheckedAt: time.Now().Unix()})
+	if !isNewer(latest, currentVersion) {
+		return nil, true
+	}
+	return &Info{Current: currentVersion, Latest: latest}, true
 }
 
 func fetchLatestVersion() string {

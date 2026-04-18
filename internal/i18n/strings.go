@@ -99,6 +99,12 @@ func init() {
 		"video.list.status.failed":   "failed",
 		"video.list.footer":          "\n%d result(s), page %d",
 
+		// update / upgrade notice
+		"update.available":   "A newer version %s is available (you have %s). Run `npm update -g vibeknow-cli` to upgrade.",
+		"update.checking":    "checking for updates...",
+		"update.up_to_date":  "vibeknow-cli %s is up to date.",
+		"update.check_fail":  "could not reach npm registry to check for updates",
+
 		// root / update notice
 		"root.update_notice": "\nNote: %s\n",
 	})
@@ -199,6 +205,12 @@ func init() {
 		"video.list.status.deleted":  "已删除",
 		"video.list.status.failed":   "失败",
 		"video.list.footer":          "\n共 %d 条，第 %d 页",
+
+		// update / upgrade notice
+		"update.available":   "新版本 %s 可用（当前 %s），运行 `npm update -g vibeknow-cli` 升级。",
+		"update.checking":    "正在检查更新...",
+		"update.up_to_date":  "vibeknow-cli %s 已是最新版。",
+		"update.check_fail":  "无法连接 npm registry 检查更新",
 
 		// root / update notice
 		"root.update_notice": "\n提示: %s\n",
