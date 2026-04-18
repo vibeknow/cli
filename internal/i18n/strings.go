@@ -11,6 +11,7 @@ func init() {
 		"doctor.header":            "vibeknow doctor — environment and endpoint diagnostics",
 		"doctor.ok":                "[ok] %s",
 		"doctor.fail":              "[fail] %s: %s",
+		"doctor.warn":              "[warn] %s: %s",
 	})
 	Register("zh", map[string]string{
 		"err.profile.not_found":    "profile %q 不存在",
@@ -22,5 +23,6 @@ func init() {
 		"doctor.header":            "vibeknow doctor — 环境与 endpoint 诊断",
 		"doctor.ok":                "[通过] %s",
 		"doctor.fail":              "[失败] %s: %s",
+		"doctor.warn":              "[警告] %s: %s",
 	})
 }
