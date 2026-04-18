@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.1] — 2026-04-18
+### Fixed
+- `CloudDefaults` pointed at unreachable placeholder hostnames (`*.vibeknow.com`). Fresh `npm install -g vibeknow-cli && vibeknow init` now reaches the device-code step against the beta cluster instead of failing DNS resolution.
+
+### Added
+- `vibeknow auth status --output json` emits a machine-parseable envelope (`authenticated / profile / source / auth_method / token_status / expires_at / user`) for AI Agents and CI.
+- `vibeknow init` mirrors the `VIBEKNOW_TOKEN` env-var warning already emitted by `auth login`, so users who carried over old credentials get an early signal before the wizard stores a keychain token that would be shadowed by the env var.
+- Regression test pinning the `vibeknow auth login --no-wait` JSON envelope shape.
+- Sanity test guarding `CloudDefaults` against typos (every URL parses as an absolute `https://` URL).
+
+### Changed
+- README (English and Chinese) Quickstart rewritten to match the shipped `vibeknow init` flow (humans) and the two-phase device flow (`--no-wait` / `--device-code`) for AI Agents. The "Coming in v1" Device-Flow note is removed — it has shipped.
+- Hero Command example stops hardcoding a specific voice ID; users are directed to `vibeknow voice list` first.
+
 ## [0.2.0-p1] — 2026-04-15
 ### Added
 - Multi-endpoint direct-connect: profile schema v2 with `endpoints` map for account/vectoria/figlens/vibeknow. Cloud defaults built in.
