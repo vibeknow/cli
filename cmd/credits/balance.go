@@ -5,10 +5,9 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"github.com/vibeknow/cli/client/vibeknow"
-	"github.com/vibeknow/cli/internal/cliauth"
-	"github.com/vibeknow/cli/internal/clerr"
-	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/cmdutil"
 )
 
 var balanceCmd = &cobra.Command{
@@ -33,22 +32,10 @@ var balanceCmd = &cobra.Command{
 	},
 }
 
-type staticToken string
-
-func (s staticToken) Token(_ context.Context) (string, error) { return string(s), nil }
-
 func newVibeknowClient() (*vibeknow.Client, error) {
-	p, err := cliauth.CurrentProfile()
+	_, url, tp, err := cmdutil.Default().Service("vibeknow")
 	if err != nil {
 		return nil, err
 	}
-	tok, _, err := cliauth.ResolverFor(p).Resolve()
-	if err != nil {
-		return nil, clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
-	}
-	url, err := endpoints.Resolve(p, "vibeknow")
-	if err != nil {
-		return nil, err
-	}
-	return vibeknow.New(url, staticToken(tok)), nil
+	return vibeknow.New(url, tp), nil
 }

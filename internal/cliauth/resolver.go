@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
@@ -38,26 +39,46 @@ func CurrentProfile() (config.Profile, error) {
 		return config.Profile{}, err
 	}
 	if f.Current == "" {
-		return config.Profile{}, &NoActiveProfileError{}
+		return config.Profile{}, newNoActiveProfileError()
 	}
 	for _, p := range f.Profiles {
 		if p.Name == f.Current {
 			return p, nil
 		}
 	}
-	return config.Profile{}, &ProfileNotFoundError{Name: f.Current}
+	return config.Profile{}, newProfileNotFoundError(f.Current)
 }
 
-type NoActiveProfileError struct{}
+// NoActiveProfileError indicates the user has not initialized any profile.
+// It wraps a *clerr.Error so exit code and JSON envelope pick up `auth`
+// semantics automatically.
+type NoActiveProfileError struct{ Err *clerr.Error }
 
-func (*NoActiveProfileError) Error() string {
-	return "尚未初始化，请先运行 `vk init` 完成设置"
+func (e *NoActiveProfileError) Error() string { return e.Err.Error() }
+func (e *NoActiveProfileError) Unwrap() error { return e.Err }
+
+func newNoActiveProfileError() *NoActiveProfileError {
+	return &NoActiveProfileError{
+		Err: clerr.Auth("尚未初始化，请先运行 `vk init` 完成设置").
+			WithHint("运行 `vk init` 启动初始化向导"),
+	}
 }
 
-type ProfileNotFoundError struct{ Name string }
+// ProfileNotFoundError means profiles.yaml references a current profile that
+// isn't in the list.
+type ProfileNotFoundError struct {
+	Name string
+	Err  *clerr.Error
+}
 
-func (e *ProfileNotFoundError) Error() string {
-	return "profile " + e.Name + " not found in profiles list"
+func (e *ProfileNotFoundError) Error() string { return e.Err.Error() }
+func (e *ProfileNotFoundError) Unwrap() error { return e.Err }
+
+func newProfileNotFoundError(name string) *ProfileNotFoundError {
+	return &ProfileNotFoundError{
+		Name: name,
+		Err:  clerr.Validation("profile " + name + " not found in profiles list"),
+	}
 }
 
 // TokenProviderFor returns an httpclient.TokenProvider for the given profile.

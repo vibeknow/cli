@@ -69,18 +69,41 @@ func setupUpdateNotice() {
 			}
 		}
 	}()
+
+	// Wire pending notices into JSON error envelopes.
+	clerr.PendingNotice = func() map[string]interface{} {
+		info := update.GetPending()
+		if info == nil {
+			return nil
+		}
+		return map[string]interface{}{
+			"update": map[string]interface{}{
+				"message": info.Message(),
+				"latest":  info.Latest,
+			},
+		}
+	}
 }
 
+// Execute runs the root command and returns the error (if any). Callers
+// should use clerr.ExitCodeFor(err) to pick the process exit code.
 func Execute() error {
 	setupUpdateNotice()
 	rootCmd.SilenceErrors = true
 	err := rootCmd.Execute()
 	if err != nil {
-		clerr.Render(os.Stderr, err)
+		format := "text"
+		if flagOutput == "json" {
+			format = "json"
+		}
+		clerr.RenderAs(os.Stderr, err, format, "")
 	}
-	// Show update notice at the end (stderr, non-blocking)
-	if info := update.GetPending(); info != nil {
-		fmt.Fprintf(os.Stderr, "\n提示: %s\n", info.Message())
+	// Show update notice at the end (stderr, text-mode only — JSON callers
+	// read the envelope's _notice field instead).
+	if flagOutput != "json" {
+		if info := update.GetPending(); info != nil {
+			fmt.Fprintf(os.Stderr, "\n提示: %s\n", info.Message())
+		}
 	}
 	return err
 }

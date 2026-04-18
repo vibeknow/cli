@@ -9,29 +9,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/vibeknow"
-	"github.com/vibeknow/cli/internal/cliauth"
-	"github.com/vibeknow/cli/internal/clerr"
-	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/cmdutil"
 )
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "list available voice templates",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := cliauth.CurrentProfile()
-		if err != nil {
-			return err
-		}
-		tok, _, err := cliauth.ResolverFor(p).Resolve()
-		if err != nil {
-			return clerr.Auth("未登录").WithHint("运行 `vk auth login` 或 `vk init` 完成登录")
-		}
-		url, err := endpoints.Resolve(p, "vibeknow")
+		_, url, tp, err := cmdutil.Default().Service("vibeknow")
 		if err != nil {
 			return err
 		}
 
-		c := vibeknow.New(url, staticToken(tok))
+		c := vibeknow.New(url, tp)
 		templates, err := c.ListVoiceTemplates(context.Background())
 		if err != nil {
 			return err
@@ -45,7 +35,3 @@ var listCmd = &cobra.Command{
 		return w.Flush()
 	},
 }
-
-type staticToken string
-
-func (s staticToken) Token(_ context.Context) (string, error) { return string(s), nil }

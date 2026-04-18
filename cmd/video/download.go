@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/validate"
 )
 
 var (
@@ -83,24 +86,29 @@ var downloadCmd = &cobra.Command{
 			return err
 		}
 
-		// Determine output file name.
-		outPath := flagDownloadOutput
-		if outPath == "" {
-			outPath = flagDownloadSessionID + ".mp4"
+		// Determine output file name and validate it against cwd.
+		rawOut := flagDownloadOutput
+		if rawOut == "" {
+			rawOut = flagDownloadSessionID + ".mp4"
+		}
+		outPath, err := validate.SafeOutputPath(rawOut)
+		if err != nil {
+			return clerr.Validation(err.Error()).
+				WithHint("--output must be a relative path inside the current directory")
 		}
 
 		if !flagDownloadOverwrite {
 			if _, err := os.Stat(outPath); err == nil {
-				return fmt.Errorf("file %q already exists; use --overwrite to replace", outPath)
+				return clerr.Validationf("file %q already exists; use --overwrite to replace", rawOut)
 			}
 		}
 
 		// Download.
-		fmt.Fprintf(os.Stderr, "downloading to %q...\n", outPath)
+		fmt.Fprintf(os.Stderr, "downloading to %q...\n", rawOut)
 		if err := downloadFile(signedURL, outPath); err != nil {
 			return err
 		}
-		fmt.Printf("output=%s\n", outPath)
+		fmt.Printf("output=%s\n", rawOut)
 		return nil
 	},
 }
