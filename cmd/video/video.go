@@ -14,4 +14,5 @@ func init() {
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(urlCmd)
 	Cmd.AddCommand(exportCmd)
+	Cmd.AddCommand(exportStatusCmd)
 }
