@@ -6,8 +6,11 @@ import (
 )
 
 type ExportResult struct {
-	Status    string `json:"status"`
-	VideoPath string `json:"video_path"`
+	Status      string `json:"status"`
+	Progress    int    `json:"progress,omitempty"`
+	ProgressMsg string `json:"progress_msg,omitempty"`
+	VideoPath   string `json:"video_path,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 func (c *Client) ExportVideo(ctx context.Context, sessionID string) (string, error) {

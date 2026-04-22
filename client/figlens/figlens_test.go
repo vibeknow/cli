@@ -99,7 +99,10 @@ func TestExportVideo(t *testing.T) {
 
 func TestGetExportResult(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		figlensResp(w, map[string]any{"status": "completed", "video_path": "/exported/final.mp4"})
+		figlensResp(w, map[string]any{
+			"status": "running", "progress": 42, "progress_msg": "rendering frames",
+			"video_path": "", "error": "",
+		})
 	}))
 	defer srv.Close()
 
@@ -108,8 +111,11 @@ func TestGetExportResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetExportResult: %v", err)
 	}
-	if result.Status != "completed" {
-		t.Fatalf("status = %q", result.Status)
+	if result.Status != "running" || result.Progress != 42 {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.ProgressMsg != "rendering frames" {
+		t.Fatalf("progress_msg = %q", result.ProgressMsg)
 	}
 }
 
