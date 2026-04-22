@@ -57,6 +57,6 @@ func TestResolveShare_ProfileOverride(t *testing.T) {
 		t.Fatalf("resolve share: %v", err)
 	}
 	if url != "https://self.example.com/share" {
-		t.Fatalf("url = %q", url)
+		t.Fatalf("url = %q, want https://self.example.com/share", url)
 	}
 }
