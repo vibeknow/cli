@@ -11,6 +11,8 @@ var CloudDefaults = map[string]string{
 	"vectoria": "https://beta.lab.shiliu.chat/vectoria",
 	"figlens":  "https://beta.lab.shiliu.chat/figlens",
 	"vibeknow": "https://beta.lab.shiliu.chat/vibeknow",
-	// share is a user-facing page URL served from the production web host, not the beta API cluster.
-	"share": "https://vibeknow.com/share",
+	// share is the public page base for the same cluster. Share tokens
+	// are cluster-local (beta tokens don't resolve on production), so
+	// this must track the rest of the map.
+	"share": "https://beta.lab.shiliu.chat/share",
 }

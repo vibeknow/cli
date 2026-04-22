@@ -6,7 +6,7 @@ package cmdutil
 func ShareBaseURL() string {
 	_, url, _, err := Default().Service("share")
 	if err != nil || url == "" {
-		return "https://vibeknow.com/share"
+		return "https://beta.lab.shiliu.chat/share"
 	}
 	return url
 }
