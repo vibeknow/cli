@@ -22,6 +22,7 @@ import (
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
+
 var (
 	flagExportSessionID    string
 	flagExportAsync        bool
@@ -67,7 +68,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx, cancel := signalContext(cmd.Context())
+	ctx, cancel := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	// Submit (backend is idempotent: same (user,session) → same task_id).
@@ -78,13 +79,30 @@ func runExport(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.submitted", exportTaskID))
 
 	if flagExportAsync {
-		return emitSnapshot(cmd, format, taskID, flagExportSessionID, c, exportTaskID, nil)
+		return emitSnapshot(cmd, format, snapshot.BuildInput{
+			TaskID:       taskID,
+			SessionID:    flagExportSessionID,
+			ExportTaskID: exportTaskID,
+		}, c)
 	}
 
 	// Sync polling loop.
-	ndjson := format == "ndjson"
+	progressTTY := term.IsTerminal(int(os.Stderr.Fd()))
+	var emitNDJSON func(map[string]any) error
+	if format == "ndjson" {
+		w := output.NewNDJSON(cmd.OutOrStdout())
+		emitNDJSON = w.Event
+	}
+	lastProgress, lastMsg := -1, ""
 	result, pollErr := exportpoll.PollExport(ctx, c, exportTaskID, flagExportTimeout, flagExportPollInterval, func(ev exportpoll.Event) {
-		emitPollEvent(cmd, ndjson, exportTaskID, ev)
+		// Skip duplicate running-state ticks so NDJSON streams and
+		// non-TTY logs don't spam the same progress line. Stage
+		// transitions (ProgressMsg change) still emit even at the same %.
+		if ev.Status == snapshot.StatusRunning && ev.Progress == lastProgress && ev.ProgressMsg == lastMsg {
+			return
+		}
+		lastProgress, lastMsg = ev.Progress, ev.ProgressMsg
+		emitPollEvent(cmd, emitNDJSON, progressTTY, exportTaskID, ev)
 	})
 	if errors.Is(pollErr, context.Canceled) {
 		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.sigint_detach", exportTaskID, flagExportSessionID))
@@ -98,11 +116,16 @@ func runExport(cmd *cobra.Command, args []string) error {
 	if pollErr != nil {
 		return pollErr
 	}
-	return emitSnapshot(cmd, format, taskID, flagExportSessionID, c, exportTaskID, result)
+	return emitSnapshot(cmd, format, snapshot.BuildInput{
+		TaskID:       taskID,
+		SessionID:    flagExportSessionID,
+		Export:       result,
+		ExportTaskID: exportTaskID,
+	}, c)
 }
 
-func emitPollEvent(cmd *cobra.Command, ndjson bool, exportTaskID string, ev exportpoll.Event) {
-	if ndjson {
+func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID string, ev exportpoll.Event) {
+	if emitNDJSON != nil {
 		out := map[string]any{
 			"type":           eventType(ev.Status),
 			"export_task_id": exportTaskID,
@@ -111,23 +134,24 @@ func emitPollEvent(cmd *cobra.Command, ndjson bool, exportTaskID string, ev expo
 		if ev.ProgressMsg != "" {
 			out["progress_msg"] = ev.ProgressMsg
 		}
-		_ = output.NewNDJSON(cmd.OutOrStdout()).Event(out)
+		_ = emitNDJSON(out)
 		return
 	}
+	stderr := cmd.ErrOrStderr()
 	switch ev.Status {
 	case snapshot.StatusSucceeded:
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.succeeded"))
+		fmt.Fprintln(stderr, i18n.T("export.succeeded"))
 	case snapshot.StatusFailed:
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.failed", ev.ProgressMsg))
+		fmt.Fprintln(stderr, i18n.T("export.failed", ev.ProgressMsg))
 	default:
-		if term.IsTerminal(int(os.Stderr.Fd())) {
+		if progressTTY {
 			if ev.ProgressMsg != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "\r%s", i18n.T("export.progress_simple", ev.Progress))
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress_simple", ev.Progress))
 			}
 		} else if ev.Progress%10 == 0 {
-			fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.progress_simple", ev.Progress))
+			fmt.Fprintln(stderr, i18n.T("export.progress_simple", ev.Progress))
 		}
 	}
 }
@@ -144,49 +168,16 @@ func eventType(status string) string {
 }
 
 // emitSnapshot fetches the work row and renders the snapshot in the user's
-// chosen format. Shared with export_status.go (Task 12) via package scope.
-func emitSnapshot(cmd *cobra.Command, format string, taskID int64, sessionID string, c *figlens.Client, exportTaskID string, export *figlens.ExportResult) error {
-	work, err := c.GetWorkBySession(cmd.Context(), sessionID)
+// chosen format. Shared with export_status.go via package scope.
+func emitSnapshot(cmd *cobra.Command, format string, in snapshot.BuildInput, c *figlens.Client) error {
+	work, err := c.GetWorkBySession(cmd.Context(), in.SessionID)
 	if err != nil {
 		return err
 	}
-	s := snapshot.Build(snapshot.BuildInput{
-		TaskID:       taskID,
-		SessionID:    sessionID,
-		Work:         work,
-		Export:       export,
-		ExportTaskID: exportTaskID,
-		ShareBase:    cmdutil.ShareBaseURL(),
-	})
-	if format == "json" {
-		return snapshot.RenderJSON(cmd.OutOrStdout(), s)
-	}
-	if format == "ndjson" {
-		return snapshot.RenderNDJSON(cmd.OutOrStdout(), s)
-	}
-	snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
-	return nil
-}
-
-// signalContext returns a context that cancels on SIGINT/SIGTERM so the sync
-// poll loop exits cleanly. The backend keeps rendering regardless — users
-// re-attach with vk video export-status.
-func signalContext(parent context.Context) (context.Context, context.CancelFunc) {
-	if parent == nil {
-		parent = context.Background()
-	}
-	ctx, cancel := context.WithCancel(parent)
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		select {
-		case <-sig:
-			cancel()
-		case <-ctx.Done():
-		}
-		signal.Stop(sig)
-	}()
-	return ctx, cancel
+	in.Work = work
+	in.ShareBase = cmdutil.ShareBaseURL()
+	s := snapshot.Build(in)
+	return snapshot.Render(cmd.OutOrStdout(), cmd.ErrOrStderr(), s, format)
 }
 
 func init() {

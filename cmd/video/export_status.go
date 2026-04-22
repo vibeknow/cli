@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var flagExportStatusSessionID string
@@ -36,7 +37,11 @@ var exportStatusCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		// task_id is not recoverable from export_task_id alone; pass 0.
 		// Agents that care have it from the original `vk create` response.
-		return emitSnapshot(cmd, format, 0, flagExportStatusSessionID, c, exportTaskID, result)
+		return emitSnapshot(cmd, format, snapshot.BuildInput{
+			SessionID:    flagExportStatusSessionID,
+			Export:       result,
+			ExportTaskID: exportTaskID,
+		}, c)
 	},
 }
 

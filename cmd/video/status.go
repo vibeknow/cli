@@ -45,11 +45,7 @@ var statusCmd = &cobra.Command{
 		})
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
-			return snapshot.RenderJSON(cmd.OutOrStdout(), s)
-		}
-		snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
-		return nil
+		return snapshot.Render(cmd.OutOrStdout(), cmd.ErrOrStderr(), s, format)
 	},
 }
 

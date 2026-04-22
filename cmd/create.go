@@ -13,15 +13,12 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
-	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
-	"github.com/vibeknow/cli/internal/endpoints"
-	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/errs"
-	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
@@ -79,10 +76,11 @@ var createCmd = &cobra.Command{
 		}
 
 		// Step 2: optimize prompt (skip if user provided --prompt).
-		fc, err := newCreateFiglensClient()
+		_, url, tp, err := cmdutil.Default().Service("figlens")
 		if err != nil {
 			return err
 		}
+		fc := figlens.New(url, tp)
 
 		query := flagCreatePrompt
 		if query == "" && kbID != "" && docID != "" {
@@ -205,103 +203,89 @@ var createCmd = &cobra.Command{
 			os.Exit(5)
 		}
 
-		// Step 6: fetch work, build snapshot, render.
-		if successSessionID != "" {
-			w, err := fc.GetWorkBySession(ctx, successSessionID)
-			if err != nil {
-				return err
-			}
-			s := snapshot.Build(snapshot.BuildInput{
-				TaskID:    task.TaskID,
-				SessionID: successSessionID,
-				Work:      w,
-				ShareBase: cmdutil.ShareBaseURL(),
-			})
-
-			if format == "json" {
-				if err := snapshot.RenderJSON(cmd.OutOrStdout(), s); err != nil {
-					return err
-				}
-			} else if format == "ndjson" {
-				if err := snapshot.RenderNDJSON(cmd.OutOrStdout(), s); err != nil {
-					return err
-				}
-			} else {
-				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
-			}
-
-			// Step 7: optional export chain.
-			if flagCreateExport && s.Preview.Ready {
-				ok, cerr := cmdutil.Confirm(cmdutil.ConfirmOptions{
-					Prompt: i18n.T("export.confirm_prompt"),
-					Yes:    flagCreateYes,
-				})
-				if cerr != nil {
-					return cerr
-				}
-				if !ok {
-					fmt.Fprintln(os.Stderr, i18n.T("export.cancelled"))
-					return nil
-				}
-
-				expID, err := fc.ExportVideo(ctx, successSessionID)
-				if err != nil {
-					// Submit failed but preview is good → partial success.
-					fmt.Fprintln(os.Stderr, i18n.T("export.failed", err.Error()))
-					os.Exit(7)
-				}
-				fmt.Fprintln(os.Stderr, i18n.T("export.submitted", expID))
-
-				result, perr := exportpoll.PollExport(ctx, fc, expID, exportpoll.DefaultTimeout(), 0, func(ev exportpoll.Event) {
-					if ev.Status == snapshot.StatusRunning && term.IsTerminal(int(os.Stderr.Fd())) {
-						if ev.ProgressMsg != "" {
-							fmt.Fprintf(os.Stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
-						} else {
-							fmt.Fprintf(os.Stderr, "\r%s", i18n.T("export.progress_simple", ev.Progress))
-						}
-					}
-				})
-				if perr != nil {
-					fmt.Fprintln(os.Stderr)
-					fmt.Fprintln(os.Stderr, i18n.T("export.failed", perr.Error()))
-					os.Exit(7)
-				}
-
-				// Rebuild snapshot with export result + re-emit.
-				w2, werr := fc.GetWorkBySession(ctx, successSessionID)
-				if werr != nil {
-					return werr
-				}
-				finalSnap := snapshot.Build(snapshot.BuildInput{
-					TaskID:       task.TaskID,
-					SessionID:    successSessionID,
-					Work:         w2,
-					Export:       result,
-					ExportTaskID: expID,
-					ShareBase:    cmdutil.ShareBaseURL(),
-				})
-				switch format {
-				case "json":
-					if err := snapshot.RenderJSON(cmd.OutOrStdout(), finalSnap); err != nil {
-						return err
-					}
-				case "ndjson":
-					if err := snapshot.RenderNDJSON(cmd.OutOrStdout(), finalSnap); err != nil {
-						return err
-					}
-				default:
-					fmt.Fprintln(os.Stderr)
-					snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), finalSnap)
-				}
-
-				// Partial-success signalling: preview rendered, but the export
-				// poll returned a terminal `failed` status (no Go error).
-				if finalSnap.Export.Status == snapshot.StatusFailed {
-					os.Exit(7)
-				}
-			}
+		if successSessionID == "" {
+			return nil
 		}
 
+		stdout := cmd.OutOrStdout()
+		stderr := cmd.ErrOrStderr()
+		shareBase := cmdutil.ShareBaseURL()
+
+		w, err := fc.GetWorkBySession(ctx, successSessionID)
+		if err != nil {
+			return err
+		}
+		s := snapshot.Build(snapshot.BuildInput{
+			TaskID:    task.TaskID,
+			SessionID: successSessionID,
+			Work:      w,
+			ShareBase: shareBase,
+		})
+		if err := snapshot.Render(stdout, stderr, s, format); err != nil {
+			return err
+		}
+
+		if !flagCreateExport || !s.Preview.Ready {
+			return nil
+		}
+
+		ok, err := cmdutil.Confirm(cmdutil.ConfirmOptions{
+			Prompt: i18n.T("export.confirm_prompt"),
+			Yes:    flagCreateYes,
+		})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(stderr, i18n.T("export.cancelled"))
+			return nil
+		}
+
+		expID, err := fc.ExportVideo(ctx, successSessionID)
+		if err != nil {
+			fmt.Fprintln(stderr, i18n.T("export.failed", err.Error()))
+			os.Exit(7)
+		}
+		fmt.Fprintln(stderr, i18n.T("export.submitted", expID))
+
+		progressTTY := term.IsTerminal(int(os.Stderr.Fd()))
+		result, perr := exportpoll.PollExport(ctx, fc, expID, exportpoll.DefaultTimeout(), 0, func(ev exportpoll.Event) {
+			if ev.Status != snapshot.StatusRunning || !progressTTY {
+				return
+			}
+			if ev.ProgressMsg != "" {
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
+			} else {
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress_simple", ev.Progress))
+			}
+		})
+		if perr != nil {
+			fmt.Fprintln(stderr)
+			fmt.Fprintln(stderr, i18n.T("export.failed", perr.Error()))
+			os.Exit(7)
+		}
+
+		w2, err := fc.GetWorkBySession(ctx, successSessionID)
+		if err != nil {
+			return err
+		}
+		finalSnap := snapshot.Build(snapshot.BuildInput{
+			TaskID:       task.TaskID,
+			SessionID:    successSessionID,
+			Work:         w2,
+			Export:       result,
+			ExportTaskID: expID,
+			ShareBase:    shareBase,
+		})
+		if format == "text" || format == "" {
+			fmt.Fprintln(stderr)
+		}
+		if err := snapshot.Render(stdout, stderr, finalSnap, format); err != nil {
+			return err
+		}
+		if finalSnap.Export.Status == snapshot.StatusFailed {
+			os.Exit(7)
+		}
 		return nil
 	},
 }
@@ -408,18 +392,3 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 	}
 }
 
-func newCreateFiglensClient() (*figlens.Client, error) {
-	p, err := cliauth.CurrentProfile()
-	if err != nil {
-		return nil, err
-	}
-	tok, _, err := cliauth.ResolverFor(p).Resolve()
-	if err != nil {
-		return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
-	}
-	url, err := endpoints.Resolve(p, "figlens")
-	if err != nil {
-		return nil, err
-	}
-	return figlens.New(url, httpclient.StaticToken(tok)), nil
-}

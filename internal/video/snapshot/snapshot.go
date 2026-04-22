@@ -30,20 +30,17 @@ type Snapshot struct {
 }
 
 type Preview struct {
-	Ready         bool   `json:"ready"`
-	ShareURL      string `json:"share_url,omitempty"`
-	HTMLSignedURL string `json:"html_signed_url,omitempty"`
+	Ready    bool   `json:"ready"`
+	ShareURL string `json:"share_url,omitempty"`
 }
 
-// Export.Status is one of: idle, running, succeeded, failed.
 type Export struct {
-	Status         string `json:"status"`
-	ExportTaskID   string `json:"export_task_id,omitempty"`
-	Progress       int    `json:"progress,omitempty"`
-	ProgressMsg    string `json:"progress_msg,omitempty"`
-	VideoPath      string `json:"video_path,omitempty"`
-	VideoSignedURL string `json:"video_signed_url,omitempty"`
-	Error          string `json:"error,omitempty"`
+	Status       string `json:"status"`
+	ExportTaskID string `json:"export_task_id,omitempty"`
+	Progress     int    `json:"progress,omitempty"`
+	ProgressMsg  string `json:"progress_msg,omitempty"`
+	VideoPath    string `json:"video_path,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 type Action struct {
@@ -151,23 +148,32 @@ func RenderText(w, errW io.Writer, s Snapshot) {
 	if s.Export.VideoPath != "" {
 		fmt.Fprintf(w, "video_path=%s\n", s.Export.VideoPath)
 	}
-	if s.Export.VideoSignedURL != "" {
-		fmt.Fprintf(w, "video_signed_url=%s\n", s.Export.VideoSignedURL)
-	}
 	for _, a := range s.NextActions {
 		fmt.Fprintf(errW, "hint: %s — %s\n", a.Purpose, a.Command)
+	}
+}
+
+// Render writes the snapshot in the given output format. Callers pass
+// the same (w, errW, format) they already resolved for other output —
+// this is the one place the text/json/ndjson switch lives so new output
+// modes only need to be added in one place.
+func Render(w, errW io.Writer, s Snapshot, format string) error {
+	switch format {
+	case "json":
+		return RenderJSON(w, s)
+	case "ndjson":
+		return RenderNDJSON(w, s)
+	default:
+		RenderText(w, errW, s)
+		return nil
 	}
 }
 
 // RenderNDJSON emits the snapshot as a single NDJSON event line with
 // type="snapshot" so it can terminate an NDJSON stream of progress events.
 func RenderNDJSON(w io.Writer, s Snapshot) error {
-	b, err := json.Marshal(s)
+	m, err := toMap(s)
 	if err != nil {
-		return err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(b, &m); err != nil {
 		return err
 	}
 	m["type"] = "snapshot"
@@ -175,20 +181,28 @@ func RenderNDJSON(w io.Writer, s Snapshot) error {
 }
 
 // RenderJSON writes the snapshot as a JSON object via the shared output
-// writer, which stamps schema_version and handles HTML-escaping policy.
-// We round-trip through json.Marshal/Unmarshal because output.NewJSON's
-// Object method takes map[string]any; this keeps the schema_version
-// stamping behavior consistent with the rest of the CLI.
+// writer, which stamps schema_version.
 func RenderJSON(w io.Writer, s Snapshot) error {
-	b, err := json.Marshal(s)
+	m, err := toMap(s)
 	if err != nil {
 		return err
 	}
+	return output.NewJSON(w).Object(m)
+}
+
+// toMap serializes the snapshot via json round-trip so the shared
+// output writers (which take map[string]any and stamp schema_version /
+// ts) can consume a typed value.
+func toMap(s Snapshot) (map[string]any, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
 	var m map[string]any
 	if err := json.Unmarshal(b, &m); err != nil {
-		return err
+		return nil, err
 	}
-	return output.NewJSON(w).Object(m)
+	return m, nil
 }
 
 func formatDuration(ms int64) string {

@@ -1,9 +1,7 @@
 package video
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -28,8 +26,7 @@ var waitCmd = &cobra.Command{
 			return clerr.Validation("--session-id is required")
 		}
 
-		taskIDStr := args[0]
-		taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
+		taskID, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return clerr.Validationf("task_id must be an integer: %v", err)
 		}
@@ -39,15 +36,22 @@ var waitCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := context.Background()
+		ctx := cmd.Context()
 		format, _ := cmd.Flags().GetString("output")
-		isNDJSON := format == "ndjson"
+		stdout := cmd.OutOrStdout()
+		stderr := cmd.ErrOrStderr()
+
+		var emitEvent func(map[string]any) error
+		if format == "ndjson" {
+			w := output.NewNDJSON(stdout)
+			emitEvent = w.Event
+		}
 
 		var taskFailed, taskSucceeded bool
 		var successSessionID string
 
 		emit := func(ev figlens.StreamEvent) {
-			if isNDJSON {
+			if emitEvent != nil {
 				out := map[string]any{
 					"type":    ev.Type,
 					"stage":   ev.Stage,
@@ -57,19 +61,19 @@ var waitCmd = &cobra.Command{
 				if ev.SessionID != "" {
 					out["session_id"] = ev.SessionID
 				}
-				_ = output.NewNDJSON(cmd.OutOrStdout()).Event(out)
+				_ = emitEvent(out)
 			} else {
 				switch ev.Type {
 				case "node.started":
-					fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Node)
+					fmt.Fprintf(stderr, "[%s] started\n", ev.Node)
 				case "node.succeeded":
-					fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Node)
+					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
 				case "node.failed":
-					fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
+					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
 				case "task.succeeded":
-					fmt.Fprintf(os.Stderr, "task succeeded\n")
+					fmt.Fprintf(stderr, "task succeeded\n")
 				case "task.failed":
-					fmt.Fprintf(os.Stderr, "task failed: %s\n", ev.Message)
+					fmt.Fprintf(stderr, "task failed: %s\n", ev.Message)
 				}
 			}
 
@@ -91,37 +95,26 @@ var waitCmd = &cobra.Command{
 			Query:     "",
 		}, emit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "stream interrupted: %s\n", err)
-			os.Exit(6)
+			return clerr.Newf("stream interrupted: %s", err).WithCode(6)
 		}
 		if taskFailed {
-			os.Exit(5)
+			return clerr.Newf("task failed").WithCode(5)
 		}
 		if !taskSucceeded {
 			return nil
 		}
 
-		// Fetch work + render final payload.
 		w, err := c.GetWorkBySession(ctx, successSessionID)
 		if err != nil {
 			return err
 		}
-
 		s := snapshot.Build(snapshot.BuildInput{
 			TaskID:    taskID,
 			SessionID: successSessionID,
 			Work:      w,
 			ShareBase: cmdutil.ShareBaseURL(),
 		})
-
-		if isNDJSON {
-			return snapshot.RenderNDJSON(cmd.OutOrStdout(), s)
-		}
-		if format == "json" {
-			return snapshot.RenderJSON(cmd.OutOrStdout(), s)
-		}
-		snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
-		return nil
+		return snapshot.Render(stdout, stderr, s, format)
 	},
 }
 
