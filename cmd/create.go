@@ -17,6 +17,7 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -28,6 +29,8 @@ var (
 	flagCreateVoiceID string
 	flagCreatePrompt  string
 	flagCreateAsync   bool
+	flagCreateExport  bool
+	flagCreateYes     bool
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -198,6 +201,63 @@ var createCmd = &cobra.Command{
 			} else {
 				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
 			}
+
+			// Step 7: optional export chain.
+			if flagCreateExport && s.Preview.Ready {
+				ok, cerr := cmdutil.Confirm(cmdutil.ConfirmOptions{
+					Prompt: i18n.T("export.confirm_prompt"),
+					Yes:    flagCreateYes,
+				})
+				if cerr != nil {
+					return cerr
+				}
+				if !ok {
+					fmt.Fprintln(os.Stderr, i18n.T("export.cancelled"))
+					return nil
+				}
+
+				expID, err := fc.ExportVideo(ctx, successSessionID)
+				if err != nil {
+					// Submit failed but preview is good → partial success.
+					fmt.Fprintln(os.Stderr, i18n.T("export.failed", err.Error()))
+					os.Exit(7)
+				}
+				fmt.Fprintln(os.Stderr, i18n.T("export.submitted", expID))
+
+				result, perr := exportpoll.PollExport(ctx, fc, expID, 15*time.Minute, 0, func(ev exportpoll.Event) {
+					if ev.Status == snapshot.StatusRunning && term.IsTerminal(int(os.Stderr.Fd())) {
+						if ev.ProgressMsg != "" {
+							fmt.Fprintf(os.Stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
+						} else {
+							fmt.Fprintf(os.Stderr, "\r%s", i18n.T("export.progress_simple", ev.Progress))
+						}
+					}
+				})
+				if perr != nil {
+					fmt.Fprintln(os.Stderr)
+					fmt.Fprintln(os.Stderr, i18n.T("export.failed", perr.Error()))
+					os.Exit(7)
+				}
+
+				// Rebuild snapshot with export result + re-emit.
+				w2, werr := fc.GetWorkBySession(ctx, successSessionID)
+				if werr != nil {
+					return werr
+				}
+				finalSnap := snapshot.Build(snapshot.BuildInput{
+					TaskID:       task.TaskID,
+					SessionID:    successSessionID,
+					Work:         w2,
+					Export:       result,
+					ExportTaskID: expID,
+					ShareBase:    cmdutil.ShareBaseURL(),
+				})
+				if format == "json" {
+					return snapshot.RenderJSON(cmd.OutOrStdout(), finalSnap)
+				}
+				fmt.Fprintln(os.Stderr)
+				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), finalSnap)
+			}
 		}
 
 		return nil
@@ -209,6 +269,8 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice template ID")
 	createCmd.Flags().StringVar(&flagCreatePrompt, "prompt", "", "custom prompt for video generation (default: auto-generated)")
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
+	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")
+	createCmd.Flags().BoolVarP(&flagCreateYes, "yes", "y", false, "skip export confirmation prompt")
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
