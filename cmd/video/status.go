@@ -2,62 +2,53 @@ package video
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/clerr"
-	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var flagStatusSessionID string
 
 var statusCmd = &cobra.Command{
 	Use:   "status <task_id>",
-	Short: "get video task status",
+	Short: "full snapshot: preview state + export state + next_actions",
 	Args:  cobra.ExactArgs(1),
+	Example: `  vk video status 123 --session-id sess_xxx
+  vk video status 123 --session-id sess_xxx --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagStatusSessionID == "" {
 			return clerr.Validation("--session-id is required")
+		}
+		taskID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return clerr.Validationf("task_id must be an integer: %v", err)
 		}
 
 		c, err := newFiglensClient()
 		if err != nil {
 			return err
 		}
-
-		w, err := c.GetWorkBySession(context.Background(), flagStatusSessionID)
+		work, err := c.GetWorkBySession(context.Background(), flagStatusSessionID)
 		if err != nil {
 			return err
 		}
 
+		s := snapshot.Build(snapshot.BuildInput{
+			TaskID:    taskID,
+			SessionID: flagStatusSessionID,
+			Work:      work,
+			ShareBase: cmdutil.ShareBaseURL(),
+		})
+
 		format, _ := cmd.Flags().GetString("output")
 		if format == "json" {
-			payload := map[string]any{
-				"task_id":    args[0],
-				"session_id": flagStatusSessionID,
-				"work_id":    w.ID,
-				"title":      w.Title,
-			}
-			if w.VideoPath != "" {
-				payload["video_path"] = w.VideoPath
-			}
-			if w.Duration > 0 {
-				payload["duration"] = w.Duration
-			}
-			return output.NewJSON(cmd.OutOrStdout()).Object(payload)
+			return snapshot.RenderJSON(cmd.OutOrStdout(), s)
 		}
-
-		fmt.Printf("task_id=%s\n", args[0])
-		fmt.Printf("session_id=%s\n", flagStatusSessionID)
-		fmt.Printf("work_id=%d\n", w.ID)
-		fmt.Printf("title=%s\n", w.Title)
-		if w.VideoPath != "" {
-			fmt.Printf("video_path=%s\n", w.VideoPath)
-		}
-		if w.Duration > 0 {
-			fmt.Printf("duration=%d\n", w.Duration)
-		}
+		snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
 		return nil
 	},
 }
