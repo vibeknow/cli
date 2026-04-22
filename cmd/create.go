@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
@@ -133,6 +135,9 @@ var createCmd = &cobra.Command{
 		// Step 5: stream with progress.
 		fmt.Fprintln(os.Stderr, i18n.T("create.generating", task.TaskID, task.SessionID))
 
+		format, _ := cmd.Flags().GetString("output")
+		isNDJSONCreate := format == "ndjson"
+
 		var taskFailed bool
 		var successSessionID string
 
@@ -145,24 +150,45 @@ var createCmd = &cobra.Command{
 			VoiceID:     flagCreateVoiceID,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
-			case "node.started":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
-			case "node.succeeded":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
-			case "node.failed":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
+			case "node.started", "node.succeeded", "node.failed":
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": ev.Type, "stage": ev.Stage, "node": ev.Node, "message": ev.Message,
+					})
+				} else {
+					switch ev.Type {
+					case "node.started":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
+					case "node.succeeded":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
+					case "node.failed":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
+					}
+				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
 					successSessionID = task.SessionID
 				}
-				fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": "task.succeeded", "session_id": ev.SessionID,
+					})
+				} else {
+					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
+				}
 			case "task.failed":
 				taskFailed = true
-				if strings.Contains(ev.Message, "insufficient_credits") {
-					fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": "task.failed", "message": ev.Message,
+					})
 				} else {
-					fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
+					if strings.Contains(ev.Message, "insufficient_credits") {
+						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+					} else {
+						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
+					}
 				}
 			}
 		})
@@ -193,9 +219,16 @@ var createCmd = &cobra.Command{
 				ShareBase: cmdutil.ShareBaseURL(),
 			})
 
-			format, _ := cmd.Flags().GetString("output")
 			if format == "json" {
 				if err := snapshot.RenderJSON(cmd.OutOrStdout(), s); err != nil {
+					return err
+				}
+			} else if format == "ndjson" {
+				b, _ := json.Marshal(s)
+				var m map[string]any
+				_ = json.Unmarshal(b, &m)
+				m["type"] = "snapshot"
+				if err := output.NewNDJSON(cmd.OutOrStdout()).Event(m); err != nil {
 					return err
 				}
 			} else {
@@ -254,6 +287,12 @@ var createCmd = &cobra.Command{
 				})
 				if format == "json" {
 					return snapshot.RenderJSON(cmd.OutOrStdout(), finalSnap)
+				} else if format == "ndjson" {
+					b, _ := json.Marshal(finalSnap)
+					var m map[string]any
+					_ = json.Unmarshal(b, &m)
+					m["type"] = "snapshot"
+					return output.NewNDJSON(cmd.OutOrStdout()).Event(m)
 				}
 				fmt.Fprintln(os.Stderr)
 				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), finalSnap)
