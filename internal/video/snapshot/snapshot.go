@@ -131,7 +131,10 @@ func deriveExport(in BuildInput) Export {
 // errW. Ordering: IDs → title/duration → share_url (its own line) → blank →
 // hints from next_actions. Agents parsing stdout can grep for share_url=.
 func RenderText(w, errW io.Writer, s Snapshot) {
-	fmt.Fprintf(w, "task_id=%d session_id=%s", s.TaskID, s.SessionID)
+	if s.TaskID != 0 {
+		fmt.Fprintf(w, "task_id=%d ", s.TaskID)
+	}
+	fmt.Fprintf(w, "session_id=%s", s.SessionID)
 	if s.WorkID != 0 {
 		fmt.Fprintf(w, " work_id=%d", s.WorkID)
 	}
@@ -215,10 +218,13 @@ func formatDuration(ms int64) string {
 }
 
 func nextActions(s Snapshot, in BuildInput) []Action {
-	if in.TaskID == 0 {
-		return nil
+	// Build the shared argument suffix. task_id is omitted when unknown
+	// (e.g. when the caller came from `list` → `status` with only a
+	// session_id in hand); the video subcommands accept session_id alone.
+	base := "--session-id " + in.SessionID
+	if in.TaskID != 0 {
+		base = fmt.Sprintf("%d --session-id %s", in.TaskID, in.SessionID)
 	}
-	base := fmt.Sprintf("%d --session-id %s", in.TaskID, in.SessionID)
 	switch {
 	case !s.Preview.Ready:
 		return []Action{{

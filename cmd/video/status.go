@@ -14,18 +14,22 @@ import (
 var flagStatusSessionID string
 
 var statusCmd = &cobra.Command{
-	Use:   "status <task_id>",
+	Use:   "status [task_id]",
 	Short: "full snapshot: preview state + export state + next_actions",
-	Args:  cobra.ExactArgs(1),
-	Example: `  vk video status 123 --session-id sess_xxx
+	Args:  cobra.MaximumNArgs(1),
+	Example: `  vk video status --session-id sess_xxx
   vk video status 123 --session-id sess_xxx --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagStatusSessionID == "" {
 			return clerr.Validation("--session-id is required")
 		}
-		taskID, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return clerr.Validationf("task_id must be an integer: %v", err)
+		var taskID int64
+		if len(args) == 1 {
+			parsed, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return clerr.Validationf("task_id must be an integer: %v", err)
+			}
+			taskID = parsed
 		}
 
 		c, err := newFiglensClient()

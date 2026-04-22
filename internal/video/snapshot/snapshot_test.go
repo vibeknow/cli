@@ -139,13 +139,23 @@ func TestBuild_ExportRunningFromExportResult_PopulatesProgress(t *testing.T) {
 	}
 }
 
-func TestBuild_NoNextActionsWhenTaskIDZero(t *testing.T) {
+func TestBuild_NextActionsOmitTaskIDWhenZero(t *testing.T) {
+	// When task_id is unknown (e.g. caller came from `list` with only a
+	// session_id in hand), the next_actions should still render but omit
+	// the task_id positional so the command is valid as-is.
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID: 0, SessionID: "s_1",
 		Work: &figlens.Work{ShareToken: "t"},
 	})
-	if len(s.NextActions) != 0 {
-		t.Fatalf("expected no next_actions when TaskID=0, got %+v", s.NextActions)
+	if len(s.NextActions) == 0 {
+		t.Fatal("expected next_actions even when TaskID=0")
+	}
+	cmd := s.NextActions[0].Command
+	if !strings.Contains(cmd, "--session-id s_1") {
+		t.Fatalf("expected --session-id in command, got %q", cmd)
+	}
+	if strings.Contains(cmd, " 0 ") || strings.HasSuffix(cmd, " 0") {
+		t.Fatalf("expected task_id=0 to be omitted, got %q", cmd)
 	}
 }
 

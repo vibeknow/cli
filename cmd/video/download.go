@@ -21,10 +21,10 @@ var (
 )
 
 var downloadCmd = &cobra.Command{
-	Use:   "download <task_id>",
+	Use:   "download [task_id]",
 	Short: "download the rendered MP4 for a task (export must already be complete)",
-	Args:  cobra.ExactArgs(1),
-	Example: `  vk video download 123 --session-id sess_xxx
+	Args:  cobra.MaximumNArgs(1),
+	Example: `  vk video download --session-id sess_xxx
   vk video download 123 --session-id sess_xxx --output out.mp4 --overwrite`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagDownloadSessionID == "" {
@@ -43,7 +43,7 @@ var downloadCmd = &cobra.Command{
 		}
 		if w.VideoPath == "" {
 			return clerr.Validation(i18n.T("download.not_exported")).
-				WithHint(i18n.T("download.not_exported.hint", args[0], flagDownloadSessionID))
+				WithHint(i18n.T("download.not_exported.hint", flagDownloadSessionID))
 		}
 
 		signedURL, err := c.SignedURL(ctx, w.VideoPath)

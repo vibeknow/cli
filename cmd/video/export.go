@@ -32,11 +32,11 @@ var (
 )
 
 var exportCmd = &cobra.Command{
-	Use:   "export <task_id>",
+	Use:   "export [task_id]",
 	Short: "render the MP4 for a work (~several minutes, extra credits)",
-	Args:  cobra.ExactArgs(1),
-	Example: `  vk video export 123 --session-id sess_xxx
-  vk video export 123 --session-id sess_xxx --async
+	Args:  cobra.MaximumNArgs(1),
+	Example: `  vk video export --session-id sess_xxx
+  vk video export --session-id sess_xxx --async
   vk video export 123 --session-id sess_xxx --yes --timeout 20m`,
 	RunE: runExport,
 }
@@ -45,9 +45,13 @@ func runExport(cmd *cobra.Command, args []string) error {
 	if flagExportSessionID == "" {
 		return clerr.Validation("--session-id is required")
 	}
-	taskID, err := strconv.ParseInt(args[0], 10, 64)
-	if err != nil {
-		return clerr.Validationf("task_id must be an integer: %v", err)
+	var taskID int64
+	if len(args) == 1 {
+		parsed, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return clerr.Validationf("task_id must be an integer: %v", err)
+		}
+		taskID = parsed
 	}
 	c, err := newFiglensClient()
 	if err != nil {

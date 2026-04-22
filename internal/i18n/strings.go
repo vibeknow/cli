@@ -107,7 +107,7 @@ func init() {
 
 		// download
 		"download.not_exported":      "MP4 not ready for this work",
-		"download.not_exported.hint": "run `vk video export %s --session-id %s` first, then retry download",
+		"download.not_exported.hint": "run `vk video export --session-id %s` first, then retry download",
 
 		// export
 		"export.confirm_prompt":  "About to render MP4 (~several minutes, consumes 1 export credit). Continue?",
@@ -236,7 +236,7 @@ func init() {
 
 		// download
 		"download.not_exported":      "该作品尚未导出 MP4",
-		"download.not_exported.hint": "先跑 `vk video export %s --session-id %s`，再重试下载",
+		"download.not_exported.hint": "先跑 `vk video export --session-id %s`，再重试下载",
 
 		// export
 		"export.confirm_prompt":  "即将渲染 MP4（约数分钟，消耗 1 次导出积分）。继续？",
