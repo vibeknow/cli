@@ -17,7 +17,7 @@ type stubClient struct {
 	err error
 }
 
-func (s *stubClient) GetExportResult(ctx context.Context, _ string) (*figlens.ExportResult, error) {
+func (s *stubClient) GetExportResult(ctx context.Context, _ int64) (*figlens.ExportResult, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -32,7 +32,7 @@ func (s *stubClient) GetExportResult(ctx context.Context, _ string) (*figlens.Ex
 func TestPollExport_SucceedsOnCompleted(t *testing.T) {
 	c := &stubClient{seq: []figlens.ExportResult{{Status: "completed", VideoPath: "v.mp4"}}}
 	var events []exportpoll.Event
-	r, err := exportpoll.PollExport(context.Background(), c, "exp", time.Minute, time.Nanosecond, func(e exportpoll.Event) {
+	r, err := exportpoll.PollExport(context.Background(), c, 424242, time.Minute, time.Nanosecond, func(e exportpoll.Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -53,7 +53,7 @@ func TestPollExport_TransitionsRunningThenSucceeded(t *testing.T) {
 		{Status: "completed", VideoPath: "final.mp4"},
 	}}
 	var events []exportpoll.Event
-	_, err := exportpoll.PollExport(context.Background(), c, "exp", time.Minute, time.Nanosecond, func(e exportpoll.Event) {
+	_, err := exportpoll.PollExport(context.Background(), c, 424242, time.Minute, time.Nanosecond, func(e exportpoll.Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -76,7 +76,7 @@ func TestPollExport_TransitionsRunningThenSucceeded(t *testing.T) {
 func TestPollExport_EmitsFailedEvent(t *testing.T) {
 	c := &stubClient{seq: []figlens.ExportResult{{Status: "failed", Error: "render died"}}}
 	var events []exportpoll.Event
-	r, err := exportpoll.PollExport(context.Background(), c, "exp", time.Minute, time.Nanosecond, func(e exportpoll.Event) {
+	r, err := exportpoll.PollExport(context.Background(), c, 424242, time.Minute, time.Nanosecond, func(e exportpoll.Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -93,7 +93,7 @@ func TestPollExport_EmitsFailedEvent(t *testing.T) {
 func TestPollExport_TimeoutReturnsErrTimeout(t *testing.T) {
 	// Client keeps returning "running" forever; deadline fires first.
 	c := &stubClient{seq: []figlens.ExportResult{{Status: "processing", Progress: 5}}}
-	_, err := exportpoll.PollExport(context.Background(), c, "exp", 5*time.Millisecond, time.Millisecond, func(e exportpoll.Event) {})
+	_, err := exportpoll.PollExport(context.Background(), c, 424242, 5*time.Millisecond, time.Millisecond, func(e exportpoll.Event) {})
 	if !errors.Is(err, exportpoll.ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
 	}
@@ -103,7 +103,7 @@ func TestPollExport_ContextCancelled(t *testing.T) {
 	c := &stubClient{seq: []figlens.ExportResult{{Status: "processing"}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := exportpoll.PollExport(ctx, c, "exp", time.Minute, time.Millisecond, func(e exportpoll.Event) {})
+	_, err := exportpoll.PollExport(ctx, c, 424242, time.Minute, time.Millisecond, func(e exportpoll.Event) {})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}

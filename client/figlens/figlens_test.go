@@ -83,7 +83,7 @@ func TestGetWorkBySession(t *testing.T) {
 
 func TestExportVideo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		figlensResp(w, map[string]any{"task_id": "export_1"})
+		figlensResp(w, map[string]any{"task_id": 424242})
 	}))
 	defer srv.Close()
 
@@ -92,8 +92,8 @@ func TestExportVideo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportVideo: %v", err)
 	}
-	if exportID != "export_1" {
-		t.Fatalf("export_id = %q", exportID)
+	if exportID != 424242 {
+		t.Fatalf("export_id = %d", exportID)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestGetExportResult(t *testing.T) {
 	defer srv.Close()
 
 	c := figlens.New(srv.URL, staticToken("tok"))
-	result, err := c.GetExportResult(context.Background(), "export_1")
+	result, err := c.GetExportResult(context.Background(), 424242)
 	if err != nil {
 		t.Fatalf("GetExportResult: %v", err)
 	}

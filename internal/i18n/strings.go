@@ -112,14 +112,14 @@ func init() {
 		// export
 		"export.confirm_prompt":  "About to render MP4 (~several minutes, consumes 1 export credit). Continue?",
 		"export.cancelled":       "cancelled by user",
-		"export.submitted":       "export submitted: task_id=%s",
+		"export.submitted":       "export submitted: task_id=%d",
 		"export.progress":        "exporting: %d%% — %s",
 		"export.progress_simple": "exporting: %d%%",
 		"export.succeeded":       "export complete",
 		"export.failed":          "export failed: %s",
 		"export.timeout":         "export did not finish within %s; it continues running remotely",
-		"export.sigint_detach":   "detached from export; it continues running remotely. Re-attach with: vk video export-status %s --session-id %s",
-		"export.reattach_hint":   "re-attach with: vk video export-status %s --session-id %s",
+		"export.sigint_detach":   "detached from export; it continues running remotely. Re-attach with: vk video export-status %d --session-id %s",
+		"export.reattach_hint":   "re-attach with: vk video export-status %d --session-id %s",
 
 		// update / upgrade notice
 		"update.available":   "A newer version %s is available (you have %s). Run `npm update -g vibeknow-cli` to upgrade.",
@@ -241,14 +241,14 @@ func init() {
 		// export
 		"export.confirm_prompt":  "即将渲染 MP4（约数分钟，消耗 1 次导出积分）。继续？",
 		"export.cancelled":       "已取消",
-		"export.submitted":       "导出任务已提交: task_id=%s",
+		"export.submitted":       "导出任务已提交: task_id=%d",
 		"export.progress":        "导出中: %d%% — %s",
 		"export.progress_simple": "导出中: %d%%",
 		"export.succeeded":       "导出完成",
 		"export.failed":          "导出失败: %s",
 		"export.timeout":         "导出在 %s 内未完成；远端仍在渲染",
-		"export.sigint_detach":   "已断开；远端仍在渲染。重新连接: vk video export-status %s --session-id %s",
-		"export.reattach_hint":   "重新连接: vk video export-status %s --session-id %s",
+		"export.sigint_detach":   "已断开；远端仍在渲染。重新连接: vk video export-status %d --session-id %s",
+		"export.reattach_hint":   "重新连接: vk video export-status %d --session-id %s",
 
 		// update / upgrade notice
 		"update.available":   "新版本 %s 可用（当前 %s），运行 `npm update -g vibeknow-cli` 升级。",

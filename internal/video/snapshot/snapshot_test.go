@@ -125,7 +125,7 @@ func TestBuild_ExportRunningFromExportResult_PopulatesProgress(t *testing.T) {
 		SessionID:    "s_1",
 		Work:         &figlens.Work{ShareToken: "t"},
 		Export:       &figlens.ExportResult{Status: "processing", Progress: 47, ProgressMsg: "rendering"},
-		ExportTaskID: "exp_7",
+		ExportTaskID: 77007,
 		ShareBase:    "https://vibeknow.com/share",
 	})
 	if s.Export.Status != snapshot.StatusRunning {
@@ -134,8 +134,8 @@ func TestBuild_ExportRunningFromExportResult_PopulatesProgress(t *testing.T) {
 	if s.Export.Progress != 47 || s.Export.ProgressMsg != "rendering" {
 		t.Fatalf("progress fields = %+v", s.Export)
 	}
-	if s.Export.ExportTaskID != "exp_7" {
-		t.Fatalf("export_task_id = %q", s.Export.ExportTaskID)
+	if s.Export.ExportTaskID != 77007 {
+		t.Fatalf("export_task_id = %d", s.Export.ExportTaskID)
 	}
 }
 

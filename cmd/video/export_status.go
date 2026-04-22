@@ -2,6 +2,7 @@ package video
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -15,13 +16,16 @@ var exportStatusCmd = &cobra.Command{
 	Use:   "export-status <export_task_id>",
 	Short: "poll a specific export task by its export_task_id",
 	Args:  cobra.ExactArgs(1),
-	Example: `  vk video export-status exp_1 --session-id sess_xxx
-  vk video export-status exp_1 --session-id sess_xxx --output json`,
+	Example: `  vk video export-status 424242 --session-id sess_xxx
+  vk video export-status 424242 --session-id sess_xxx --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagExportStatusSessionID == "" {
 			return clerr.Validation("--session-id is required")
 		}
-		exportTaskID := args[0]
+		exportTaskID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return clerr.Validationf("export_task_id must be an integer: %v", err)
+		}
 
 		c, err := newFiglensClient()
 		if err != nil {

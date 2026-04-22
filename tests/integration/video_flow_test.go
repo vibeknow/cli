@@ -128,7 +128,7 @@ func TestExport_AsyncReturnsImmediately(t *testing.T) {
 		case r.URL.Path == "/v1/agent2forVideo/exportRemoteV2":
 			json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
-				"data": map[string]any{"task_id": "exp_7"},
+				"data": map[string]any{"task_id": 77007},
 			})
 		case r.URL.Path == "/v1/agent2forVideo/exportResultV2":
 			atomic.AddInt32(&resultCalled, 1)
@@ -174,13 +174,13 @@ func TestExport_AsyncReturnsImmediately(t *testing.T) {
 		t.Fatalf("stdout is not valid JSON: %v\nstdout:\n%s", err, stdout)
 	}
 
-	// export.export_task_id == "exp_7"
+	// export.export_task_id == 77007
 	exportObj, ok := result["export"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected 'export' object in JSON, got:\n%s", stdout)
 	}
-	if got := exportObj["export_task_id"]; got != "exp_7" {
-		t.Errorf("expected export_task_id=exp_7, got %v\nstdout:\n%s", got, stdout)
+	if got, _ := exportObj["export_task_id"].(float64); int64(got) != 77007 {
+		t.Errorf("expected export_task_id=77007, got %v\nstdout:\n%s", exportObj["export_task_id"], stdout)
 	}
 
 	// export.status == "running" (derived from work.exporting==1, no ExportResult).
@@ -209,7 +209,7 @@ func TestExport_NDJSON(t *testing.T) {
 		case r.URL.Path == "/v1/agent2forVideo/exportRemoteV2":
 			json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
-				"data": map[string]any{"task_id": "exp_ndjson"},
+				"data": map[string]any{"task_id": 77008},
 			})
 		case r.URL.Path == "/v1/agent2forVideo/exportResultV2":
 			n := atomic.AddInt32(&exportCallCount, 1)
@@ -353,7 +353,7 @@ func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
 				},
 			})
 		case "/v1/agent2forVideo/exportRemoteV2":
-			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"task_id": "exp_partial"}})
+			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"task_id": 77009}})
 		case "/v1/agent2forVideo/exportResultV2":
 			json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,

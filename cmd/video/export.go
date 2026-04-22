@@ -128,7 +128,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}, c)
 }
 
-func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID string, ev exportpoll.Event) {
+func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID int64, ev exportpoll.Event) {
 	if emitNDJSON != nil {
 		out := map[string]any{
 			"type":           eventType(ev.Status),

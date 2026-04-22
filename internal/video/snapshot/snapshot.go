@@ -36,7 +36,7 @@ type Preview struct {
 
 type Export struct {
 	Status       string `json:"status"`
-	ExportTaskID string `json:"export_task_id,omitempty"`
+	ExportTaskID int64  `json:"export_task_id,omitempty"`
 	Progress     int    `json:"progress,omitempty"`
 	ProgressMsg  string `json:"progress_msg,omitempty"`
 	VideoPath    string `json:"video_path,omitempty"`
@@ -73,7 +73,7 @@ type BuildInput struct {
 	SessionID    string
 	Work         *figlens.Work
 	Export       *figlens.ExportResult
-	ExportTaskID string
+	ExportTaskID int64
 	ShareBase    string
 }
 
@@ -113,9 +113,17 @@ func deriveExport(in BuildInput) Export {
 			e.Progress = in.Export.Progress
 			e.ProgressMsg = in.Export.ProgressMsg
 		}
+		return e
 	}
-	// Fall back to the work row's flag/path when no ExportResult provided.
-	if e.Status == StatusIdle && in.Work != nil {
+	// Caller submitted a fresh export but didn't fetch its result (e.g.
+	// --async). Trust the caller: the job is in flight, not whatever the
+	// (potentially stale) work row shows.
+	if in.ExportTaskID != 0 {
+		e.Status = StatusRunning
+		return e
+	}
+	// Fall back to the work row's flag/path when neither signal was given.
+	if in.Work != nil {
 		switch {
 		case in.Work.VideoPath != "":
 			e.Status = StatusSucceeded

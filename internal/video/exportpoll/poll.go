@@ -39,7 +39,7 @@ var ErrTimeout = errors.New("exportpoll: timeout")
 
 // Client is the minimal figlens surface PollExport needs.
 type Client interface {
-	GetExportResult(ctx context.Context, exportTaskID string) (*figlens.ExportResult, error)
+	GetExportResult(ctx context.Context, exportTaskID int64) (*figlens.ExportResult, error)
 }
 
 // PollExport polls the backend until the export reaches a terminal state
@@ -52,7 +52,7 @@ type Client interface {
 func PollExport(
 	ctx context.Context,
 	c Client,
-	exportTaskID string,
+	exportTaskID int64,
 	timeout time.Duration,
 	fixedInterval time.Duration,
 	onEvent func(Event),
