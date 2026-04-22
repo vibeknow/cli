@@ -13,4 +13,5 @@ func init() {
 	Cmd.AddCommand(downloadCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(urlCmd)
+	Cmd.AddCommand(exportCmd)
 }
