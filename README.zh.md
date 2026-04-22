@@ -178,6 +178,31 @@ vibeknow video wait <task_id> --session-id <session_id>
 vibeknow video download <task_id> --session-id <session_id>
 ```
 
+### 生成可分享的视频
+
+```
+$ vk create --from ./slides.pdf
+…
+share_url=https://vibeknow.com/share/tok_abc
+hint: Render MP4 (several minutes, extra credits) — vk video export 42 --session-id sess_xxx
+```
+
+pipeline 跑完后进入**预览阶段**：`share_url` 是一个可直接在浏览器里
+播放最终视频的分享页，拿到就能发给任何人。
+
+### （可选）导出可下载的 MP4
+
+```
+$ vk video export 42 --session-id sess_xxx --yes
+exporting: 72% — rendering frames
+export complete
+
+$ vk video download 42 --session-id sess_xxx
+output=sess_xxx.mp4
+```
+
+或者一键搞定：`vk create --from ... --export --yes`。
+
 ### 音色模板
 
 ```bash

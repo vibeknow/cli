@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.0 — 2026-04-22
+
+### Breaking
+
+- `vk video download` no longer auto-triggers export. If the MP4 is not
+  yet rendered, it now exits 2 with a hint pointing to `vk video export`.
+  Migrate: replace `vk video download <id> --session-id <sess>` with
+  `vk video export <id> --session-id <sess> && vk video download <id> --session-id <sess>`.
+- Text-mode `duration=` changes from raw milliseconds to human-readable
+  (`duration=42s`). JSON `duration_ms` remains ms. Scripts parsing
+  `duration=` as an int must switch to `--output json`.
+
+### New
+
+- `vk video export` renders the MP4 as an explicit step. Supports
+  `--async`, `--yes`, `--timeout`, `--poll-interval`.
+- `vk video export-status <export_task_id>` polls a specific export.
+- `vk create --export` chains preview + export in one call. Exits
+  **7** on partial success (preview ready, export failed).
+- `vk video status` now returns a complete snapshot: preview state,
+  export state, and `next_actions` hints.
+- `--output ndjson` on `create` / `wait` / `export` streams one event
+  per line for agent consumers.
+- `VIBEKNOW_ASSUME_YES=1` / `--yes` skip confirmation prompts on paid
+  operations.
+
+### Fixed
+
+- `vk create` no longer prints empty `video_path=` / `video_url=` lines
+  at preview time. The pipeline's `share_url` (HTML preview page) is
+  now the primary output.
+
 ## [0.3.3] — 2026-04-18
 ### Added
 - All user-visible strings now route through the i18n table (`VIBEKNOW_LANG=en|zh`). Previously ~30 strings across `init`, `auth login/status/whoami`, `create`, `credits`, `video list`, and upgrade notices were hardcoded in Chinese and ignored the locale flag.
