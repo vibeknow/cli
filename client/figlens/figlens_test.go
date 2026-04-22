@@ -49,8 +49,12 @@ func TestGetWorkBySession(t *testing.T) {
 			t.Fatalf("unexpected session_id query param")
 		}
 		figlensResp(w, map[string]any{
-			"id": 456, "title": "Test Video", "video_path": "/videos/test.mp4",
-			"cover_url": "https://cover.jpg", "duration": 120,
+			"id": 456, "session_id": "s_abc", "title": "Test Video",
+			"html_path": "works/foo/index.html",
+			"video_path": "/videos/test.mp4",
+			"cover_url": "https://cover.jpg",
+			"share_token": "tok_xyz", "exporting": 1,
+			"duration": 120,
 		})
 	}))
 	defer srv.Close()
@@ -62,6 +66,18 @@ func TestGetWorkBySession(t *testing.T) {
 	}
 	if work.ID != 456 || work.Duration != 120 {
 		t.Fatalf("work = %+v", work)
+	}
+	if work.SessionID != "s_abc" {
+		t.Fatalf("session_id = %q", work.SessionID)
+	}
+	if work.HtmlPath != "works/foo/index.html" {
+		t.Fatalf("html_path = %q", work.HtmlPath)
+	}
+	if work.ShareToken != "tok_xyz" {
+		t.Fatalf("share_token = %q", work.ShareToken)
+	}
+	if work.Exporting != 1 {
+		t.Fatalf("exporting = %d", work.Exporting)
 	}
 }
 
