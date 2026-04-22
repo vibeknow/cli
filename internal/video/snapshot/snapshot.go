@@ -159,6 +159,21 @@ func RenderText(w, errW io.Writer, s Snapshot) {
 	}
 }
 
+// RenderNDJSON emits the snapshot as a single NDJSON event line with
+// type="snapshot" so it can terminate an NDJSON stream of progress events.
+func RenderNDJSON(w io.Writer, s Snapshot) error {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	m["type"] = "snapshot"
+	return output.NewNDJSON(w).Event(m)
+}
+
 // RenderJSON writes the snapshot as a JSON object via the shared output
 // writer, which stamps schema_version and handles HTML-escaping policy.
 // We round-trip through json.Marshal/Unmarshal because output.NewJSON's
@@ -186,6 +201,9 @@ func formatDuration(ms int64) string {
 }
 
 func nextActions(s Snapshot, in BuildInput) []Action {
+	if in.TaskID == 0 {
+		return nil
+	}
 	base := fmt.Sprintf("%d --session-id %s", in.TaskID, in.SessionID)
 	switch {
 	case !s.Preview.Ready:

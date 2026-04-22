@@ -36,6 +36,31 @@ func TestRenderText_PreviewReady(t *testing.T) {
 	}
 }
 
+func TestRenderNDJSON_EmitsTerminalSnapshot(t *testing.T) {
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID: 42, SessionID: "s",
+		Work: &figlens.Work{ID: 9, ShareToken: "t"},
+	})
+	var buf bytes.Buffer
+	if err := snapshot.RenderNDJSON(&buf, s); err != nil {
+		t.Fatal(err)
+	}
+	// Parse the single line.
+	var decoded map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &decoded); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, buf.String())
+	}
+	if decoded["type"] != "snapshot" {
+		t.Fatalf("type = %v", decoded["type"])
+	}
+	if decoded["schema_version"] != "1" {
+		t.Fatalf("schema_version = %v", decoded["schema_version"])
+	}
+	if _, ok := decoded["preview"]; !ok {
+		t.Fatal("preview missing")
+	}
+}
+
 func TestRenderJSON_HasSchemaVersion(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID: 1, SessionID: "s", Work: &figlens.Work{ShareToken: "t"},

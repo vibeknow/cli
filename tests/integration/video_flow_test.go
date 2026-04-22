@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -311,5 +312,87 @@ func TestExport_NDJSON(t *testing.T) {
 		t.Errorf("expected 'export' object in last snapshot line\nfull stdout:\n%s", stdout)
 	} else if exportObj["status"] != "succeeded" {
 		t.Errorf("expected export.status=succeeded in snapshot, got %v\nfull stdout:\n%s", exportObj["status"], stdout)
+	}
+}
+
+// TestCreate_Export_PartialSuccess_Exits7 verifies that `vk create --export`
+// exits 7 when the export poll returns a failed status, while still having
+// emitted the preview snapshot to stdout beforehand.
+func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	figlens := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/tasks/init":
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": map[string]any{"task_id": 77, "session_id": "s_partial", "work_id": 78, "v": 3},
+			})
+		case "/v1/agent3forVideo/stream":
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher, _ := w.(http.Flusher)
+			for _, ev := range []string{
+				`data: {"code":200,"data":{"type":"aim_result","session_id":"s_partial"}}`,
+				`data: [DONE]`,
+			} {
+				fmt.Fprintln(w, ev)
+				fmt.Fprintln(w)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		case "/v1/works/detailBySession":
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"id": 78, "session_id": "s_partial", "title": "Partial",
+					"share_token": "tok_7", "html_path": "w/x.html", "duration": 10000,
+				},
+			})
+		case "/v1/agent2forVideo/exportRemoteV2":
+			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"task_id": "exp_partial"}})
+		case "/v1/agent2forVideo/exportResultV2":
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": map[string]any{"status": "failed", "error": "render died"},
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer figlens.Close()
+
+	xdgHome := buildVideoProfile(t, figlens.URL)
+	bin := build(t)
+
+	cmd := exec.Command(bin, "create",
+		"--from", "doc_abcdef12345678",
+		"--export", "--yes", "--output", "json",
+	)
+	cmd.Env = append(os.Environ(),
+		"VIBEKNOW_TOKEN=fake-token",
+		"XDG_CONFIG_HOME="+xdgHome,
+		"VIBEKNOW_EXPORT_TIMEOUT=10s",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run: %v\nstderr: %s", err, stderr.String())
+	}
+	if code != 7 {
+		t.Fatalf("expected exit 7, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	// Stdout should still contain the preview snapshot (share_url present).
+	if !strings.Contains(stdout.String(), `"share_url"`) {
+		t.Fatalf("expected share_url in stdout:\n%s", stdout.String())
 	}
 }

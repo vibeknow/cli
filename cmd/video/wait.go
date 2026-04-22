@@ -2,7 +2,6 @@ package video
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -108,29 +107,20 @@ var waitCmd = &cobra.Command{
 			return err
 		}
 
-		if isNDJSON {
-			s := snapshot.Build(snapshot.BuildInput{
-				TaskID:    taskID,
-				SessionID: successSessionID,
-				Work:      w,
-				ShareBase: cmdutil.ShareBaseURL(),
-			})
-			b, _ := json.Marshal(s)
-			var m map[string]any
-			_ = json.Unmarshal(b, &m)
-			m["type"] = "snapshot"
-			return output.NewNDJSON(cmd.OutOrStdout()).Event(m)
-		}
+		s := snapshot.Build(snapshot.BuildInput{
+			TaskID:    taskID,
+			SessionID: successSessionID,
+			Work:      w,
+			ShareBase: cmdutil.ShareBaseURL(),
+		})
 
-		// Text mode: preserve the existing key=value style.
-		fmt.Printf("work_id=%d\n", w.ID)
-		fmt.Printf("title=%s\n", w.Title)
-		if w.VideoPath != "" {
-			fmt.Printf("video_path=%s\n", w.VideoPath)
+		if isNDJSON {
+			return snapshot.RenderNDJSON(cmd.OutOrStdout(), s)
 		}
-		if w.Duration > 0 {
-			fmt.Printf("duration=%d\n", w.Duration)
+		if format == "json" {
+			return snapshot.RenderJSON(cmd.OutOrStdout(), s)
 		}
+		snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
 		return nil
 	},
 }

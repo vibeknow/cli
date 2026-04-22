@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -224,11 +223,7 @@ var createCmd = &cobra.Command{
 					return err
 				}
 			} else if format == "ndjson" {
-				b, _ := json.Marshal(s)
-				var m map[string]any
-				_ = json.Unmarshal(b, &m)
-				m["type"] = "snapshot"
-				if err := output.NewNDJSON(cmd.OutOrStdout()).Event(m); err != nil {
+				if err := snapshot.RenderNDJSON(cmd.OutOrStdout(), s); err != nil {
 					return err
 				}
 			} else {
@@ -257,7 +252,7 @@ var createCmd = &cobra.Command{
 				}
 				fmt.Fprintln(os.Stderr, i18n.T("export.submitted", expID))
 
-				result, perr := exportpoll.PollExport(ctx, fc, expID, 15*time.Minute, 0, func(ev exportpoll.Event) {
+				result, perr := exportpoll.PollExport(ctx, fc, expID, exportpoll.DefaultTimeout(), 0, func(ev exportpoll.Event) {
 					if ev.Status == snapshot.StatusRunning && term.IsTerminal(int(os.Stderr.Fd())) {
 						if ev.ProgressMsg != "" {
 							fmt.Fprintf(os.Stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
@@ -285,17 +280,25 @@ var createCmd = &cobra.Command{
 					ExportTaskID: expID,
 					ShareBase:    cmdutil.ShareBaseURL(),
 				})
-				if format == "json" {
-					return snapshot.RenderJSON(cmd.OutOrStdout(), finalSnap)
-				} else if format == "ndjson" {
-					b, _ := json.Marshal(finalSnap)
-					var m map[string]any
-					_ = json.Unmarshal(b, &m)
-					m["type"] = "snapshot"
-					return output.NewNDJSON(cmd.OutOrStdout()).Event(m)
+				switch format {
+				case "json":
+					if err := snapshot.RenderJSON(cmd.OutOrStdout(), finalSnap); err != nil {
+						return err
+					}
+				case "ndjson":
+					if err := snapshot.RenderNDJSON(cmd.OutOrStdout(), finalSnap); err != nil {
+						return err
+					}
+				default:
+					fmt.Fprintln(os.Stderr)
+					snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), finalSnap)
 				}
-				fmt.Fprintln(os.Stderr)
-				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), finalSnap)
+
+				// Partial-success signalling: preview rendered, but the export
+				// poll returned a terminal `failed` status (no Go error).
+				if finalSnap.Export.Status == snapshot.StatusFailed {
+					os.Exit(7)
+				}
 			}
 		}
 

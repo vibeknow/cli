@@ -2,7 +2,6 @@ package video
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -163,11 +162,7 @@ func emitSnapshot(cmd *cobra.Command, format string, taskID int64, sessionID str
 		return snapshot.RenderJSON(cmd.OutOrStdout(), s)
 	}
 	if format == "ndjson" {
-		b, _ := json.Marshal(s)
-		var m map[string]any
-		_ = json.Unmarshal(b, &m)
-		m["type"] = "snapshot"
-		return output.NewNDJSON(cmd.OutOrStdout()).Event(m)
+		return snapshot.RenderNDJSON(cmd.OutOrStdout(), s)
 	}
 	snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
 	return nil
@@ -198,15 +193,6 @@ func init() {
 	exportCmd.Flags().StringVar(&flagExportSessionID, "session-id", "", "session ID (required)")
 	exportCmd.Flags().BoolVar(&flagExportAsync, "async", false, "submit and return; do not wait")
 	exportCmd.Flags().BoolVarP(&flagExportYes, "yes", "y", false, "skip confirmation prompt")
-	exportCmd.Flags().DurationVar(&flagExportTimeout, "timeout", exportDefaultTimeout(), "sync-mode deadline")
+	exportCmd.Flags().DurationVar(&flagExportTimeout, "timeout", exportpoll.DefaultTimeout(), "sync-mode deadline")
 	exportCmd.Flags().DurationVar(&flagExportPollInterval, "poll-interval", 0, "fixed poll interval (overrides exponential backoff)")
-}
-
-func exportDefaultTimeout() time.Duration {
-	if v := os.Getenv("VIBEKNOW_EXPORT_TIMEOUT"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
-	}
-	return 15 * time.Minute
 }

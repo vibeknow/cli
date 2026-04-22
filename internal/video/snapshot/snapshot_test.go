@@ -139,6 +139,16 @@ func TestBuild_ExportRunningFromExportResult_PopulatesProgress(t *testing.T) {
 	}
 }
 
+func TestBuild_NoNextActionsWhenTaskIDZero(t *testing.T) {
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID: 0, SessionID: "s_1",
+		Work: &figlens.Work{ShareToken: "t"},
+	})
+	if len(s.NextActions) != 0 {
+		t.Fatalf("expected no next_actions when TaskID=0, got %+v", s.NextActions)
+	}
+}
+
 func containsCmd(actions []snapshot.Action, substr string) bool {
 	for _, a := range actions {
 		if strings.Contains(a.Command, substr) {

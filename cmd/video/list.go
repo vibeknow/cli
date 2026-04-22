@@ -11,6 +11,7 @@ import (
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -46,7 +47,7 @@ var listCmd = &cobra.Command{
 					"created_at":  w.CreatedAt,
 				}
 				if w.ShareToken != "" {
-					item["share_url"] = shareBase + "/" + w.ShareToken
+					item["share_url"] = snapshot.ShareURL(shareBase, w.ShareToken)
 				}
 				if w.VideoPath != "" {
 					item["video_path"] = w.VideoPath

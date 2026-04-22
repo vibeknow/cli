@@ -8,11 +8,23 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
+
+// DefaultTimeout returns the default timeout for sync-mode polling. Reads
+// VIBEKNOW_EXPORT_TIMEOUT if set, else 15 minutes.
+func DefaultTimeout() time.Duration {
+	if v := os.Getenv("VIBEKNOW_EXPORT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return 15 * time.Minute
+}
 
 // Event is emitted once per poll cycle. Status values mirror
 // snapshot.StatusRunning / StatusSucceeded / StatusFailed.
