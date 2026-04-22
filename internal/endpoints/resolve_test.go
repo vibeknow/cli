@@ -35,3 +35,28 @@ func TestResolveUnknownService(t *testing.T) {
 		t.Error("unknown service should error")
 	}
 }
+
+func TestResolveShare_Default(t *testing.T) {
+	p := config.Profile{Name: "default"}
+	url, err := Resolve(p, "share")
+	if err != nil {
+		t.Fatalf("resolve share: %v", err)
+	}
+	if url != "https://vibeknow.com/share" {
+		t.Fatalf("url = %q, want https://vibeknow.com/share", url)
+	}
+}
+
+func TestResolveShare_ProfileOverride(t *testing.T) {
+	p := config.Profile{
+		Name:      "self",
+		Endpoints: map[string]string{"share": "https://self.example.com/share"},
+	}
+	url, err := Resolve(p, "share")
+	if err != nil {
+		t.Fatalf("resolve share: %v", err)
+	}
+	if url != "https://self.example.com/share" {
+		t.Fatalf("url = %q", url)
+	}
+}

@@ -11,4 +11,5 @@ var CloudDefaults = map[string]string{
 	"vectoria": "https://beta.lab.shiliu.chat/vectoria",
 	"figlens":  "https://beta.lab.shiliu.chat/figlens",
 	"vibeknow": "https://beta.lab.shiliu.chat/vibeknow",
+	"share":    "https://vibeknow.com/share",
 }
