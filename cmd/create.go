@@ -15,10 +15,12 @@ import (
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -175,24 +177,26 @@ var createCmd = &cobra.Command{
 			os.Exit(5)
 		}
 
-		// Step 5: fetch work detail.
+		// Step 6: fetch work, build snapshot, render.
 		if successSessionID != "" {
 			w, err := fc.GetWorkBySession(ctx, successSessionID)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("task_id=%d\n", task.TaskID)
-			fmt.Printf("session_id=%s\n", successSessionID)
-			fmt.Printf("work_id=%d\n", w.ID)
-			fmt.Printf("title=%s\n", w.Title)
-			if w.VideoPath != "" {
-				fmt.Printf("video_path=%s\n", w.VideoPath)
-				if signedURL, err := fc.GetVideoURL(ctx, w.ID); err == nil && signedURL != "" {
-					fmt.Printf("video_url=%s\n", signedURL)
+			s := snapshot.Build(snapshot.BuildInput{
+				TaskID:    task.TaskID,
+				SessionID: successSessionID,
+				Work:      w,
+				ShareBase: cmdutil.ShareBaseURL(),
+			})
+
+			format, _ := cmd.Flags().GetString("output")
+			if format == "json" {
+				if err := snapshot.RenderJSON(cmd.OutOrStdout(), s); err != nil {
+					return err
 				}
-			}
-			if w.Duration > 0 {
-				fmt.Printf("duration=%d\n", w.Duration)
+			} else {
+				snapshot.RenderText(cmd.OutOrStdout(), cmd.ErrOrStderr(), s)
 			}
 		}
 
