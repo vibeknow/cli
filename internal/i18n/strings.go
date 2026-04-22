@@ -102,6 +102,10 @@ func init() {
 		"video.list.status.failed":   "failed",
 		"video.list.footer":          "\n%d result(s), page %d",
 
+		// download
+		"download.not_exported":      "MP4 not ready for this work",
+		"download.not_exported.hint": "run `vk video export %s --session-id %s` first, then retry download",
+
 		// update / upgrade notice
 		"update.available":   "A newer version %s is available (you have %s). Run `npm update -g vibeknow-cli` to upgrade.",
 		"update.checking":    "checking for updates...",
@@ -211,6 +215,10 @@ func init() {
 		"video.list.status.deleted":  "已删除",
 		"video.list.status.failed":   "失败",
 		"video.list.footer":          "\n共 %d 条，第 %d 页",
+
+		// download
+		"download.not_exported":      "该作品尚未导出 MP4",
+		"download.not_exported.hint": "先跑 `vk video export %s --session-id %s`，再重试下载",
 
 		// update / upgrade notice
 		"update.available":   "新版本 %s 可用（当前 %s），运行 `npm update -g vibeknow-cli` 升级。",

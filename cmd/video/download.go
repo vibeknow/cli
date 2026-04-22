@@ -6,11 +6,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/validate"
 )
 
@@ -22,8 +22,10 @@ var (
 
 var downloadCmd = &cobra.Command{
 	Use:   "download <task_id>",
-	Short: "download the rendered video for a task",
+	Short: "download the rendered MP4 for a task (export must already be complete)",
 	Args:  cobra.ExactArgs(1),
+	Example: `  vk video download 123 --session-id sess_xxx
+  vk video download 123 --session-id sess_xxx --output out.mp4 --overwrite`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagDownloadSessionID == "" {
 			return clerr.Validation("--session-id is required")
@@ -35,58 +37,20 @@ var downloadCmd = &cobra.Command{
 		}
 
 		ctx := context.Background()
-
-		// Check if work already has a video_path.
 		w, err := c.GetWorkBySession(ctx, flagDownloadSessionID)
 		if err != nil {
 			return err
 		}
-
-		videoPath := w.VideoPath
-		if videoPath == "" {
-			// Submit export and poll.
-			fmt.Fprintf(os.Stderr, "submitting export...\n")
-			exportTaskID, err := c.ExportVideo(ctx, flagDownloadSessionID)
-			if err != nil {
-				return err
-			}
-
-			deadline := time.Now().Add(10 * time.Minute)
-			for {
-				if time.Now().After(deadline) {
-					return fmt.Errorf("timed out waiting for export (10m)")
-				}
-
-				result, err := c.GetExportResult(ctx, exportTaskID)
-				if err != nil {
-					return err
-				}
-
-				switch result.Status {
-				case "completed", "success":
-					videoPath = result.VideoPath
-					if videoPath == "" {
-						return fmt.Errorf("export completed but no video_path returned")
-					}
-				case "failed", "error":
-					return fmt.Errorf("export failed")
-				default:
-					fmt.Fprintf(os.Stderr, "export status: %s\n", result.Status)
-					time.Sleep(3 * time.Second)
-					continue
-				}
-
-				break
-			}
+		if w.VideoPath == "" {
+			return clerr.Validation(i18n.T("download.not_exported")).
+				WithHint(i18n.T("download.not_exported.hint", args[0], flagDownloadSessionID))
 		}
 
-		// Resolve signed URL.
-		signedURL, err := c.SignedURL(ctx, videoPath)
+		signedURL, err := c.SignedURL(ctx, w.VideoPath)
 		if err != nil {
 			return err
 		}
 
-		// Determine output file name and validate it against cwd.
 		rawOut := flagDownloadOutput
 		if rawOut == "" {
 			rawOut = flagDownloadSessionID + ".mp4"
@@ -103,7 +67,6 @@ var downloadCmd = &cobra.Command{
 			}
 		}
 
-		// Download.
 		fmt.Fprintf(os.Stderr, "downloading to %q...\n", rawOut)
 		if err := downloadFile(signedURL, outPath); err != nil {
 			return err
