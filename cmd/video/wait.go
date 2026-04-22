@@ -1,32 +1,38 @@
 package video
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var flagWaitSessionID string
 
 var waitCmd = &cobra.Command{
-	Use:   "wait <task_id>",
+	Use:   "wait [task_id]",
 	Short: "stream progress for a video task, block until done",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
+	Example: `  vk video wait --session-id sess_xxx
+  vk video wait 123 --session-id sess_xxx --output ndjson`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagWaitSessionID == "" {
 			return clerr.Validation("--session-id is required")
 		}
 
-		taskIDStr := args[0]
-		taskID, err := strconv.ParseInt(taskIDStr, 10, 64)
-		if err != nil {
-			return clerr.Validationf("task_id must be an integer: %v", err)
+		var taskID int64
+		if len(args) == 1 {
+			parsed, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return clerr.Validationf("task_id must be an integer: %v", err)
+			}
+			taskID = parsed
 		}
 
 		c, err := newFiglensClient()
@@ -34,61 +40,85 @@ var waitCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := context.Background()
-		var taskFailed bool
-		var taskSucceeded bool
+		ctx := cmd.Context()
+		format, _ := cmd.Flags().GetString("output")
+		stdout := cmd.OutOrStdout()
+		stderr := cmd.ErrOrStderr()
+
+		var emitEvent func(map[string]any) error
+		if format == "ndjson" {
+			w := output.NewNDJSON(stdout)
+			emitEvent = w.Event
+		}
+
+		var taskFailed, taskSucceeded bool
 		var successSessionID string
 
-		err = c.StreamChat(ctx, figlens.StreamParams{
-			TaskID:    taskID,
-			SessionID: flagWaitSessionID,
-			Query:     "",
-		}, func(ev figlens.StreamEvent) {
+		emit := func(ev figlens.StreamEvent) {
+			if emitEvent != nil {
+				out := map[string]any{
+					"type":    ev.Type,
+					"stage":   ev.Stage,
+					"node":    ev.Node,
+					"message": ev.Message,
+				}
+				if ev.SessionID != "" {
+					out["session_id"] = ev.SessionID
+				}
+				_ = emitEvent(out)
+			} else {
+				switch ev.Type {
+				case "node.started":
+					fmt.Fprintf(stderr, "[%s] started\n", ev.Node)
+				case "node.succeeded":
+					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
+				case "node.failed":
+					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
+				case "task.succeeded":
+					fmt.Fprintf(stderr, "task succeeded\n")
+				case "task.failed":
+					fmt.Fprintf(stderr, "task failed: %s\n", ev.Message)
+				}
+			}
+
 			switch ev.Type {
-			case "node.started":
-				fmt.Fprintf(os.Stderr, "[%s] started\n", ev.Node)
-			case "node.succeeded":
-				fmt.Fprintf(os.Stderr, "[%s] done\n", ev.Node)
-			case "node.failed":
-				fmt.Fprintf(os.Stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
 			case "task.succeeded":
 				taskSucceeded = true
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
 					successSessionID = flagWaitSessionID
 				}
-				fmt.Fprintf(os.Stderr, "task succeeded\n")
 			case "task.failed":
 				taskFailed = true
-				fmt.Fprintf(os.Stderr, "task failed: %s\n", ev.Message)
 			}
-		})
+		}
+
+		err = c.StreamChat(ctx, figlens.StreamParams{
+			TaskID:    taskID,
+			SessionID: flagWaitSessionID,
+			Query:     "",
+		}, emit)
 		if err != nil {
-			// stream interrupted
-			fmt.Fprintf(os.Stderr, "stream interrupted: %s\n", err)
-			os.Exit(6)
+			return clerr.Newf("stream interrupted: %s", err).WithCode(6)
 		}
-
 		if taskFailed {
-			os.Exit(5)
+			return clerr.Newf("task failed").WithCode(5)
+		}
+		if !taskSucceeded {
+			return nil
 		}
 
-		if taskSucceeded {
-			w, err := c.GetWorkBySession(ctx, successSessionID)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("work_id=%d\n", w.ID)
-			fmt.Printf("title=%s\n", w.Title)
-			if w.VideoPath != "" {
-				fmt.Printf("video_path=%s\n", w.VideoPath)
-			}
-			if w.Duration > 0 {
-				fmt.Printf("duration=%d\n", w.Duration)
-			}
+		w, err := c.GetWorkBySession(ctx, successSessionID)
+		if err != nil {
+			return err
 		}
-
-		return nil
+		s := snapshot.Build(snapshot.BuildInput{
+			TaskID:    taskID,
+			SessionID: successSessionID,
+			Work:      w,
+			ShareBase: cmdutil.ShareBaseURL(),
+		})
+		return snapshot.Render(stdout, stderr, s, format)
 	},
 }
 

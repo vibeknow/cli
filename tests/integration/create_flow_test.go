@@ -66,6 +66,7 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 				"data": map[string]any{
 					"id": 43, "title": "Integration Test Video",
 					"video_path": "/test.mp4", "cover_url": "", "duration": 30,
+					"share_token": "tok_integ",
 				},
 			})
 		default:
@@ -117,5 +118,8 @@ profiles:
 	}
 	if !strings.Contains(output, "Integration Test Video") {
 		t.Errorf("expected video title in output:\n%s", output)
+	}
+	if !strings.Contains(output, "share_url=https://beta.lab.shiliu.chat/share/tok_integ") {
+		t.Errorf("expected share_url in output:\n%s", output)
 	}
 }

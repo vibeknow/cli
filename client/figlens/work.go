@@ -6,11 +6,15 @@ import (
 )
 
 type Work struct {
-	ID        int64  `json:"id"`
-	Title     string `json:"title"`
-	VideoPath string `json:"video_path"`
-	CoverURL  string `json:"cover_url"`
-	Duration  int    `json:"duration"`
+	ID         int64  `json:"id"`
+	SessionID  string `json:"session_id"`
+	Title      string `json:"title"`
+	HtmlPath   string `json:"html_path"`
+	VideoPath  string `json:"video_path"`
+	CoverURL   string `json:"cover_url"`
+	ShareToken string `json:"share_token"`
+	Exporting  int    `json:"exporting"`
+	Duration   int64  `json:"duration"`
 }
 
 func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work, error) {
@@ -23,14 +27,17 @@ func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work,
 }
 
 type WorkListItem struct {
-	ID        int64  `json:"id"`
-	SessionID string `json:"session_id"`
-	Title     string `json:"title"`
-	VideoPath string `json:"video_path"`
-	CoverURL  string `json:"cover_url"`
-	Duration  int64  `json:"duration"`
-	Status    int    `json:"status"`
-	CreatedAt string `json:"created_at"`
+	ID         int64  `json:"id"`
+	SessionID  string `json:"session_id"`
+	Title      string `json:"title"`
+	HtmlPath   string `json:"html_path"`
+	VideoPath  string `json:"video_path"`
+	CoverURL   string `json:"cover_url"`
+	ShareToken string `json:"share_token"`
+	Exporting  int    `json:"exporting"`
+	Duration   int64  `json:"duration"`
+	Status     int    `json:"status"`
+	CreatedAt  string `json:"created_at"`
 }
 
 func (c *Client) ListWorks(ctx context.Context, page, size int) ([]WorkListItem, int, error) {

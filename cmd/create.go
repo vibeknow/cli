@@ -13,12 +13,13 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
-	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
-	"github.com/vibeknow/cli/internal/endpoints"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
-	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/exportpoll"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -26,6 +27,8 @@ var (
 	flagCreateVoiceID string
 	flagCreatePrompt  string
 	flagCreateAsync   bool
+	flagCreateExport  bool
+	flagCreateYes     bool
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -73,10 +76,11 @@ var createCmd = &cobra.Command{
 		}
 
 		// Step 2: optimize prompt (skip if user provided --prompt).
-		fc, err := newCreateFiglensClient()
+		_, url, tp, err := cmdutil.Default().Service("figlens")
 		if err != nil {
 			return err
 		}
+		fc := figlens.New(url, tp)
 
 		query := flagCreatePrompt
 		if query == "" && kbID != "" && docID != "" {
@@ -128,6 +132,9 @@ var createCmd = &cobra.Command{
 		// Step 5: stream with progress.
 		fmt.Fprintln(os.Stderr, i18n.T("create.generating", task.TaskID, task.SessionID))
 
+		format, _ := cmd.Flags().GetString("output")
+		isNDJSONCreate := format == "ndjson"
+
 		var taskFailed bool
 		var successSessionID string
 
@@ -140,24 +147,45 @@ var createCmd = &cobra.Command{
 			VoiceID:     flagCreateVoiceID,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
-			case "node.started":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
-			case "node.succeeded":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
-			case "node.failed":
-				fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
+			case "node.started", "node.succeeded", "node.failed":
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": ev.Type, "stage": ev.Stage, "node": ev.Node, "message": ev.Message,
+					})
+				} else {
+					switch ev.Type {
+					case "node.started":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
+					case "node.succeeded":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
+					case "node.failed":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
+					}
+				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
 					successSessionID = task.SessionID
 				}
-				fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": "task.succeeded", "session_id": ev.SessionID,
+					})
+				} else {
+					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
+				}
 			case "task.failed":
 				taskFailed = true
-				if strings.Contains(ev.Message, "insufficient_credits") {
-					fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type": "task.failed", "message": ev.Message,
+					})
 				} else {
-					fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
+					if strings.Contains(ev.Message, "insufficient_credits") {
+						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+					} else {
+						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
+					}
 				}
 			}
 		})
@@ -175,27 +203,89 @@ var createCmd = &cobra.Command{
 			os.Exit(5)
 		}
 
-		// Step 5: fetch work detail.
-		if successSessionID != "" {
-			w, err := fc.GetWorkBySession(ctx, successSessionID)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("task_id=%d\n", task.TaskID)
-			fmt.Printf("session_id=%s\n", successSessionID)
-			fmt.Printf("work_id=%d\n", w.ID)
-			fmt.Printf("title=%s\n", w.Title)
-			if w.VideoPath != "" {
-				fmt.Printf("video_path=%s\n", w.VideoPath)
-				if signedURL, err := fc.GetVideoURL(ctx, w.ID); err == nil && signedURL != "" {
-					fmt.Printf("video_url=%s\n", signedURL)
-				}
-			}
-			if w.Duration > 0 {
-				fmt.Printf("duration=%d\n", w.Duration)
-			}
+		if successSessionID == "" {
+			return nil
 		}
 
+		stdout := cmd.OutOrStdout()
+		stderr := cmd.ErrOrStderr()
+		shareBase := cmdutil.ShareBaseURL()
+
+		w, err := fc.GetWorkBySession(ctx, successSessionID)
+		if err != nil {
+			return err
+		}
+		s := snapshot.Build(snapshot.BuildInput{
+			TaskID:    task.TaskID,
+			SessionID: successSessionID,
+			Work:      w,
+			ShareBase: shareBase,
+		})
+		if err := snapshot.Render(stdout, stderr, s, format); err != nil {
+			return err
+		}
+
+		if !flagCreateExport || !s.Preview.Ready {
+			return nil
+		}
+
+		ok, err := cmdutil.Confirm(cmdutil.ConfirmOptions{
+			Prompt: i18n.T("export.confirm_prompt"),
+			Yes:    flagCreateYes,
+		})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(stderr, i18n.T("export.cancelled"))
+			return nil
+		}
+
+		expID, err := fc.ExportVideo(ctx, successSessionID)
+		if err != nil {
+			fmt.Fprintln(stderr, i18n.T("export.failed", err.Error()))
+			os.Exit(7)
+		}
+		fmt.Fprintln(stderr, i18n.T("export.submitted", expID))
+
+		progressTTY := term.IsTerminal(int(os.Stderr.Fd()))
+		result, perr := exportpoll.PollExport(ctx, fc, expID, exportpoll.DefaultTimeout(), 0, func(ev exportpoll.Event) {
+			if ev.Status != snapshot.StatusRunning || !progressTTY {
+				return
+			}
+			if ev.ProgressMsg != "" {
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress", ev.Progress, ev.ProgressMsg))
+			} else {
+				fmt.Fprintf(stderr, "\r%s", i18n.T("export.progress_simple", ev.Progress))
+			}
+		})
+		if perr != nil {
+			fmt.Fprintln(stderr)
+			fmt.Fprintln(stderr, i18n.T("export.failed", perr.Error()))
+			os.Exit(7)
+		}
+
+		w2, err := fc.GetWorkBySession(ctx, successSessionID)
+		if err != nil {
+			return err
+		}
+		finalSnap := snapshot.Build(snapshot.BuildInput{
+			TaskID:       task.TaskID,
+			SessionID:    successSessionID,
+			Work:         w2,
+			Export:       result,
+			ExportTaskID: expID,
+			ShareBase:    shareBase,
+		})
+		if format == "text" || format == "" {
+			fmt.Fprintln(stderr)
+		}
+		if err := snapshot.Render(stdout, stderr, finalSnap, format); err != nil {
+			return err
+		}
+		if finalSnap.Export.Status == snapshot.StatusFailed {
+			os.Exit(7)
+		}
 		return nil
 	},
 }
@@ -205,6 +295,8 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice template ID")
 	createCmd.Flags().StringVar(&flagCreatePrompt, "prompt", "", "custom prompt for video generation (default: auto-generated)")
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
+	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")
+	createCmd.Flags().BoolVarP(&flagCreateYes, "yes", "y", false, "skip export confirmation prompt")
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -300,18 +392,3 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 	}
 }
 
-func newCreateFiglensClient() (*figlens.Client, error) {
-	p, err := cliauth.CurrentProfile()
-	if err != nil {
-		return nil, err
-	}
-	tok, _, err := cliauth.ResolverFor(p).Resolve()
-	if err != nil {
-		return nil, clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
-	}
-	url, err := endpoints.Resolve(p, "figlens")
-	if err != nil {
-		return nil, err
-	}
-	return figlens.New(url, httpclient.StaticToken(tok)), nil
-}

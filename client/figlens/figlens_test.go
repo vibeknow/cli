@@ -49,8 +49,12 @@ func TestGetWorkBySession(t *testing.T) {
 			t.Fatalf("unexpected session_id query param")
 		}
 		figlensResp(w, map[string]any{
-			"id": 456, "title": "Test Video", "video_path": "/videos/test.mp4",
-			"cover_url": "https://cover.jpg", "duration": 120,
+			"id": 456, "session_id": "s_abc", "title": "Test Video",
+			"html_path": "works/foo/index.html",
+			"video_path": "/videos/test.mp4",
+			"cover_url": "https://cover.jpg",
+			"share_token": "tok_xyz", "exporting": 1,
+			"duration": 120,
 		})
 	}))
 	defer srv.Close()
@@ -63,11 +67,23 @@ func TestGetWorkBySession(t *testing.T) {
 	if work.ID != 456 || work.Duration != 120 {
 		t.Fatalf("work = %+v", work)
 	}
+	if work.SessionID != "s_abc" {
+		t.Fatalf("session_id = %q", work.SessionID)
+	}
+	if work.HtmlPath != "works/foo/index.html" {
+		t.Fatalf("html_path = %q", work.HtmlPath)
+	}
+	if work.ShareToken != "tok_xyz" {
+		t.Fatalf("share_token = %q", work.ShareToken)
+	}
+	if work.Exporting != 1 {
+		t.Fatalf("exporting = %d", work.Exporting)
+	}
 }
 
 func TestExportVideo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		figlensResp(w, map[string]any{"task_id": "export_1"})
+		figlensResp(w, map[string]any{"task_id": 424242})
 	}))
 	defer srv.Close()
 
@@ -76,24 +92,30 @@ func TestExportVideo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportVideo: %v", err)
 	}
-	if exportID != "export_1" {
-		t.Fatalf("export_id = %q", exportID)
+	if exportID != 424242 {
+		t.Fatalf("export_id = %d", exportID)
 	}
 }
 
 func TestGetExportResult(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		figlensResp(w, map[string]any{"status": "completed", "video_path": "/exported/final.mp4"})
+		figlensResp(w, map[string]any{
+			"status": "running", "progress": 42, "progress_msg": "rendering frames",
+			"video_path": "", "error": "",
+		})
 	}))
 	defer srv.Close()
 
 	c := figlens.New(srv.URL, staticToken("tok"))
-	result, err := c.GetExportResult(context.Background(), "export_1")
+	result, err := c.GetExportResult(context.Background(), 424242)
 	if err != nil {
 		t.Fatalf("GetExportResult: %v", err)
 	}
-	if result.Status != "completed" {
-		t.Fatalf("status = %q", result.Status)
+	if result.Status != "running" || result.Progress != 42 {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.ProgressMsg != "rendering frames" {
+		t.Fatalf("progress_msg = %q", result.ProgressMsg)
 	}
 }
 

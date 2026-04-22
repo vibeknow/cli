@@ -178,6 +178,31 @@ vibeknow video wait <task_id> --session-id <session_id>
 vibeknow video download <task_id> --session-id <session_id>
 ```
 
+### Create a shareable video
+
+```
+$ vk create --from ./slides.pdf
+…
+share_url=https://vibeknow.com/share/tok_abc
+hint: Render MP4 (several minutes, extra credits) — vk video export 42 --session-id sess_xxx
+```
+
+The pipeline finishes at the **preview** stage: the `share_url` plays
+the finished video in a browser, ready to share.
+
+### (Optional) Render an MP4 for download
+
+```
+$ vk video export 42 --session-id sess_xxx --yes
+exporting: 72% — rendering frames
+export complete
+
+$ vk video download 42 --session-id sess_xxx
+output=sess_xxx.mp4
+```
+
+Or one-shot: `vk create --from ... --export --yes`.
+
 ### Voice Templates
 
 ```bash
