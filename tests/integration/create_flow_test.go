@@ -82,7 +82,10 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.txt")
 	os.WriteFile(testFile, []byte("test content"), 0644)
 
-	// Write profile config at $XDG_CONFIG_HOME/vibeknow/profiles.yaml.
+	// Write profile config. Use VIBEKNOW_CONFIG_HOME (the full config-dir
+	// path, no subdir appended) rather than XDG_CONFIG_HOME so the test
+	// works on Windows, where the CLI resolves its config from %AppData%
+	// and ignores XDG_CONFIG_HOME.
 	configDir := filepath.Join(tmpDir, "config", "vibeknow")
 	os.MkdirAll(configDir, 0755)
 	profileYAML := fmt.Sprintf(`schema_version: "2"
@@ -105,7 +108,7 @@ profiles:
 	cmd := exec.Command(bin, "create", "--from", testFile)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
-		"XDG_CONFIG_HOME="+filepath.Join(tmpDir, "config"),
+		"VIBEKNOW_CONFIG_HOME="+configDir,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

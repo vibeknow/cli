@@ -15,12 +15,13 @@ import (
 )
 
 // buildVideoProfile writes a minimal profiles.yaml that points only at figlens
-// (no vectoria needed for pure video commands) and returns the XDG_CONFIG_HOME
-// path to pass to the binary.
+// (no vectoria needed for pure video commands) and returns the config-home
+// path to pass to the binary via VIBEKNOW_CONFIG_HOME. Using that var (rather
+// than XDG_CONFIG_HOME) keeps the test cross-platform — on Windows the CLI
+// resolves its config dir from %AppData% and ignores XDG_CONFIG_HOME entirely.
 func buildVideoProfile(t *testing.T, figlensURL string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "vibeknow")
+	configDir := filepath.Join(t.TempDir(), "vibeknow")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
@@ -37,17 +38,17 @@ profiles:
 	if err := os.WriteFile(filepath.Join(configDir, "profiles.yaml"), []byte(profileYAML), 0644); err != nil {
 		t.Fatalf("write profiles.yaml: %v", err)
 	}
-	return tmpDir
+	return configDir
 }
 
 // runVideoCmd runs the binary with the given args, capturing stdout and stderr
 // separately. Returns stdout, combined output, and exit code.
-func runVideoCmd(t *testing.T, bin, xdgHome string, args ...string) (string, string, int) {
+func runVideoCmd(t *testing.T, bin, configHome string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
-		"XDG_CONFIG_HOME="+xdgHome,
+		"VIBEKNOW_CONFIG_HOME="+configHome,
 		// Keep export timeout short in tests.
 		"VIBEKNOW_EXPORT_TIMEOUT=10s",
 	)
@@ -93,9 +94,9 @@ func TestDownload_BeforeExport_Exits2(t *testing.T) {
 	defer figlens.Close()
 
 	bin := build(t)
-	xdgHome := buildVideoProfile(t, figlens.URL)
+	configHome := buildVideoProfile(t, figlens.URL)
 
-	_, combined, code := runVideoCmd(t, bin, xdgHome,
+	_, combined, code := runVideoCmd(t, bin, configHome,
 		"video", "download", "42", "--session-id", "s_integ",
 	)
 
@@ -154,9 +155,9 @@ func TestExport_AsyncReturnsImmediately(t *testing.T) {
 	defer figlens.Close()
 
 	bin := build(t)
-	xdgHome := buildVideoProfile(t, figlens.URL)
+	configHome := buildVideoProfile(t, figlens.URL)
 
-	stdout, combined, code := runVideoCmd(t, bin, xdgHome,
+	stdout, combined, code := runVideoCmd(t, bin, configHome,
 		"video", "export", "42",
 		"--session-id", "s_integ",
 		"--async",
@@ -248,9 +249,9 @@ func TestExport_NDJSON(t *testing.T) {
 	defer figlens.Close()
 
 	bin := build(t)
-	xdgHome := buildVideoProfile(t, figlens.URL)
+	configHome := buildVideoProfile(t, figlens.URL)
 
-	stdout, combined, code := runVideoCmd(t, bin, xdgHome,
+	stdout, combined, code := runVideoCmd(t, bin, configHome,
 		"video", "export", "42",
 		"--session-id", "s_integ",
 		"--yes",
@@ -365,7 +366,7 @@ func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
 	}))
 	defer figlens.Close()
 
-	xdgHome := buildVideoProfile(t, figlens.URL)
+	configHome := buildVideoProfile(t, figlens.URL)
 	bin := build(t)
 
 	cmd := exec.Command(bin, "create",
@@ -374,7 +375,7 @@ func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
 	)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
-		"XDG_CONFIG_HOME="+xdgHome,
+		"VIBEKNOW_CONFIG_HOME="+configHome,
 		"VIBEKNOW_EXPORT_TIMEOUT=10s",
 	)
 	var stdout, stderr bytes.Buffer
