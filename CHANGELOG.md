@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.1 — 2026-04-24
+
+### Fixed
+
+- `vk auth status` now shows the refresh-token lifetime (the real session
+  window) instead of the 2h access-token lifetime, so the countdown
+  reflects when the user actually has to sign in again. Added a "days"
+  duration unit so week- or month-long sessions render as "6 days"
+  rather than "168h".
+- `httpclient.parseBackendError` now prefers the envelope business code
+  on HTTP 4xx/5xx responses. Previously account-service codes 110004 /
+  110008 / 110013 on HTTP 401 were collapsed to generic `auth_required`;
+  they now surface as `account_disabled`, `session_replaced`, and
+  `account_pending_deletion`.
+- On a permanently-dead session (replaced on another device, account
+  disabled, account pending deletion), `OAuthTokenProvider` now purges
+  the stored credential and returns a single `session_expired` error
+  with the underlying cause preserved in `details.cause_code` /
+  `details.cause_message` / `trace_id`. Previously the stale token
+  lingered in the keychain and each subsequent command produced a
+  confusing `business_error` message.
+
 ## 0.4.0 — 2026-04-22
 
 ### Breaking
