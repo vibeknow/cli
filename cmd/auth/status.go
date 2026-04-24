@@ -108,6 +108,9 @@ var statusCmd = &cobra.Command{
 				if !stored.ExpiresAt.IsZero() {
 					payload["expires_at"] = stored.ExpiresAt.UTC().Format(time.RFC3339)
 				}
+				if !stored.RefreshExpiresAt.IsZero() {
+					payload["refresh_expires_at"] = stored.RefreshExpiresAt.UTC().Format(time.RFC3339)
+				}
 				if nickname != "" || email != "" {
 					user := map[string]any{}
 					if nickname != "" {
@@ -154,14 +157,23 @@ var statusCmd = &cobra.Command{
 		}
 
 		switch tokenStatus {
-		case "valid":
-			if !stored.ExpiresAt.IsZero() {
+		case "valid", "needs_refresh":
+			// Both states are "session usable" from the user's POV.
+			// needs_refresh just means the short-lived access token is
+			// near/past expiry, but it gets refreshed transparently on the
+			// next API call; the user does not need to act.
+			//
+			// Show session (refresh token) expiry, not access token expiry —
+			// the ~2h access lifetime is not meaningful to users. Fall back
+			// to access expiry for legacy tokens missing refresh_expires_at.
+			switch {
+			case !stored.RefreshExpiresAt.IsZero():
+				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.valid", formatDuration(time.Until(stored.RefreshExpiresAt))))
+			case !stored.ExpiresAt.IsZero():
 				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.valid", formatDuration(time.Until(stored.ExpiresAt))))
-			} else {
+			default:
 				fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.forever"))
 			}
-		case "needs_refresh":
-			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.refresh"))
 		case "expired":
 			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("auth.status.field.token.expired"))
 		}
@@ -181,6 +193,10 @@ func orNone(s string) string {
 func formatDuration(d time.Duration) string {
 	if d < 0 {
 		return i18n.T("auth.duration.m", 0)
+	}
+	days := int(d / (24 * time.Hour))
+	if days > 0 {
+		return i18n.T("auth.duration.d", days)
 	}
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60

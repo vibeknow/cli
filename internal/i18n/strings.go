@@ -84,6 +84,7 @@ func init() {
 		"auth.status.field.token.expired":  "  - Token status: expired",
 		"auth.status.field.profile":        "  - Active profile: %s",
 		"auth.status.json.hint":            "run `vibeknow auth login` or set VIBEKNOW_TOKEN",
+		"auth.duration.d":                  "%d days",
 		"auth.duration.hm":                 "%dh %dm",
 		"auth.duration.m":                  "%dm",
 
@@ -213,6 +214,7 @@ func init() {
 		"auth.status.field.token.expired":  "  - Token 状态: 已过期",
 		"auth.status.field.profile":        "  - Active profile: %s",
 		"auth.status.json.hint":            "运行 `vibeknow auth login` 或设置 VIBEKNOW_TOKEN 环境变量",
+		"auth.duration.d":                  "%d天",
 		"auth.duration.hm":                 "%d小时%d分",
 		"auth.duration.m":                  "%d分",
 
