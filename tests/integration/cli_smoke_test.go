@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,7 +12,15 @@ import (
 func build(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "vibeknow")
+	name := "vibeknow"
+	if runtime.GOOS == "windows" {
+		// Windows requires the .exe suffix for exec.Command to locate and
+		// run the binary. Without it, `go build -o` still writes the file
+		// but subsequent exec.Command(bin, ...) fails with "executable
+		// file not found in %PATH%".
+		name += ".exe"
+	}
+	bin := filepath.Join(dir, name)
 	root, _ := filepath.Abs("../..")
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Dir = root

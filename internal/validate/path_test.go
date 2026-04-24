@@ -3,6 +3,7 @@ package validate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -37,7 +38,13 @@ func TestSafeOutputPath_RejectsAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	withCwd(t, dir)
 
-	if _, err := SafeOutputPath("/etc/passwd"); err == nil {
+	// On Windows, absolute paths begin with a drive letter (e.g. `C:\...`);
+	// a leading slash alone is not considered absolute by filepath.IsAbs.
+	abs := "/etc/passwd"
+	if runtime.GOOS == "windows" {
+		abs = `C:\Windows\System32\drivers\etc\hosts`
+	}
+	if _, err := SafeOutputPath(abs); err == nil {
 		t.Error("expected error for absolute path")
 	}
 }
