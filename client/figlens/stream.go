@@ -22,6 +22,7 @@ type StreamParams struct {
 	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
 	Aspect      string `json:"aspect,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
+	Engine      Engine `json:"-"` // selects endpoint, never emitted in body
 }
 
 type StreamEvent struct {
@@ -61,7 +62,7 @@ func mapSSECode(code int) string {
 }
 
 func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent func(StreamEvent)) error {
-	resp, err := c.http.DoRaw(ctx, "POST", "/v1/agent3forVideo/stream", params)
+	resp, err := c.http.DoRaw(ctx, "POST", params.Engine.StreamPath(), params)
 	if err != nil {
 		return fmt.Errorf("stream chat: %w", err)
 	}

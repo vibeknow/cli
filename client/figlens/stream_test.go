@@ -141,3 +141,24 @@ func TestStreamChat_ScriptInvalidCode(t *testing.T) {
 		t.Fatalf("expected backend message verbatim, got %q", events[0].Message)
 	}
 }
+
+func TestStreamChat_AgentEngineUsesAgent2Path(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"aim_result\",\"session_id\":\"s\"}}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s", Query: "q", Engine: figlens.EngineAgent,
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotPath != "/v1/agent2forVideo/stream" {
+		t.Fatalf("path = %q, want /v1/agent2forVideo/stream", gotPath)
+	}
+}
