@@ -25,6 +25,8 @@ func TestNodeToStage(t *testing.T) {
 		{"video_package", "publish"},
 		{"video_finish", "publish"},
 		{"suggest", "suggest"},
+		{"doc_replica_plan", "outline"},
+		{"doc_replica_shoot", "render"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.node, func(t *testing.T) {

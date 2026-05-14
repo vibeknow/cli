@@ -14,6 +14,7 @@ type OptimizeParams struct {
 	KnowledgeID string `json:"knowledge_id"`
 	DocID       string `json:"doc_id"`
 	Query       string `json:"query,omitempty"`
+	VideoKind   string `json:"video_kind,omitempty"`
 }
 
 type optimizePayload struct {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/sse"
 	"github.com/vibeknow/cli/internal/stage"
 )
@@ -19,10 +20,13 @@ type StreamParams struct {
 	DocID       string `json:"doc_id,omitempty"`
 	VoiceID     string `json:"voice_id,omitempty"`
 	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
+	Aspect      string `json:"aspect,omitempty"`
+	VideoKind   string `json:"video_kind,omitempty"`
 }
 
 type StreamEvent struct {
 	Type      string
+	Code      string // set on task.failed when payload carries an envelope code
 	Stage     string
 	Node      string
 	Message   string
@@ -47,18 +51,13 @@ type processLog struct {
 	Message string `json:"message"`
 }
 
-// mapSSECode maps a backend envelope code from an SSE payload to a CLI error code string.
+// mapSSECode maps an SSE envelope code to a CLI error code label, delegating
+// to httpclient.MapBusinessCode so the two transports never diverge.
 func mapSSECode(code int) string {
-	switch code {
-	case 100001:
-		return "insufficient_credits"
-	case 100002:
-		return "freeze_not_found"
-	case 100003:
-		return "concurrent_work_limit"
-	default:
-		return "business_error"
+	if label, ok := httpclient.MapBusinessCode(code); ok {
+		return label
 	}
+	return "business_error"
 }
 
 func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent func(StreamEvent)) error {
@@ -100,8 +99,11 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 					msg = d.Message
 				}
 			}
-			code := mapSSECode(payload.Code)
-			onEvent(StreamEvent{Type: "task.failed", Message: fmt.Sprintf("[%s] %s", code, msg)})
+			onEvent(StreamEvent{
+				Type:    "task.failed",
+				Code:    mapSSECode(payload.Code),
+				Message: msg,
+			})
 			return nil
 		}
 

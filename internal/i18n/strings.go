@@ -72,6 +72,13 @@ func init() {
 		"create.doc_timeout":       "timed out waiting for document processing (10m)",
 		"create.async.hint":        "hint: run `vibeknow video wait %d --session-id %s` to track progress",
 
+		"create.flag.mode":            "video mode: replica (PPT/PDF page-by-page) or script (use the doc as the verbatim narration script)",
+		"create.flag.aspect":          "aspect ratio: horizontal (16:9, default) or vertical (9:16)",
+		"create.flag.bgm":             "enable background music (default off)",
+		"create.err.mode_invalid":     "--mode must be one of: replica, script (got %q)",
+		"create.err.aspect_invalid":   "--aspect must be one of: horizontal, vertical, 16:9, 9:16 (got %q)",
+		"create.err.script_needs_doc": "--mode script requires an uploaded document (--from must be a file or URL, not a doc_id)",
+
 		// auth status (text mode)
 		"auth.status.signed_in_as":         "✓ Signed in as %s",
 		"auth.status.signed_in":            "✓ Signed in",
@@ -201,6 +208,13 @@ func init() {
 		"create.doc_status":        "文档状态: %s",
 		"create.doc_timeout":       "等待文档解析超时（10 分钟）",
 		"create.async.hint":        "提示: 运行 `vibeknow video wait %d --session-id %s` 查看进度",
+
+		"create.flag.mode":            "视频模式：replica（PPT/PDF 逐页还原）或 script（用文档原文作为讲稿）",
+		"create.flag.aspect":          "画幅：horizontal（16:9，默认）或 vertical（9:16）",
+		"create.flag.bgm":             "启用背景音乐（默认关闭）",
+		"create.err.mode_invalid":     "--mode 必须是 replica 或 script（当前为 %q）",
+		"create.err.aspect_invalid":   "--aspect 必须是 horizontal、vertical、16:9 或 9:16（当前为 %q）",
+		"create.err.script_needs_doc": "--mode script 需要上传文档（--from 必须是文件或 URL，不能是 doc_id）",
 
 		// auth status (text mode)
 		"auth.status.signed_in_as":         "✓ 已登录为 %s",

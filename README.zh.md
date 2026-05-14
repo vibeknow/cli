@@ -203,6 +203,14 @@ output=sess_xxx.mp4
 
 或者一键搞定：`vk create --from ... --export --yes`。
 
+### 选择视频模式
+
+```bash
+vk create --from deck.pdf  --mode replica   # PPT/PDF 逐页还原
+vk create --from talk.docx --mode script    # 讲稿模式（用文档原文做旁白）
+vk create --from <src>     --aspect vertical --bgm
+```
+
 ### 音色模板
 
 ```bash

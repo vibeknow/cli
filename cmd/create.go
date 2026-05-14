@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -29,6 +31,9 @@ var (
 	flagCreateAsync   bool
 	flagCreateExport  bool
 	flagCreateYes     bool
+	flagCreateMode    string
+	flagCreateAspect  string
+	flagCreateBGM     bool
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -45,6 +50,15 @@ var createCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagCreateFrom == "" {
 			return fmt.Errorf("--from is required")
+		}
+
+		videoKind, err := resolveVideoKind(flagCreateMode)
+		if err != nil {
+			return err
+		}
+		aspect, err := resolveAspect(flagCreateAspect)
+		if err != nil {
+			return err
 		}
 
 		ctx := context.Background()
@@ -75,6 +89,10 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		if videoKind == figlens.VideoKindScriptLock && kbID == "" {
+			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
+		}
+
 		// Step 2: optimize prompt (skip if user provided --prompt).
 		_, url, tp, err := cmdutil.Default().Service("figlens")
 		if err != nil {
@@ -95,6 +113,7 @@ var createCmd = &cobra.Command{
 			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
 				KnowledgeID: kbID,
 				DocID:       docID,
+				VideoKind:   videoKind,
 			}, onDelta)
 			if streaming {
 				fmt.Fprintln(os.Stderr)
@@ -114,10 +133,24 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		task, err := fc.InitTask(ctx)
+		initParams := figlens.InitTaskParams{VideoKind: videoKind}
+		if videoKind == figlens.VideoKindScriptLock {
+			initParams.KnowledgeID = kbID
+			initParams.DocID = docID
+		}
+		task, err := fc.InitTask(ctx, initParams)
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
 				return fmt.Errorf("%s", i18n.T("credits.insufficient"))
+			}
+			if errs.HasCode(err, "script_invalid") {
+				// Backend's localized message already lives on the error.
+				// Exit 2 via clerr.Validation — this is a user-input problem.
+				var o *errs.Object
+				if errors.As(err, &o) {
+					return clerr.Validation(o.Message)
+				}
+				return clerr.Validation(err.Error())
 			}
 			return err
 		}
@@ -135,7 +168,7 @@ var createCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		isNDJSONCreate := format == "ndjson"
 
-		var taskFailed bool
+		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
 
 		err = fc.StreamChat(ctx, figlens.StreamParams{
@@ -145,6 +178,9 @@ var createCmd = &cobra.Command{
 			KnowledgeID: kbID,
 			DocID:       docID,
 			VoiceID:     flagCreateVoiceID,
+			BGMEnabled:  flagCreateBGM,
+			Aspect:      aspect,
+			VideoKind:   videoKind,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
@@ -175,15 +211,23 @@ var createCmd = &cobra.Command{
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 				}
 			case "task.failed":
-				taskFailed = true
+				failExitCode = 5
+				if ev.Code == "script_invalid" {
+					failExitCode = 2
+				}
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": "task.failed", "message": ev.Message,
+						"type":    "task.failed",
+						"code":    ev.Code,
+						"message": ev.Message,
 					})
 				} else {
-					if strings.Contains(ev.Message, "insufficient_credits") {
+					switch ev.Code {
+					case "insufficient_credits":
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
-					} else {
+					case "script_invalid":
+						fmt.Fprintln(os.Stderr, ev.Message)
+					default:
 						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
 					}
 				}
@@ -199,8 +243,8 @@ var createCmd = &cobra.Command{
 			os.Exit(6)
 		}
 
-		if taskFailed {
-			os.Exit(5)
+		if failExitCode != 0 {
+			os.Exit(failExitCode)
 		}
 
 		if successSessionID == "" {
@@ -297,6 +341,9 @@ func init() {
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
 	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")
 	createCmd.Flags().BoolVarP(&flagCreateYes, "yes", "y", false, "skip export confirmation prompt")
+	createCmd.Flags().StringVar(&flagCreateMode, "mode", "", i18n.T("create.flag.mode"))
+	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
+	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -389,6 +436,36 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 			fmt.Fprintln(os.Stderr, i18n.T("create.doc_status", d.Status))
 			time.Sleep(2 * time.Second)
 		}
+	}
+}
+
+// resolveVideoKind maps the --mode flag to the backend video_kind wire value.
+// Empty passes through (caller omits the field); unrecognized → Validation error.
+func resolveVideoKind(flag string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "":
+		return "", nil
+	case "replica":
+		return figlens.VideoKindReplica, nil
+	case "script":
+		return figlens.VideoKindScriptLock, nil
+	default:
+		return "", clerr.Validation(i18n.T("create.err.mode_invalid", flag))
+	}
+}
+
+// resolveAspect normalizes --aspect (canonical words + 16:9 / 9:16 aliases)
+// to the backend wire value.
+func resolveAspect(flag string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "":
+		return "", nil
+	case "horizontal", "16:9":
+		return "horizontal", nil
+	case "vertical", "9:16":
+		return "vertical", nil
+	default:
+		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
 }
 

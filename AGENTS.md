@@ -41,3 +41,25 @@ Commands:
 
 Exit codes: `0` success, `2` user error, `5` business failure, `6`
 interrupted, `7` partial success (preview ready, export failed).
+
+## Video kinds
+
+`vk create --mode <kind>` picks which figlens pipeline runs:
+
+- **default (no flag)** — generative video from the document.
+- **`--mode replica`** — PPT/PDF page-by-page reproduction. Suited
+  for slide decks where the visual structure is the message.
+- **`--mode script`** — uses the uploaded document text *verbatim*
+  as the narration. The doc must pass a quality preflight (length,
+  characters, content). Preflight failures exit **2** with a clear
+  message; agents should treat them as user-input problems, not
+  retries.
+
+Modes combine freely with `--aspect horizontal|vertical` (or `16:9` /
+`9:16`) and `--bgm`. All three flags are independent of `--from`,
+`--prompt`, `--voice`, and `--export`.
+
+Exit-code summary for new modes:
+- `2` — `--mode <bad>`, `--aspect <bad>`, or script preflight rejected the document.
+- `5` — pipeline business failure (e.g., insufficient credits) — same as today.
+- `7` — preview ok, MP4 export failed — same as today.
