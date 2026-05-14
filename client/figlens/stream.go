@@ -28,6 +28,7 @@ type StreamParams struct {
 type StreamEvent struct {
 	Type      string
 	Code      string // set on task.failed when payload carries an envelope code
+	Status    string // set on node.progress: "start" / "success" / "error"
 	Stage     string
 	Node      string
 	Message   string
@@ -117,6 +118,15 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 		case "process":
 			var log processLog
 			if err := json.Unmarshal(d.Log, &log); err != nil {
+				continue
+			}
+			if log.StepID == "" {
+				// v=2 agent path: free-form progress, no node graph.
+				onEvent(StreamEvent{
+					Type:    "node.progress",
+					Status:  log.Status,
+					Message: log.Message,
+				})
 				continue
 			}
 			if !stage.IsKnownNode(log.StepID) {

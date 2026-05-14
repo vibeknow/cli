@@ -162,3 +162,44 @@ func TestStreamChat_AgentEngineUsesAgent2Path(t *testing.T) {
 		t.Fatalf("path = %q, want /v1/agent2forVideo/stream", gotPath)
 	}
 }
+
+func TestStreamChat_AgentProgressEvents(t *testing.T) {
+	// v=2 events have empty step_id and a human-readable message.
+	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"","status":"start","message":"正在调用知识库..."}}}
+
+data: {"code":200,"data":{"type":"process","log":{"step_id":"","status":"success","message":"知识库就绪"}}}
+
+data: {"code":200,"data":{"type":"aim_result","session_id":"s_agent"}}
+
+data: [DONE]
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s_agent", Engine: figlens.EngineAgent,
+	}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3; events=%+v", len(events), events)
+	}
+	if events[0].Type != "node.progress" || events[0].Status != "start" || events[0].Message != "正在调用知识库..." {
+		t.Fatalf("event[0] = %+v", events[0])
+	}
+	if events[1].Type != "node.progress" || events[1].Status != "success" || events[1].Message != "知识库就绪" {
+		t.Fatalf("event[1] = %+v", events[1])
+	}
+	if events[2].Type != "task.succeeded" {
+		t.Fatalf("event[2] = %+v", events[2])
+	}
+}
