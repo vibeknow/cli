@@ -22,6 +22,11 @@ var deleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		kbID := args[0]
 
+		// The vectoria backend does not expose GET /v1/knowledgebases/<id>
+		// (returns 405), so we can't enrich the prompt with the kb's name
+		// without an O(N) list-and-scan. The "no_name" variant is the only
+		// path; in practice users got the id from `vk kb list` and already
+		// know which one they're deleting.
 		ok, err := cmdutil.Confirm(cmdutil.ConfirmOptions{
 			Prompt: i18n.T("kb.delete.confirm.no_name", kbID),
 			Yes:    flagDeleteYes,

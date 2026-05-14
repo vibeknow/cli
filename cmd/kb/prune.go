@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -39,6 +40,14 @@ var pruneCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := validatePruneFilters(flagPrunePattern, flagPruneOlderThan); err != nil {
 			return err
+		}
+		// Pre-flight the pattern syntax so a bad glob exits 2 before any
+		// HTTP round-trip (the scan loop's per-page filterKBs() also
+		// validates, but only after the first page has been fetched).
+		if flagPrunePattern != "" {
+			if _, err := filepath.Match(flagPrunePattern, ""); err != nil {
+				return clerr.Validation(i18n.T("kb.prune.bad_pattern", flagPrunePattern, err.Error()))
+			}
 		}
 		var olderThan time.Duration
 		if flagPruneOlderThan != "" {

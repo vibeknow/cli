@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/durfmt"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -82,9 +83,15 @@ var listCmd = &cobra.Command{
 		if flagListOlderThan != "" {
 			d, err := durfmt.ParseAge(flagListOlderThan)
 			if err != nil {
-				return fmt.Errorf("--older-than: %w", err)
+				return clerr.Validation(i18n.T("kb.prune.bad_age", flagListOlderThan, err.Error()))
 			}
 			olderThan = d
+		}
+		// Pre-flight pattern validity so a bad glob exits 2 before any HTTP.
+		if flagListPattern != "" {
+			if _, err := filepath.Match(flagListPattern, ""); err != nil {
+				return clerr.Validation(i18n.T("kb.prune.bad_pattern", flagListPattern, err.Error()))
+			}
 		}
 
 		vc, err := cliauth.NewVectoriaClient()
@@ -101,6 +108,7 @@ var listCmd = &cobra.Command{
 		items := toItems(resp.Items)
 		filtered, err := filterKBs(items, flagListPattern, olderThan, time.Now())
 		if err != nil {
+			// Pre-flighted above; reaching here means a non-pattern issue.
 			return err
 		}
 
