@@ -61,6 +61,13 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		engine, err := resolveEngine(flagCreateEngine)
+		if err != nil {
+			return err
+		}
+		if err := validateEngineModeCombo(engine, videoKind); err != nil {
+			return err
+		}
 
 		ctx := context.Background()
 
@@ -134,7 +141,7 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{VideoKind: videoKind}
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind}
 		if videoKind == figlens.VideoKindScriptLock {
 			initParams.KnowledgeID = kbID
 			initParams.DocID = docID
@@ -182,6 +189,7 @@ var createCmd = &cobra.Command{
 			BGMEnabled:  flagCreateBGM,
 			Aspect:      aspect,
 			VideoKind:   videoKind,
+			Engine:      engine,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
