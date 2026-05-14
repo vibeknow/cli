@@ -128,6 +128,26 @@ func TestDeleteDoc(t *testing.T) {
 	}
 }
 
+func TestDeleteKB(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.Method != "DELETE" {
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
+	if err := c.DeleteKB(context.Background(), "kb_1"); err != nil {
+		t.Fatalf("DeleteKB: %v", err)
+	}
+	if gotPath != "/v1/knowledgebases/kb_1" {
+		t.Fatalf("path = %q, want /v1/knowledgebases/kb_1", gotPath)
+	}
+}
+
 func TestUploadDoc_FileContent(t *testing.T) {
 	var gotContent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -56,3 +56,14 @@ func (c *Client) DeleteDoc(ctx context.Context, kbID, docID string) error {
 	}
 	return nil
 }
+
+// DeleteKB removes a knowledgebase and all its documents.
+// Used by `vk create` to clean up orphan kbs when upload-then-pipeline fails
+// before the backend task takes ownership of the kb.
+func (c *Client) DeleteKB(ctx context.Context, kbID string) error {
+	path := fmt.Sprintf("/v1/knowledgebases/%s", kbID)
+	if err := c.http.Do(ctx, "DELETE", path, nil, nil); err != nil {
+		return fmt.Errorf("delete knowledgebase: %w", err)
+	}
+	return nil
+}

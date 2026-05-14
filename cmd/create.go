@@ -101,6 +101,20 @@ var createCmd = &cobra.Command{
 			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
 		}
 
+		// Deferred kb cleanup: if we created a kb here (kbID != "") and the
+		// backend never claims it (InitTask never returns OK), drop it.
+		// Cleared once InitTask succeeds — past that point the backend task
+		// owns the kb's lifecycle and we must not delete it.
+		// Inline cleanup before os.Exit(5) below is also required because
+		// os.Exit skips defers.
+		var initTaskClaimed bool
+		defer func() {
+			if kbID == "" || initTaskClaimed {
+				return
+			}
+			cleanupOrphanKB(kbID)
+		}()
+
 		// Step 2: optimize prompt (skip if user provided --prompt).
 		_, url, tp, err := cmdutil.Default().Service("figlens")
 		if err != nil {
@@ -150,6 +164,10 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
 				// Mirror the stream-side path's exit code: business failure → 5.
+				// os.Exit skips defers — clean up the orphan kb inline first.
+				if kbID != "" {
+					cleanupOrphanKB(kbID)
+				}
 				fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
 				os.Exit(5)
 			}
@@ -164,6 +182,11 @@ var createCmd = &cobra.Command{
 			}
 			return err
 		}
+		// InitTask returned OK — backend task now owns the kb. Past this
+		// point we must not delete the kb on any error path (task.failed,
+		// stream interrupted, --async detach, etc.), because the backend
+		// may still be reading from it.
+		initTaskClaimed = true
 
 		// Step 4: async or sync.
 		if flagCreateAsync {
@@ -390,6 +413,14 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	// Best-effort cleanup if any subsequent step in this function fails.
+	// Cleared just before the successful return.
+	cleanup := func() { _ = vc.DeleteKB(context.Background(), kbID) }
+	defer func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
 
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -407,6 +438,7 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	cleanup = nil // ownership transfers to caller from here
 	return kbID, docID, nil
 }
 
@@ -423,6 +455,12 @@ func uploadURL(ctx context.Context, url string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	cleanup := func() { _ = vc.DeleteKB(context.Background(), kbID) }
+	defer func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
 
 	fmt.Fprintln(os.Stderr, i18n.T("create.uploading_url", url))
 	doc, err := vc.UploadURL(ctx, kbID, url)
@@ -434,7 +472,21 @@ func uploadURL(ctx context.Context, url string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	cleanup = nil
 	return kbID, docID, nil
+}
+
+// cleanupOrphanKB best-effort deletes a knowledgebase the CLI created on
+// behalf of `vk create` when the backend never claimed it (e.g., InitTask
+// failed before the task could take ownership). Errors are swallowed —
+// orphan cleanup is hygiene, not correctness, and we don't want it to
+// mask the real failure the user is about to see.
+func cleanupOrphanKB(kbID string) {
+	vc, err := cliauth.NewVectoriaClient()
+	if err != nil {
+		return
+	}
+	_ = vc.DeleteKB(context.Background(), kbID)
 }
 
 // pollDocReady polls until the document is completed or fails.
