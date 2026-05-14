@@ -51,6 +51,15 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("--from is required")
 		}
 
+		videoKind, err := resolveVideoKind(flagCreateMode)
+		if err != nil {
+			return err
+		}
+		aspect, err := resolveAspect(flagCreateAspect)
+		if err != nil {
+			return err
+		}
+
 		ctx := context.Background()
 
 		// Step 1: resolve --from to kb_id + doc_id.
@@ -79,6 +88,10 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		if videoKind == "script_lock" && kbID == "" {
+			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
+		}
+
 		// Step 2: optimize prompt (skip if user provided --prompt).
 		_, url, tp, err := cmdutil.Default().Service("figlens")
 		if err != nil {
@@ -99,6 +112,7 @@ var createCmd = &cobra.Command{
 			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
 				KnowledgeID: kbID,
 				DocID:       docID,
+				VideoKind:   videoKind,
 			}, onDelta)
 			if streaming {
 				fmt.Fprintln(os.Stderr)
@@ -118,7 +132,14 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		task, err := fc.InitTask(ctx, figlens.InitTaskParams{})
+		initParams := figlens.InitTaskParams{VideoKind: videoKind}
+		if videoKind == "script_lock" {
+			// Script preflight needs kb_id + doc_id; guaranteed by the
+			// check above (we'd have exited if kbID were empty).
+			initParams.KnowledgeID = kbID
+			initParams.DocID = docID
+		}
+		task, err := fc.InitTask(ctx, initParams)
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
 				return fmt.Errorf("%s", i18n.T("credits.insufficient"))
@@ -149,6 +170,9 @@ var createCmd = &cobra.Command{
 			KnowledgeID: kbID,
 			DocID:       docID,
 			VoiceID:     flagCreateVoiceID,
+			BGMEnabled:  flagCreateBGM,
+			Aspect:      aspect,
+			VideoKind:   videoKind,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
