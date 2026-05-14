@@ -161,6 +161,7 @@ var createCmd = &cobra.Command{
 		isNDJSONCreate := format == "ndjson"
 
 		var taskFailed bool
+		var scriptInvalid bool
 		var successSessionID string
 
 		err = fc.StreamChat(ctx, figlens.StreamParams{
@@ -204,14 +205,20 @@ var createCmd = &cobra.Command{
 				}
 			case "task.failed":
 				taskFailed = true
+				if isScriptInvalidMessage(ev.Message) {
+					scriptInvalid = true
+				}
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
 						"type": "task.failed", "message": ev.Message,
 					})
 				} else {
-					if strings.Contains(ev.Message, "insufficient_credits") {
+					switch {
+					case strings.Contains(ev.Message, "insufficient_credits"):
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
-					} else {
+					case isScriptInvalidMessage(ev.Message):
+						fmt.Fprintln(os.Stderr, extractScriptInvalidUserMessage(ev.Message))
+					default:
 						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
 					}
 				}
@@ -228,6 +235,9 @@ var createCmd = &cobra.Command{
 		}
 
 		if taskFailed {
+			if scriptInvalid {
+				os.Exit(2)
+			}
 			os.Exit(5)
 		}
 
@@ -453,5 +463,15 @@ func resolveAspect(flag string) (string, error) {
 	default:
 		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
+}
+
+const scriptInvalidPrefix = "[script_invalid] "
+
+func isScriptInvalidMessage(msg string) bool {
+	return strings.HasPrefix(msg, scriptInvalidPrefix)
+}
+
+func extractScriptInvalidUserMessage(msg string) string {
+	return strings.TrimPrefix(msg, scriptInvalidPrefix)
 }
 

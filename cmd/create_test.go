@@ -74,3 +74,22 @@ func TestResolveVideoKind_ErrorMessageMentionsValues(t *testing.T) {
 		t.Fatalf("error must list allowed values, got: %q", msg)
 	}
 }
+
+func TestIsScriptInvalidMessage(t *testing.T) {
+	if !isScriptInvalidMessage("[script_invalid] 讲稿超过 8000 字") {
+		t.Fatal("expected script_invalid match")
+	}
+	if isScriptInvalidMessage("[insufficient_credits] no credits") {
+		t.Fatal("unexpected match")
+	}
+	if isScriptInvalidMessage("plain error") {
+		t.Fatal("unexpected match")
+	}
+}
+
+func TestExtractScriptInvalidUserMessage(t *testing.T) {
+	got := extractScriptInvalidUserMessage("[script_invalid] 讲稿超过 8000 字")
+	if got != "讲稿超过 8000 字" {
+		t.Fatalf("got %q", got)
+	}
+}
