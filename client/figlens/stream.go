@@ -19,6 +19,8 @@ type StreamParams struct {
 	DocID       string `json:"doc_id,omitempty"`
 	VoiceID     string `json:"voice_id,omitempty"`
 	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
+	Aspect      string `json:"aspect,omitempty"`
+	VideoKind   string `json:"video_kind,omitempty"`
 }
 
 type StreamEvent struct {

@@ -2,6 +2,7 @@ package figlens_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -77,5 +78,37 @@ func TestStreamChat_ErrorEvent(t *testing.T) {
 	}
 	if len(events) == 0 || events[0].Type != "task.failed" {
 		t.Fatalf("expected task.failed event, got %v", events)
+	}
+}
+
+func TestStreamChat_SendsVideoKindAndAspect(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"code":200,"data":{"type":"aim_result","session_id":"s_abc"}}
+
+data: [DONE]
+
+`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s_abc", Query: "q",
+		VideoKind: "replica", Aspect: "vertical", BGMEnabled: true,
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotBody["video_kind"] != "replica" {
+		t.Fatalf("video_kind = %v, want \"replica\"", gotBody["video_kind"])
+	}
+	if gotBody["aspect"] != "vertical" {
+		t.Fatalf("aspect = %v, want \"vertical\"", gotBody["aspect"])
+	}
+	if gotBody["bgm_enabled"] != true {
+		t.Fatalf("bgm_enabled = %v, want true", gotBody["bgm_enabled"])
 	}
 }
