@@ -17,6 +17,8 @@ var nodeToStage = map[string]string{
 	"video_package":    "publish",
 	"video_finish":     "publish",
 	"suggest":          "suggest",
+	"doc_replica_plan": "outline",
+	"doc_replica_shoot": "render",
 }
 
 var nodeDisplayName = map[string]string{
@@ -34,6 +36,8 @@ var nodeDisplayName = map[string]string{
 	"video_package":    "video_package",
 	"video_finish":     "video_finish",
 	"suggest":          "suggest",
+	"doc_replica_plan": "doc_replica_plan",
+	"doc_replica_shoot": "doc_replica_shoot",
 }
 
 var orderedStages = []string{"parse", "outline", "tts", "render", "publish", "suggest"}
