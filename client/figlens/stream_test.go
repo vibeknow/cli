@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/vibeknow/cli/client/figlens"
@@ -110,5 +111,34 @@ data: [DONE]
 	}
 	if gotBody["bgm_enabled"] != true {
 		t.Fatalf("bgm_enabled = %v, want true", gotBody["bgm_enabled"])
+	}
+}
+
+func TestStreamChat_ScriptInvalidCode(t *testing.T) {
+	sseBody := `data: {"code":100004,"data":{"message":"讲稿超过 8000 字"}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.failed" {
+		t.Fatalf("expected task.failed, got %v", events)
+	}
+	if !strings.Contains(events[0].Message, "script_invalid") {
+		t.Fatalf("expected script_invalid in message, got %q", events[0].Message)
+	}
+	if !strings.Contains(events[0].Message, "讲稿超过 8000 字") {
+		t.Fatalf("expected backend message preserved, got %q", events[0].Message)
 	}
 }

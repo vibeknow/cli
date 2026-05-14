@@ -58,6 +58,8 @@ func mapSSECode(code int) string {
 		return "freeze_not_found"
 	case 100003:
 		return "concurrent_work_limit"
+	case 100004:
+		return "script_invalid"
 	default:
 		return "business_error"
 	}
