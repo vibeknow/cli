@@ -114,7 +114,7 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		task, err := fc.InitTask(ctx)
+		task, err := fc.InitTask(ctx, figlens.InitTaskParams{})
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
 				return fmt.Errorf("%s", i18n.T("credits.insufficient"))

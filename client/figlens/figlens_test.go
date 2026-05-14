@@ -23,10 +23,12 @@ func figlensResp(w http.ResponseWriter, data any) {
 }
 
 func TestInitTask(t *testing.T) {
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/tasks/init" || r.Method != "POST" {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		figlensResp(w, map[string]any{
 			"task_id": 123, "session_id": "s_abc", "work_id": 456, "v": 3,
 		})
@@ -34,15 +36,46 @@ func TestInitTask(t *testing.T) {
 	defer srv.Close()
 
 	c := figlens.New(srv.URL, staticToken("tok"))
-	task, err := c.InitTask(context.Background())
+	task, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		KnowledgeID: "kb_1", DocID: "doc_1", VideoKind: "script_lock",
+	})
 	if err != nil {
 		t.Fatalf("InitTask: %v", err)
 	}
 	if task.TaskID != 123 {
 		t.Fatalf("task_id = %d", task.TaskID)
 	}
-	if task.SessionID != "s_abc" {
-		t.Fatalf("session_id = %q", task.SessionID)
+	if gotBody["v"] != float64(3) {
+		t.Fatalf("v = %v, want 3", gotBody["v"])
+	}
+	if gotBody["knowledge_id"] != "kb_1" {
+		t.Fatalf("knowledge_id = %v", gotBody["knowledge_id"])
+	}
+	if gotBody["video_kind"] != "script_lock" {
+		t.Fatalf("video_kind = %v", gotBody["video_kind"])
+	}
+}
+
+func TestInitTask_OmitsEmptyFields(t *testing.T) {
+	var raw []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ = io.ReadAll(r.Body)
+		figlensResp(w, map[string]any{
+			"task_id": 1, "session_id": "s_x", "work_id": 2, "v": 3,
+		})
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	body := string(raw)
+	for _, f := range []string{"knowledge_id", "doc_id", "video_kind"} {
+		if strings.Contains(body, f) {
+			t.Fatalf("%s unexpectedly present in empty-params body: %s", f, body)
+		}
 	}
 }
 

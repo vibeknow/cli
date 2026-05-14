@@ -12,9 +12,28 @@ type Task struct {
 	V         int    `json:"v,omitempty"`
 }
 
-func (c *Client) InitTask(ctx context.Context) (*Task, error) {
+type InitTaskParams struct {
+	KnowledgeID string `json:"knowledge_id,omitempty"`
+	DocID       string `json:"doc_id,omitempty"`
+	VideoKind   string `json:"video_kind,omitempty"`
+}
+
+type initTaskWire struct {
+	V           int    `json:"v"`
+	KnowledgeID string `json:"knowledge_id,omitempty"`
+	DocID       string `json:"doc_id,omitempty"`
+	VideoKind   string `json:"video_kind,omitempty"`
+}
+
+func (c *Client) InitTask(ctx context.Context, p InitTaskParams) (*Task, error) {
 	var t Task
-	if err := c.http.Do(ctx, "POST", "/v1/tasks/init", map[string]int{"v": 3}, &t); err != nil {
+	body := initTaskWire{
+		V:           3,
+		KnowledgeID: p.KnowledgeID,
+		DocID:       p.DocID,
+		VideoKind:   p.VideoKind,
+	}
+	if err := c.http.Do(ctx, "POST", "/v1/tasks/init", body, &t); err != nil {
 		return nil, fmt.Errorf("init task: %w", err)
 	}
 	return &t, nil
