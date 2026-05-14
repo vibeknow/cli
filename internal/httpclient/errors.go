@@ -94,6 +94,29 @@ const (
 	CodeAccountPendingDeletion = "account_pending_deletion"
 )
 
+// MapBusinessCode maps a 100xxx-range backend envelope code to a stable
+// CLI error code label. Returns ok=false for codes outside that range so
+// callers can fall back to their own mapping (e.g. HTTP-class for HTTP,
+// "business_error" for SSE). Shared by mapEnvelopeCode (HTTP path) and
+// client/figlens.mapSSECode (SSE path) so a new business code only needs
+// to be added once.
+func MapBusinessCode(envCode int) (string, bool) {
+	switch envCode {
+	case 100001:
+		return "insufficient_credits", true
+	case 100002:
+		return "freeze_not_found", true
+	case 100003:
+		return "concurrent_work_limit", true
+	case 100004:
+		return "script_invalid", true
+	}
+	if envCode >= 100000 {
+		return "business_error", true
+	}
+	return "", false
+}
+
 // mapEnvelopeCode maps a backend envelope code + HTTP status to a CLI error code.
 // Backend aether codes: 40xxx = 4xx class, 50xxx = 5xx class, 100xxx+ = business errors.
 func mapEnvelopeCode(envCode, httpStatus int) string {
@@ -117,20 +140,11 @@ func mapEnvelopeCode(envCode, httpStatus int) string {
 		return CodeSessionReplaced
 	case envCode == 110013:
 		return CodeAccountPendingDeletion
-	// Business errors (100xxx).
-	case envCode == 100001:
-		return "insufficient_credits"
-	case envCode == 100002:
-		return "freeze_not_found"
-	case envCode == 100003:
-		return "concurrent_work_limit"
-	case envCode == 100004:
-		return "script_invalid"
-	case envCode >= 100000:
-		return "business_error"
-	default:
-		return mapHTTPCode(httpStatus)
 	}
+	if label, ok := MapBusinessCode(envCode); ok {
+		return label
+	}
+	return mapHTTPCode(httpStatus)
 }
 
 func mapHTTPCode(status int) string {

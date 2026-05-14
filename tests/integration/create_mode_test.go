@@ -43,12 +43,15 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 			mu.Unlock()
 			w.Header().Set("Content-Type", "text/event-stream")
 			flusher, _ := w.(http.Flusher)
-			fmt.Fprintln(w, `data: {"code":200,"data":{"type":"aim_result","answer_done":{"text":"replica prompt"}}}`)
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, `data: [DONE]`)
-			fmt.Fprintln(w)
-			if flusher != nil {
-				flusher.Flush()
+			for _, e := range []string{
+				`data: {"code":200,"data":{"type":"aim_result","answer_done":{"text":"replica prompt"}}}`,
+				`data: [DONE]`,
+			} {
+				fmt.Fprintln(w, e)
+				fmt.Fprintln(w)
+				if flusher != nil {
+					flusher.Flush()
+				}
 			}
 
 		case "/v1/agent3forVideo/stream":

@@ -89,7 +89,7 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		if videoKind == "script_lock" && kbID == "" {
+		if videoKind == figlens.VideoKindScriptLock && kbID == "" {
 			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
 		}
 
@@ -134,9 +134,7 @@ var createCmd = &cobra.Command{
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
 		initParams := figlens.InitTaskParams{VideoKind: videoKind}
-		if videoKind == "script_lock" {
-			// Script preflight needs kb_id + doc_id; guaranteed by the
-			// check above (we'd have exited if kbID were empty).
+		if videoKind == figlens.VideoKindScriptLock {
 			initParams.KnowledgeID = kbID
 			initParams.DocID = docID
 		}
@@ -170,8 +168,7 @@ var createCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		isNDJSONCreate := format == "ndjson"
 
-		var taskFailed bool
-		var scriptInvalid bool
+		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
 
 		err = fc.StreamChat(ctx, figlens.StreamParams{
@@ -214,20 +211,22 @@ var createCmd = &cobra.Command{
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 				}
 			case "task.failed":
-				taskFailed = true
-				if isScriptInvalidMessage(ev.Message) {
-					scriptInvalid = true
+				failExitCode = 5
+				if ev.Code == "script_invalid" {
+					failExitCode = 2
 				}
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": "task.failed", "message": ev.Message,
+						"type":    "task.failed",
+						"code":    ev.Code,
+						"message": ev.Message,
 					})
 				} else {
-					switch {
-					case strings.Contains(ev.Message, "insufficient_credits"):
+					switch ev.Code {
+					case "insufficient_credits":
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
-					case isScriptInvalidMessage(ev.Message):
-						fmt.Fprintln(os.Stderr, extractScriptInvalidUserMessage(ev.Message))
+					case "script_invalid":
+						fmt.Fprintln(os.Stderr, ev.Message)
 					default:
 						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
 					}
@@ -244,11 +243,8 @@ var createCmd = &cobra.Command{
 			os.Exit(6)
 		}
 
-		if taskFailed {
-			if scriptInvalid {
-				os.Exit(2)
-			}
-			os.Exit(5)
+		if failExitCode != 0 {
+			os.Exit(failExitCode)
 		}
 
 		if successSessionID == "" {
@@ -443,25 +439,23 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 	}
 }
 
-// resolveVideoKind translates the user-facing --mode value to the
-// backend video_kind wire value, or returns a clerr.Validation error
-// listing allowed values. Empty input → empty output (caller omits
-// video_kind from the wire).
+// resolveVideoKind maps the --mode flag to the backend video_kind wire value.
+// Empty passes through (caller omits the field); unrecognized → Validation error.
 func resolveVideoKind(flag string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(flag)) {
 	case "":
 		return "", nil
 	case "replica":
-		return "replica", nil
+		return figlens.VideoKindReplica, nil
 	case "script":
-		return "script_lock", nil
+		return figlens.VideoKindScriptLock, nil
 	default:
 		return "", clerr.Validation(i18n.T("create.err.mode_invalid", flag))
 	}
 }
 
-// resolveAspect normalizes --aspect (canonical words + 16:9 / 9:16
-// aliases) to the backend's wire value.
+// resolveAspect normalizes --aspect (canonical words + 16:9 / 9:16 aliases)
+// to the backend wire value.
 func resolveAspect(flag string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(flag)) {
 	case "":
@@ -473,15 +467,5 @@ func resolveAspect(flag string) (string, error) {
 	default:
 		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
-}
-
-const scriptInvalidPrefix = "[script_invalid] "
-
-func isScriptInvalidMessage(msg string) bool {
-	return strings.HasPrefix(msg, scriptInvalidPrefix)
-}
-
-func extractScriptInvalidUserMessage(msg string) string {
-	return strings.TrimPrefix(msg, scriptInvalidPrefix)
 }
 

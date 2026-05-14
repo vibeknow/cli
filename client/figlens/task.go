@@ -5,6 +5,13 @@ import (
 	"fmt"
 )
 
+// Backend video_kind wire values. The CLI flag names (`replica`, `script`)
+// map to these via cmd.resolveVideoKind.
+const (
+	VideoKindReplica    = "replica"
+	VideoKindScriptLock = "script_lock"
+)
+
 type Task struct {
 	TaskID    int64  `json:"task_id"`
 	SessionID string `json:"session_id"`
@@ -19,20 +26,13 @@ type InitTaskParams struct {
 }
 
 type initTaskWire struct {
-	V           int    `json:"v"`
-	KnowledgeID string `json:"knowledge_id,omitempty"`
-	DocID       string `json:"doc_id,omitempty"`
-	VideoKind   string `json:"video_kind,omitempty"`
+	V int `json:"v"`
+	InitTaskParams
 }
 
 func (c *Client) InitTask(ctx context.Context, p InitTaskParams) (*Task, error) {
 	var t Task
-	body := initTaskWire{
-		V:           3,
-		KnowledgeID: p.KnowledgeID,
-		DocID:       p.DocID,
-		VideoKind:   p.VideoKind,
-	}
+	body := initTaskWire{V: 3, InitTaskParams: p}
 	if err := c.http.Do(ctx, "POST", "/v1/tasks/init", body, &t); err != nil {
 		return nil, fmt.Errorf("init task: %w", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/vibeknow/cli/client/figlens"
@@ -135,10 +134,10 @@ func TestStreamChat_ScriptInvalidCode(t *testing.T) {
 	if len(events) == 0 || events[0].Type != "task.failed" {
 		t.Fatalf("expected task.failed, got %v", events)
 	}
-	if !strings.Contains(events[0].Message, "script_invalid") {
-		t.Fatalf("expected script_invalid in message, got %q", events[0].Message)
+	if events[0].Code != "script_invalid" {
+		t.Fatalf("expected Code=script_invalid, got %q", events[0].Code)
 	}
-	if !strings.Contains(events[0].Message, "讲稿超过 8000 字") {
-		t.Fatalf("expected backend message preserved, got %q", events[0].Message)
+	if events[0].Message != "讲稿超过 8000 字" {
+		t.Fatalf("expected backend message verbatim, got %q", events[0].Message)
 	}
 }
