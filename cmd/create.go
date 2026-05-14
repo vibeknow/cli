@@ -34,6 +34,7 @@ var (
 	flagCreateMode    string
 	flagCreateAspect  string
 	flagCreateBGM     bool
+	flagCreateEngine  string
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -344,6 +345,7 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateMode, "mode", "", i18n.T("create.flag.mode"))
 	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
 	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
+	createCmd.Flags().StringVar(&flagCreateEngine, "engine", "", i18n.T("create.flag.engine"))
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -467,5 +469,31 @@ func resolveAspect(flag string) (string, error) {
 	default:
 		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
+}
+
+// resolveEngine maps the --engine flag to a figlens.Engine value.
+// Empty input passes through as EnginePipeline (the zero value)
+// so the default invocation is byte-identical to 0.4.2 on the wire.
+func resolveEngine(flag string) (figlens.Engine, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "", "pipeline":
+		return figlens.EnginePipeline, nil
+	case "agent":
+		return figlens.EngineAgent, nil
+	default:
+		return figlens.EnginePipeline, clerr.Validation(i18n.T("create.err.engine_invalid", flag))
+	}
+}
+
+// validateEngineModeCombo rejects combinations that the backend doesn't
+// support, so users get a CLI-side error rather than silent fallback.
+// --engine agent has no replica branch (verified by go-figlens source
+// grep, see spec §Differences point 2). --mode script_lock works on
+// both engines.
+func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
+	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindReplica {
+		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
+	}
+	return nil
 }
 
