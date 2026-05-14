@@ -37,7 +37,16 @@ var (
 	flagCreateEngine  string
 )
 
-var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
+// docIDRe matches a vectoria document identifier supplied via `--from`.
+// Two forms are accepted:
+//   - Legacy CLI-coined form `doc_<8+ alnum>` (used by older callers).
+//   - Vectoria's native UUID form `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+//     (lowercase hex, what `vk create` itself prints on every run).
+//
+// Without the UUID branch, a user copying the `doc_id:` line from a prior
+// successful run and re-passing it to `--from` would have the CLI treat
+// it as a local file path, ending in "stat: no such file or directory".
+var docIDRe = regexp.MustCompile(`^(doc_[a-zA-Z0-9]{8,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 
 var createCmd = &cobra.Command{
 	Use:   "create",

@@ -134,3 +134,39 @@ func TestEnginePipelineAllowsAllModes(t *testing.T) {
 	}
 }
 
+func TestDocIDRegex(t *testing.T) {
+	tests := []struct {
+		in    string
+		match bool
+		desc  string
+	}{
+		// Legacy form (kept for backward compat).
+		{"doc_abc12345", true, "legacy doc_<alnum>"},
+		{"doc_a1b2c3d4e5f6", true, "legacy long"},
+		{"doc_short", false, "legacy too-short suffix"},
+
+		// Vectoria native UUID form (what `vk create` actually prints).
+		{"3c498964-2c54-4ac0-97e8-1125d3bed640", true, "real vectoria UUID"},
+		{"00000000-0000-0000-0000-000000000000", true, "all-zero UUID"},
+
+		// Negative: file paths and URLs must not match.
+		{"./my-file.docx", false, "relative path"},
+		{"/abs/path.pdf", false, "absolute path"},
+		{"my-file.docx", false, "filename with extension"},
+		{"https://example.com/x", false, "URL"},
+
+		// Negative: malformed UUIDs.
+		{"3c498964-2c54-4ac0-97e8", false, "truncated UUID"},
+		{"3C498964-2C54-4AC0-97E8-1125D3BED640", false, "uppercase (vectoria emits lowercase)"},
+		{"3c498964_2c54_4ac0_97e8_1125d3bed640", false, "underscores not hyphens"},
+		{"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", false, "non-hex chars"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := docIDRe.MatchString(tt.in)
+			if got != tt.match {
+				t.Fatalf("docIDRe.MatchString(%q) = %v, want %v", tt.in, got, tt.match)
+			}
+		})
+	}
+}
