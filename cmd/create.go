@@ -14,6 +14,7 @@ import (
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -29,6 +30,9 @@ var (
 	flagCreateAsync   bool
 	flagCreateExport  bool
 	flagCreateYes     bool
+	flagCreateMode    string
+	flagCreateAspect  string
+	flagCreateBGM     bool
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -297,6 +301,9 @@ func init() {
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
 	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")
 	createCmd.Flags().BoolVarP(&flagCreateYes, "yes", "y", false, "skip export confirmation prompt")
+	createCmd.Flags().StringVar(&flagCreateMode, "mode", "", i18n.T("create.flag.mode"))
+	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
+	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -389,6 +396,38 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 			fmt.Fprintln(os.Stderr, i18n.T("create.doc_status", d.Status))
 			time.Sleep(2 * time.Second)
 		}
+	}
+}
+
+// resolveVideoKind translates the user-facing --mode value to the
+// backend video_kind wire value, or returns a clerr.Validation error
+// listing allowed values. Empty input → empty output (caller omits
+// video_kind from the wire).
+func resolveVideoKind(flag string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "":
+		return "", nil
+	case "replica":
+		return "replica", nil
+	case "script":
+		return "script_lock", nil
+	default:
+		return "", clerr.Validation(i18n.T("create.err.mode_invalid", flag))
+	}
+}
+
+// resolveAspect normalizes --aspect (canonical words + 16:9 / 9:16
+// aliases) to the backend's wire value.
+func resolveAspect(flag string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "":
+		return "", nil
+	case "horizontal", "16:9":
+		return "horizontal", nil
+	case "vertical", "9:16":
+		return "vertical", nil
+	default:
+		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
 }
 
