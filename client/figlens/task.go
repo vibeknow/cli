@@ -20,6 +20,7 @@ type Task struct {
 }
 
 type InitTaskParams struct {
+	Engine      Engine `json:"-"` // selects wire v field, never emitted as a body key
 	KnowledgeID string `json:"knowledge_id,omitempty"`
 	DocID       string `json:"doc_id,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
@@ -32,7 +33,7 @@ type initTaskWire struct {
 
 func (c *Client) InitTask(ctx context.Context, p InitTaskParams) (*Task, error) {
 	var t Task
-	body := initTaskWire{V: 3, InitTaskParams: p}
+	body := initTaskWire{V: p.Engine.Wire(), InitTaskParams: p}
 	if err := c.http.Do(ctx, "POST", "/v1/tasks/init", body, &t); err != nil {
 		return nil, fmt.Errorf("init task: %w", err)
 	}
