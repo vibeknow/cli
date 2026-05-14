@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
@@ -51,6 +52,9 @@ var listCmd = &cobra.Command{
 				}
 				if w.VideoPath != "" {
 					item["video_path"] = w.VideoPath
+				}
+				if w.Engine != "" {
+					item["engine"] = figlens.RemapEngineForDisplay(w.Engine)
 				}
 				items = append(items, item)
 			}

@@ -14,30 +14,31 @@ const (
 // 3 = pipeline (PipelineForVideo handler, WorkEngine="suite" in DB).
 // 2 = agent    (AgentOnlyForVideo handler, WorkEngine="agent" in DB).
 func (e Engine) Wire() int {
-	if e == EngineAgent {
+	switch e {
+	case EngineAgent:
 		return 2
+	default:
+		return 3
 	}
-	return 3
 }
 
 // StreamPath returns the SSE endpoint path for this engine.
 func (e Engine) StreamPath() string {
-	if e == EngineAgent {
+	switch e {
+	case EngineAgent:
 		return "/v1/agent2forVideo/stream"
+	default:
+		return "/v1/agent3forVideo/stream"
 	}
-	return "/v1/agent3forVideo/stream"
 }
 
 // RemapEngineForDisplay translates the backend's Work.Engine DB enum
 // value to the CLI's user-facing vocabulary used by --engine.
-// Unknown values pass through unchanged so a future backend engine
-// doesn't disappear from snapshot output.
+// Unknown values (including "agent" which is already user-facing)
+// pass through unchanged.
 func RemapEngineForDisplay(dbEnum string) string {
-	switch dbEnum {
-	case "suite":
+	if dbEnum == "suite" {
 		return "pipeline"
-	case "agent":
-		return "agent"
 	}
 	return dbEnum
 }

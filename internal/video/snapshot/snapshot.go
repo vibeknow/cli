@@ -21,8 +21,8 @@ type Snapshot struct {
 	TaskID      int64    `json:"task_id"`
 	SessionID   string   `json:"session_id"`
 	WorkID      int64    `json:"work_id,omitempty"`
-	Title       string   `json:"title,omitempty"`
 	Engine      string   `json:"engine,omitempty"`
+	Title       string   `json:"title,omitempty"`
 	DurationMs  int64    `json:"duration_ms,omitempty"`
 	CoverURL    string   `json:"cover_url,omitempty"`
 	Preview     Preview  `json:"preview"`

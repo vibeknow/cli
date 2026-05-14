@@ -137,8 +137,8 @@ func TestCreate_EngineAgent_WiresV2AndSurfacesProgress(t *testing.T) {
 		t.Fatalf("missing second progress message:\n%s", out)
 	}
 
-	// 4. Snapshot engine field is remapped/passed-through.
-	// stdout in text mode includes a snapshot rendering; just verify engine appears somewhere.
-	// In JSON mode it'd be {"engine":"agent"}, but text mode rendering may vary.
-	// Skip strict format check; just confirm the word "agent" appears in output (already trivially true via [agent] prefix).
+	// Engine remap is covered at the snapshot layer
+	// (internal/video/snapshot/snapshot_test.go: TestBuild_*Engine*) — no
+	// duplicate integration assertion needed; text-mode RenderText
+	// intentionally omits the engine field from human output.
 }

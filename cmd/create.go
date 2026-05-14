@@ -215,8 +215,7 @@ var createCmd = &cobra.Command{
 						"message": ev.Message,
 					})
 				} else {
-					// Agent-engine free-form progress: no stage/node, just message.
-					// [agent] prefix mirrors v=3's [<stage>] shape for scannability.
+					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
 					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
 				}
 			case "task.succeeded":
@@ -505,11 +504,7 @@ func resolveEngine(flag string) (figlens.Engine, error) {
 	}
 }
 
-// validateEngineModeCombo rejects combinations that the backend doesn't
-// support, so users get a CLI-side error rather than silent fallback.
-// --engine agent has no replica branch (verified by go-figlens source
-// grep, see spec §Differences point 2). --mode script_lock works on
-// both engines.
+// validateEngineModeCombo rejects engine+mode combinations the backend doesn't support.
 func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
 	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindReplica {
 		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
