@@ -218,6 +218,14 @@ vk create --from <src> --engine agent       # v=2 agent 引擎（与前端选项
 vk create --from <src> --engine pipeline    # v=3 pipeline（默认）
 ```
 
+### 清理累积的知识库
+
+```bash
+vk kb list --output json --size 5             # 看下都有啥
+vk kb prune --pattern 'vibeknow-cli-*'        # 试运行（默认）
+vk kb prune --pattern 'vibeknow-cli-*' --yes  # 真正删除
+```
+
 ### 音色模板
 
 ```bash

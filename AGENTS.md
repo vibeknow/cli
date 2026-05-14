@@ -81,3 +81,28 @@ backend:
 
 The `engine` field in JSON snapshot output reflects which engine ran
 (`"pipeline"` / `"agent"`), letting agents verify routing.
+
+## KB management
+
+`vk kb list / delete / prune` manage vectoria knowledgebases. The
+headline command is `vk kb prune`, which exists to clean up the kb
+backlog that `vk create` accumulates (one new kb per invocation).
+
+Safety contract for `vk kb prune`:
+
+- **Refuses to run without `--pattern` or `--older-than`** (exit 2).
+  No "delete all" shortcut.
+- **Dry-run by default**: prints matched kbs without issuing any
+  DELETE. `--yes` (or `VIBEKNOW_ASSUME_YES=1`) actually deletes.
+- **Idempotent**: a 404 on DELETE counts as success (kb already gone).
+- **Partial failure**: exit 7 if some succeed and some fail; exit 5
+  if all fail; exit 0 if all succeed or matched empty.
+
+Recipes:
+
+- Clean CLI's own orphans: `vk kb prune --pattern 'vibeknow-cli-*' --yes`
+- Clean old kbs (last 30 days): `vk kb prune --older-than 30d --yes`
+- Both: `vk kb prune --pattern '*' --older-than 90d --yes`
+
+Output via `--output json` for piping; default text mode is
+human-friendly.
