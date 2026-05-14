@@ -211,6 +211,13 @@ vk create --from talk.docx --mode script    # 讲稿模式（用文档原文做�
 vk create --from <src>     --aspect vertical --bgm
 ```
 
+### 选择生成引擎（可选）
+
+```bash
+vk create --from <src> --engine agent       # v=2 agent 引擎（与前端选项对齐）
+vk create --from <src> --engine pipeline    # v=3 pipeline（默认）
+```
+
 ### 音色模板
 
 ```bash

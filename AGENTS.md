@@ -63,3 +63,21 @@ Exit-code summary for new modes:
 - `2` — `--mode <bad>`, `--aspect <bad>`, or script preflight rejected the document.
 - `5` — pipeline business failure (e.g., insufficient credits) — same as today.
 - `7` — preview ok, MP4 export failed — same as today.
+
+## Engine selection
+
+`vk create --engine <name>` picks which go-figlens engine generates the
+video. Two engines exist and are both actively maintained on the
+backend:
+
+- **`--engine pipeline`** (default) — v=3, graph-based pipeline. Has
+  rich SSE node events (`[parse] prepare started`, `[outline]
+  text_speech done`, ...). All `--mode` values supported.
+- **`--engine agent`** — v=2, agent-driven flow. SSE events are
+  free-form progress messages without a node graph; CLI shows them as
+  `[agent] <message>` in text mode or `node.progress` in NDJSON.
+  Supports `--mode script` (script_lock) but **not** `--mode replica`
+  — the CLI rejects that combination with exit 2.
+
+The `engine` field in JSON snapshot output reflects which engine ran
+(`"pipeline"` / `"agent"`), letting agents verify routing.
