@@ -1,6 +1,6 @@
 ---
 name: vibeknow-create
-version: 0.5.0
+version: 0.4.2
 description: "Generate videos from documents/URLs/files, track video task progress, download results, list voice templates. Use when: user wants to create a video, check task status, download video, or browse voices."
 metadata:
   requires:
