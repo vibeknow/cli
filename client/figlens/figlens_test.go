@@ -3,8 +3,11 @@ package figlens_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/vibeknow/cli/client/figlens"
@@ -132,5 +135,52 @@ func TestSignedURL(t *testing.T) {
 	}
 	if u != "https://signed.example.com/video.mp4" {
 		t.Fatalf("url = %q", u)
+	}
+}
+
+func TestFastQueryOptimize_SendsVideoKind(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"code":200,"data":{"type":"aim_result","answer_done":{"text":"ok"}}}
+
+data: [DONE]
+
+`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.FastQueryOptimize(context.Background(), figlens.OptimizeParams{
+		KnowledgeID: "kb_1", DocID: "doc_1", VideoKind: "script_lock",
+	}, nil)
+	if err != nil {
+		t.Fatalf("FastQueryOptimize: %v", err)
+	}
+	if gotBody["video_kind"] != "script_lock" {
+		t.Fatalf("video_kind on wire = %q, want %q", gotBody["video_kind"], "script_lock")
+	}
+}
+
+func TestFastQueryOptimize_OmitsVideoKindWhenEmpty(t *testing.T) {
+	var raw []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"code":200,"data":{"type":"aim_result","answer_done":{"text":"ok"}}}
+
+data: [DONE]
+
+`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, _ = c.FastQueryOptimize(context.Background(), figlens.OptimizeParams{
+		KnowledgeID: "kb_1", DocID: "doc_1",
+	}, nil)
+	if strings.Contains(string(raw), "video_kind") {
+		t.Fatalf("video_kind unexpectedly present in wire body: %s", raw)
 	}
 }
