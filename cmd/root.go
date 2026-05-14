@@ -11,6 +11,7 @@ import (
 	configcmd "github.com/vibeknow/cli/cmd/config"
 	creditscmd "github.com/vibeknow/cli/cmd/credits"
 	doccmd "github.com/vibeknow/cli/cmd/doc"
+	kbcmd "github.com/vibeknow/cli/cmd/kb"
 	profilecmd "github.com/vibeknow/cli/cmd/profile"
 	videocmd "github.com/vibeknow/cli/cmd/video"
 	voicecmd "github.com/vibeknow/cli/cmd/voice"
@@ -52,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(creditscmd.Cmd)
 	rootCmd.AddCommand(doccmd.Cmd)
+	rootCmd.AddCommand(kbcmd.Cmd)
 	rootCmd.AddCommand(profilecmd.Cmd)
 	rootCmd.AddCommand(videocmd.Cmd)
 	rootCmd.AddCommand(voicecmd.Cmd)

@@ -82,6 +82,25 @@ func init() {
 		"create.err.aspect_invalid":   "--aspect must be one of: horizontal, vertical, 16:9, 9:16 (got %q)",
 		"create.err.script_needs_doc": "--mode script requires an uploaded document (--from must be a file or URL, not a doc_id)",
 
+		// kb
+		"kb.short":                  "manage vectoria knowledgebases",
+		"kb.list.short":             "list your knowledgebases",
+		"kb.list.empty":             "no knowledgebases",
+		"kb.list.footer":            "Showing %d of %d (page %d)",
+		"kb.delete.short":           "delete a knowledgebase (and all its documents)",
+		"kb.delete.confirm.no_name": "About to delete kb %s. Irreversible. Continue? (y/N)",
+		"kb.delete.done":            "deleted.",
+		"kb.delete.already_gone":    "already deleted (or never existed)",
+		"kb.prune.short":            "bulk-delete knowledgebases matching a filter",
+		"kb.prune.no_filter":        "--pattern or --older-than is required; refusing to operate on all knowledgebases",
+		"kb.prune.scanning":         "Scanning… (page %d, %d/%d)",
+		"kb.prune.match_header":     "Found %d kbs matching filter:",
+		"kb.prune.dry_run_hint":     "This is a dry run. Run with --yes to actually delete.",
+		"kb.prune.applying":         "Deleting %d kbs…",
+		"kb.prune.done":             "Done: %d deleted, %d failed.",
+		"kb.prune.bad_pattern":      "invalid --pattern %q: %s",
+		"kb.prune.bad_age":          "invalid --older-than %q: %s",
+
 		// auth status (text mode)
 		"auth.status.signed_in_as":         "✓ Signed in as %s",
 		"auth.status.signed_in":            "✓ Signed in",
@@ -221,6 +240,25 @@ func init() {
 		"create.err.mode_invalid":     "--mode 必须是 replica 或 script（当前为 %q）",
 		"create.err.aspect_invalid":   "--aspect 必须是 horizontal、vertical、16:9 或 9:16（当前为 %q）",
 		"create.err.script_needs_doc": "--mode script 需要上传文档（--from 必须是文件或 URL，不能是 doc_id）",
+
+		// kb
+		"kb.short":                  "管理 vectoria 知识库",
+		"kb.list.short":             "列出你的知识库",
+		"kb.list.empty":             "没有知识库",
+		"kb.list.footer":            "显示 %d / %d（第 %d 页）",
+		"kb.delete.short":           "删除知识库及其所有文档",
+		"kb.delete.confirm.no_name": "即将删除知识库 %s。此操作不可恢复。继续？(y/N)",
+		"kb.delete.done":            "已删除。",
+		"kb.delete.already_gone":    "已不存在（或从未存在）",
+		"kb.prune.short":            "按过滤器批量删除知识库",
+		"kb.prune.no_filter":        "需要 --pattern 或 --older-than；拒绝对所有知识库操作",
+		"kb.prune.scanning":         "扫描中…（第 %d 页，%d / %d）",
+		"kb.prune.match_header":     "匹配到 %d 个知识库：",
+		"kb.prune.dry_run_hint":     "这是试运行。加 --yes 才会真正删除。",
+		"kb.prune.applying":         "正在删除 %d 个知识库…",
+		"kb.prune.done":             "完成：删除 %d 个，失败 %d 个。",
+		"kb.prune.bad_pattern":      "--pattern 格式错误 %q：%s",
+		"kb.prune.bad_age":          "--older-than 格式错误 %q：%s",
 
 		// auth status (text mode)
 		"auth.status.signed_in_as":         "✓ 已登录为 %s",
