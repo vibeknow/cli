@@ -211,6 +211,13 @@ vk create --from talk.docx --mode script    # narrate the doc verbatim
 vk create --from <src>     --aspect vertical --bgm
 ```
 
+### Pick a generation engine (optional)
+
+```bash
+vk create --from <src> --engine agent       # v=2 agent engine (frontend toggle parity)
+vk create --from <src> --engine pipeline    # v=3 pipeline (default)
+```
+
 ### Voice Templates
 
 ```bash

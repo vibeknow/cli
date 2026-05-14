@@ -21,6 +21,7 @@ type Snapshot struct {
 	TaskID      int64    `json:"task_id"`
 	SessionID   string   `json:"session_id"`
 	WorkID      int64    `json:"work_id,omitempty"`
+	Engine      string   `json:"engine,omitempty"`
 	Title       string   `json:"title,omitempty"`
 	DurationMs  int64    `json:"duration_ms,omitempty"`
 	CoverURL    string   `json:"cover_url,omitempty"`
@@ -87,6 +88,7 @@ func Build(in BuildInput) Snapshot {
 	if in.Work != nil {
 		s.WorkID = in.Work.ID
 		s.Title = in.Work.Title
+		s.Engine = figlens.RemapEngineForDisplay(in.Work.Engine)
 		s.DurationMs = in.Work.Duration
 		s.CoverURL = in.Work.CoverURL
 		s.Preview.Ready = in.Work.ShareToken != ""

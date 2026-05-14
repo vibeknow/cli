@@ -34,6 +34,7 @@ var (
 	flagCreateMode    string
 	flagCreateAspect  string
 	flagCreateBGM     bool
+	flagCreateEngine  string
 )
 
 var docIDRe = regexp.MustCompile(`^doc_[a-zA-Z0-9]{8,}$`)
@@ -58,6 +59,13 @@ var createCmd = &cobra.Command{
 		}
 		aspect, err := resolveAspect(flagCreateAspect)
 		if err != nil {
+			return err
+		}
+		engine, err := resolveEngine(flagCreateEngine)
+		if err != nil {
+			return err
+		}
+		if err := validateEngineModeCombo(engine, videoKind); err != nil {
 			return err
 		}
 
@@ -133,7 +141,7 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{VideoKind: videoKind}
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind}
 		if videoKind == figlens.VideoKindScriptLock {
 			initParams.KnowledgeID = kbID
 			initParams.DocID = docID
@@ -181,6 +189,7 @@ var createCmd = &cobra.Command{
 			BGMEnabled:  flagCreateBGM,
 			Aspect:      aspect,
 			VideoKind:   videoKind,
+			Engine:      engine,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
@@ -197,6 +206,17 @@ var createCmd = &cobra.Command{
 					case "node.failed":
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
 					}
+				}
+			case "node.progress":
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type":    "node.progress",
+						"status":  ev.Status,
+						"message": ev.Message,
+					})
+				} else {
+					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
+					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
 				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
@@ -344,6 +364,7 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateMode, "mode", "", i18n.T("create.flag.mode"))
 	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
 	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
+	createCmd.Flags().StringVar(&flagCreateEngine, "engine", "", i18n.T("create.flag.engine"))
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -467,5 +488,27 @@ func resolveAspect(flag string) (string, error) {
 	default:
 		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
+}
+
+// resolveEngine maps the --engine flag to a figlens.Engine value.
+// Empty input passes through as EnginePipeline (the zero value)
+// so the default invocation is byte-identical to 0.4.2 on the wire.
+func resolveEngine(flag string) (figlens.Engine, error) {
+	switch strings.ToLower(strings.TrimSpace(flag)) {
+	case "", "pipeline":
+		return figlens.EnginePipeline, nil
+	case "agent":
+		return figlens.EngineAgent, nil
+	default:
+		return figlens.EnginePipeline, clerr.Validation(i18n.T("create.err.engine_invalid", flag))
+	}
+}
+
+// validateEngineModeCombo rejects engine+mode combinations the backend doesn't support.
+func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
+	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindReplica {
+		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
+	}
+	return nil
 }
 

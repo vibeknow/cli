@@ -167,3 +167,36 @@ func containsCmd(actions []snapshot.Action, substr string) bool {
 	}
 	return false
 }
+
+func TestBuild_RemapsEngineSuiteToPipeline(t *testing.T) {
+	work := &figlens.Work{
+		ID: 1, SessionID: "s", ShareToken: "tok",
+		Engine: "suite",
+	}
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID: 42, SessionID: "s", Work: work, ShareBase: "https://x/share",
+	})
+	if s.Engine != "pipeline" {
+		t.Fatalf("Engine = %q, want \"pipeline\" (remapped from \"suite\")", s.Engine)
+	}
+}
+
+func TestBuild_EngineAgentPassesThrough(t *testing.T) {
+	work := &figlens.Work{ID: 1, SessionID: "s", Engine: "agent"}
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID: 1, SessionID: "s", Work: work,
+	})
+	if s.Engine != "agent" {
+		t.Fatalf("Engine = %q, want \"agent\"", s.Engine)
+	}
+}
+
+func TestBuild_EngineEmptyOmitted(t *testing.T) {
+	work := &figlens.Work{ID: 1, SessionID: "s"}
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID: 1, SessionID: "s", Work: work,
+	})
+	if s.Engine != "" {
+		t.Fatalf("Engine = %q, want \"\" (omitempty)", s.Engine)
+	}
+}

@@ -91,6 +91,7 @@ func TestGetWorkBySession(t *testing.T) {
 			"cover_url": "https://cover.jpg",
 			"share_token": "tok_xyz", "exporting": 1,
 			"duration": 120,
+			"engine":   "suite",
 		})
 	}))
 	defer srv.Close()
@@ -114,6 +115,9 @@ func TestGetWorkBySession(t *testing.T) {
 	}
 	if work.Exporting != 1 {
 		t.Fatalf("exporting = %d", work.Exporting)
+	}
+	if work.Engine != "suite" {
+		t.Fatalf("engine = %q, want \"suite\"", work.Engine)
 	}
 }
 
@@ -215,5 +219,27 @@ data: [DONE]
 	}, nil)
 	if strings.Contains(string(raw), "video_kind") {
 		t.Fatalf("video_kind unexpectedly present in wire body: %s", raw)
+	}
+}
+
+func TestInitTask_AgentEngineSendsV2(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		figlensResp(w, map[string]any{
+			"task_id": 1, "session_id": "s_x", "work_id": 2, "v": 2,
+		})
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EngineAgent,
+	})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	if gotBody["v"] != float64(2) {
+		t.Fatalf("v on wire = %v, want 2", gotBody["v"])
 	}
 }

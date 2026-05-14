@@ -15,6 +15,7 @@ type Work struct {
 	ShareToken string `json:"share_token"`
 	Exporting  int    `json:"exporting"`
 	Duration   int64  `json:"duration"`
+	Engine     string `json:"engine,omitempty"`
 }
 
 func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work, error) {
@@ -36,6 +37,7 @@ type WorkListItem struct {
 	ShareToken string `json:"share_token"`
 	Exporting  int    `json:"exporting"`
 	Duration   int64  `json:"duration"`
+	Engine     string `json:"engine,omitempty"`
 	Status     int    `json:"status"`
 	CreatedAt  string `json:"created_at"`
 }

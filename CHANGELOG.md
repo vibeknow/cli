@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0 — 2026-05-14
+
+### New
+
+- `vk create --engine pipeline|agent` selects which figlens engine to
+  invoke. Default `pipeline` keeps 0.4.2 behavior bit-identical;
+  `--engine agent` routes to the v=2 agent engine
+  (`/agent2forVideo/stream`, mirrors the web frontend's engine toggle).
+- The v=2 agent engine emits free-form progress events without a node
+  graph. The CLI now surfaces these as `node.progress` events in
+  NDJSON output and `[agent] <message>` lines in text output, instead
+  of silently filtering them out.
+- `vk video status` / `vk create` JSON snapshot now includes an
+  `engine` field (`"pipeline"` or `"agent"`) so agents can confirm
+  which engine actually ran. The DB enum `"suite"` is remapped to
+  `"pipeline"` for output to match the `--engine` flag's vocabulary.
+
+### Changed
+
+- `--engine agent --mode replica` is rejected at the CLI boundary with
+  exit 2 and a clear message: replica is a v=3-only pipeline feature
+  with no agent-engine analog (verified against go-figlens source).
+
 ## 0.4.2 — 2026-05-14
 
 ### New
