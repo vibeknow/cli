@@ -91,6 +91,7 @@ func TestGetWorkBySession(t *testing.T) {
 			"cover_url": "https://cover.jpg",
 			"share_token": "tok_xyz", "exporting": 1,
 			"duration": 120,
+			"engine":   "suite",
 		})
 	}))
 	defer srv.Close()
@@ -114,6 +115,9 @@ func TestGetWorkBySession(t *testing.T) {
 	}
 	if work.Exporting != 1 {
 		t.Fatalf("exporting = %d", work.Exporting)
+	}
+	if work.Engine != "suite" {
+		t.Fatalf("engine = %q, want \"suite\"", work.Engine)
 	}
 }
 
