@@ -67,3 +67,28 @@ func (c *Client) DeleteKB(ctx context.Context, kbID string) error {
 	}
 	return nil
 }
+
+type KB struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type ListKBsResponse struct {
+	Total  int  `json:"total"`
+	Offset int  `json:"offset"`
+	Limit  int  `json:"limit"`
+	Items  []KB `json:"items"`
+}
+
+// ListKBs paginates the user's knowledgebases.
+// Backend caps limit at 100; callers walk pages by incrementing offset.
+func (c *Client) ListKBs(ctx context.Context, offset, limit int) (*ListKBsResponse, error) {
+	var resp ListKBsResponse
+	path := fmt.Sprintf("/v1/knowledgebases?offset=%d&limit=%d", offset, limit)
+	if err := c.http.Do(ctx, "GET", path, nil, &resp); err != nil {
+		return nil, fmt.Errorf("list knowledgebases: %w", err)
+	}
+	return &resp, nil
+}

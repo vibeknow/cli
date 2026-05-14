@@ -169,3 +169,39 @@ func TestUploadDoc_FileContent(t *testing.T) {
 		t.Fatalf("file content = %q, want 'hello world'", gotContent)
 	}
 }
+
+func TestListKBs(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total":  2,
+			"offset": 0,
+			"limit":  50,
+			"items": []map[string]any{
+				{"id": "kb_1", "name": "vibeknow-cli-1", "description": "", "created_at": "2026-05-14T09:47:00Z"},
+				{"id": "kb_2", "name": "manual-kb", "description": "user-created", "created_at": "2026-05-13T11:00:00Z"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := vectoria.New(srv.URL, staticToken("test-jwt"))
+	resp, err := c.ListKBs(context.Background(), 0, 50)
+	if err != nil {
+		t.Fatalf("ListKBs: %v", err)
+	}
+	if resp.Total != 2 {
+		t.Fatalf("total = %d, want 2", resp.Total)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("items len = %d, want 2", len(resp.Items))
+	}
+	if resp.Items[0].ID != "kb_1" || resp.Items[0].Name != "vibeknow-cli-1" {
+		t.Fatalf("items[0] = %+v", resp.Items[0])
+	}
+	if !strings.Contains(gotQuery, "offset=0") || !strings.Contains(gotQuery, "limit=50") {
+		t.Fatalf("query = %q, want offset=0 & limit=50", gotQuery)
+	}
+}
