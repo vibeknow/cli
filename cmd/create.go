@@ -207,6 +207,18 @@ var createCmd = &cobra.Command{
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
 					}
 				}
+			case "node.progress":
+				if isNDJSONCreate {
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+						"type":    "node.progress",
+						"status":  ev.Status,
+						"message": ev.Message,
+					})
+				} else {
+					// Agent-engine free-form progress: no stage/node, just message.
+					// [agent] prefix mirrors v=3's [<stage>] shape for scannability.
+					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
+				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
 				if successSessionID == "" {
