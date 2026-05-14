@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -143,6 +144,15 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
 				return fmt.Errorf("%s", i18n.T("credits.insufficient"))
+			}
+			if errs.HasCode(err, "script_invalid") {
+				// Backend's localized message already lives on the error.
+				// Exit 2 via clerr.Validation — this is a user-input problem.
+				var o *errs.Object
+				if errors.As(err, &o) {
+					return clerr.Validation(o.Message)
+				}
+				return clerr.Validation(err.Error())
 			}
 			return err
 		}

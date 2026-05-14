@@ -124,6 +124,8 @@ func mapEnvelopeCode(envCode, httpStatus int) string {
 		return "freeze_not_found"
 	case envCode == 100003:
 		return "concurrent_work_limit"
+	case envCode == 100004:
+		return "script_invalid"
 	case envCode >= 100000:
 		return "business_error"
 	default:

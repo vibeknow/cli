@@ -34,6 +34,7 @@ func TestMapEnvelopeCode(t *testing.T) {
 		{"internal_error", 50001, http.StatusInternalServerError, "internal_error"},
 		// Known business codes retain their specific labels.
 		{"insufficient_credits", 100001, http.StatusPaymentRequired, "insufficient_credits"},
+		{"script_invalid", 100004, http.StatusBadRequest, "script_invalid"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
