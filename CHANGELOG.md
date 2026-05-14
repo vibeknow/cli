@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.2 — 2026-05-14
+
+### Fixed
+
+- `vk create` now cleans up the temporary vectoria knowledgebase it
+  created when the pipeline fails before the backend task takes
+  ownership (`InitTask` rejection: `insufficient_credits`,
+  `script_invalid`, network errors, or any earlier upload/poll
+  failure). Previously every failed `vk create` invocation left an
+  orphan kb in vectoria forever — testing during 0.5.0 validation
+  alone accumulated 6+ such orphans, and the user's tenant had
+  accumulated 424 kbs total. The cleanup is best-effort: errors are
+  swallowed so they don't mask the real failure the user is about to
+  see. Once `InitTask` succeeds, the backend task owns the kb's
+  lifecycle and the CLI no longer interferes.
+
+### New
+
+- `vectoria.Client.DeleteKB(ctx, kbID)` — exposes the existing
+  vectoria `DELETE /v1/knowledgebases/{id}` endpoint, used by the
+  cleanup above. Available to external callers of the client.
+
 ## 0.5.1 — 2026-05-14
 
 ### Fixed

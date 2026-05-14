@@ -9,36 +9,52 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
 )
 
-// buildVideoProfile writes a minimal profiles.yaml that points only at figlens
-// (no vectoria needed for pure video commands) and returns the config-home
-// path to pass to the binary via VIBEKNOW_CONFIG_HOME. Using that var (rather
-// than XDG_CONFIG_HOME) keeps the test cross-platform — on Windows the CLI
-// resolves its config dir from %AppData% and ignores XDG_CONFIG_HOME entirely.
-func buildVideoProfile(t *testing.T, figlensURL string) string {
+// buildProfile writes a minimal profiles.yaml wiring the given endpoint
+// name→URL pairs and returns the config-home path to pass to the binary
+// via VIBEKNOW_CONFIG_HOME. Using that var (rather than XDG_CONFIG_HOME)
+// keeps tests cross-platform — on Windows the CLI resolves its config
+// dir from %AppData% and ignores XDG_CONFIG_HOME entirely.
+func buildProfile(t *testing.T, endpoints map[string]string) string {
 	t.Helper()
 	configDir := filepath.Join(t.TempDir(), "vibeknow")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
+	}
+	// Sort keys for stable output (helps debugging).
+	names := make([]string, 0, len(endpoints))
+	for k := range endpoints {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var endpointsBlock strings.Builder
+	for _, name := range names {
+		fmt.Fprintf(&endpointsBlock, "      %s: %s\n", name, endpoints[name])
 	}
 	profileYAML := fmt.Sprintf(`schema_version: "2"
 current: test
 profiles:
   - name: test
     endpoints:
-      figlens: %s
-    credential_ref: test
+%s    credential_ref: test
     trust: dev
     is_production: false
-`, figlensURL)
+`, endpointsBlock.String())
 	if err := os.WriteFile(filepath.Join(configDir, "profiles.yaml"), []byte(profileYAML), 0644); err != nil {
 		t.Fatalf("write profiles.yaml: %v", err)
 	}
 	return configDir
+}
+
+// buildVideoProfile is a convenience wrapper around buildProfile for tests
+// that only need a figlens endpoint. Existing callers stay unchanged.
+func buildVideoProfile(t *testing.T, figlensURL string) string {
+	return buildProfile(t, map[string]string{"figlens": figlensURL})
 }
 
 // runVideoCmd runs the binary with the given args, capturing stdout and stderr
