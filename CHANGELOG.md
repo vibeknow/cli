@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — 2026-05-14
+
+### Fixed
+
+- `vk create` now exits **5** (business failure) when the backend rejects
+  `POST /v1/tasks/init` with `insufficient_credits` (envelope code 100001),
+  matching the stream-side path's existing behavior. Previously this case
+  exited 1 (cobra's generic error code), inconsistent with the documented
+  exit-code contract and with the same condition surfacing later in the
+  pipeline. Caught while running real-backend smoke tests during 0.5.0
+  validation.
+
 ## 0.5.0 — 2026-05-14
 
 ### New
