@@ -149,7 +149,9 @@ var createCmd = &cobra.Command{
 		task, err := fc.InitTask(ctx, initParams)
 		if err != nil {
 			if errs.HasCode(err, "insufficient_credits") {
-				return fmt.Errorf("%s", i18n.T("credits.insufficient"))
+				// Mirror the stream-side path's exit code: business failure → 5.
+				fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+				os.Exit(5)
 			}
 			if errs.HasCode(err, "script_invalid") {
 				// Backend's localized message already lives on the error.
