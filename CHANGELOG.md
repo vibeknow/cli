@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 — 2026-05-14
+
+### New
+
+- `vk create --mode replica` runs the figlens PPT/PDF page-by-page
+  replica pipeline. `vk create --mode script` runs the verbatim-script
+  ("讲稿锁定") pipeline that uses the uploaded document as the
+  narration. Both modes are now visible to humans and AI agents
+  through the same single-flag surface; default invocation (no
+  `--mode`) is unchanged.
+- `vk create --aspect horizontal|vertical` selects 16:9 or 9:16
+  output. Accepts `16:9` / `9:16` as aliases.
+- `vk create --bgm` enables background music (off by default).
+- SSE progress events for the replica pipeline's new nodes
+  (`doc_replica_plan`, `doc_replica_shoot`) now surface in `text` and
+  `ndjson` output — previously filtered out by the CLI's stage map.
+
+### Changed
+
+- Script-mode preflight failures (`POST /v1/tasks/init` returns code
+  `100004`) now exit **2** (validation, user fixes input) with the
+  backend's localized message, instead of exit 5 with a generic
+  "business error" label.
+- `figlens.InitTask` now takes `InitTaskParams{KnowledgeID, DocID,
+  VideoKind}`. Default-zero params produce the same wire body as
+  before (`{"v": 3}`), so callers that don't use script mode are
+  unaffected.
+
 ## 0.4.1 — 2026-04-24
 
 ### Fixed

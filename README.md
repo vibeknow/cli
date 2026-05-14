@@ -203,6 +203,14 @@ output=sess_xxx.mp4
 
 Or one-shot: `vk create --from ... --export --yes`.
 
+### Choose a video mode
+
+```bash
+vk create --from deck.pdf  --mode replica   # PPT/PDF page-by-page
+vk create --from talk.docx --mode script    # narrate the doc verbatim
+vk create --from <src>     --aspect vertical --bgm
+```
+
 ### Voice Templates
 
 ```bash
