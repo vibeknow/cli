@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.0 — 2026-05-DD
+
+### New
+
+- `vk kb list` — list your vectoria knowledgebases with `--page`,
+  `--size`, `--pattern <glob>`, `--older-than <duration>` filters.
+  Glob uses Go `filepath.Match` syntax. Duration accepts `Nd` / `Nh`
+  / `Nm` forms (`7d`, `24h`, `1h30m`).
+- `vk kb delete <id>` — single-kb delete with confirmation prompt
+  (skip via `--yes` / `VIBEKNOW_ASSUME_YES=1`). 404 from backend is
+  treated as success (idempotent, `rm -f` semantics).
+- `vk kb prune` — bulk-delete by filter. **Dry-run by default**:
+  prints matched kbs without deleting; requires `--yes` to actually
+  delete. Refuses to run without `--pattern` or `--older-than` —
+  no "delete everything" shortcut. Partial-failure semantics:
+  exit 7 if some succeed and some fail (matches `vk create --export`).
+- `vectoria.Client.ListKBs(ctx, offset, limit)` — exposed for
+  callers of the client library.
+- `internal/durfmt.ParseAge` — duration parser with `Nd` day-suffix
+  shortcut used by the kb filters.
+
+### Migration
+
+- New commands, no breaking changes.
+- For users carrying the 0.5.x backlog of CLI-named orphan kbs:
+  `vk kb prune --pattern 'vibeknow-cli-*' --yes` cleans them up.
+
 ## 0.5.2 — 2026-05-14
 
 ### Fixed

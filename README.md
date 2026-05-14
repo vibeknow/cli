@@ -218,6 +218,14 @@ vk create --from <src> --engine agent       # v=2 agent engine (frontend toggle 
 vk create --from <src> --engine pipeline    # v=3 pipeline (default)
 ```
 
+### Clean up accumulated knowledgebases
+
+```bash
+vk kb list --output json --size 5             # peek at what's there
+vk kb prune --pattern 'vibeknow-cli-*'        # dry-run (default)
+vk kb prune --pattern 'vibeknow-cli-*' --yes  # actually delete
+```
+
 ### Voice Templates
 
 ```bash
