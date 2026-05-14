@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -85,28 +84,15 @@ func TestCreate_InsufficientCreditsOnInit_Exits5(t *testing.T) {
 		"vectoria": srv.URL,
 	})
 
-	cmd := exec.Command(bin, "create", "--from", tmpFile)
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	_, stderr, code := runVideoCmd(t, bin, configHome,
+		"create", "--from", tmpFile,
 	)
 
-	err := cmd.Run()
-	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
-		code = ee.ExitCode()
-	} else if err != nil {
-		t.Fatalf("run: %v\nstderr: %s", err, stderr.String())
-	}
-
 	if code != 5 {
-		t.Fatalf("exit code = %d, want 5 (business failure)\nstderr: %s", code, stderr.String())
+		t.Fatalf("exit code = %d, want 5 (business failure)\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr.String(), "insufficient credits") {
-		t.Fatalf("stderr missing insufficient-credits message:\n%s", stderr.String())
+	if !strings.Contains(stderr, "insufficient credits") {
+		t.Fatalf("stderr missing insufficient-credits message:\n%s", stderr)
 	}
 
 	mu.Lock()
@@ -115,7 +101,7 @@ func TestCreate_InsufficientCreditsOnInit_Exits5(t *testing.T) {
 		t.Fatalf("expected kb to be created by CLI but no POST /v1/knowledgebases received")
 	}
 	if !kbDeleted {
-		t.Fatalf("expected orphan kb cleanup: DELETE /v1/knowledgebases/<id> was never called.\nstderr:%s", stderr.String())
+		t.Fatalf("expected orphan kb cleanup: DELETE /v1/knowledgebases/<id> was never called.\nstderr:%s", stderr)
 	}
 	if deletedID != createdID {
 		t.Fatalf("deleted kb = %q, want %q", deletedID, createdID)

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -81,25 +79,12 @@ func TestCreate_EngineAgent_WiresV2AndSurfacesProgress(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, srv.URL)
 
-	cmd := exec.Command(bin, "create", "--engine", "agent", "--from", "doc_abc12345")
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"create", "--engine", "agent", "--from", "doc_abc12345",
 	)
 
-	err := cmd.Run()
-	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
-		code = ee.ExitCode()
-	} else if err != nil {
-		t.Fatalf("run: %v\nstderr: %s", err, stderr.String())
-	}
-
 	if code != 0 {
-		t.Fatalf("create exit %d\nstdout:%s\nstderr:%s", code, stdout.String(), stderr.String())
+		t.Fatalf("create exit %d\nstdout:%s\nstderr:%s", code, stdout, stderr)
 	}
 
 	mu.Lock()
@@ -129,7 +114,7 @@ func TestCreate_EngineAgent_WiresV2AndSurfacesProgress(t *testing.T) {
 	}
 
 	// 3. Progress visibility: stderr contains [agent] prefixed lines.
-	out := stdout.String() + stderr.String()
+	out := stdout + stderr
 	if !strings.Contains(out, "[agent] 正在调用知识库") {
 		t.Fatalf("missing [agent] progress prefix for first message:\n%s", out)
 	}
