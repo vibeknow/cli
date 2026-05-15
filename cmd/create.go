@@ -223,9 +223,7 @@ var createCmd = &cobra.Command{
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": ev.Type, "stage": ev.Stage, "node": ev.Node, "message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					switch ev.Type {
 					case "node.started":
@@ -238,11 +236,7 @@ var createCmd = &cobra.Command{
 				}
 			case "node.progress":
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type":    "node.progress",
-						"status":  ev.Status,
-						"message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
 					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
@@ -253,23 +247,21 @@ var createCmd = &cobra.Command{
 					successSessionID = task.SessionID
 				}
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": "task.succeeded", "session_id": ev.SessionID,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 				}
 			case "task.failed":
-				failExitCode = 5
-				if ev.Code == "script_invalid" {
+				switch {
+				case ev.Code == "script_invalid":
 					failExitCode = 2
+				case ev.Retryable:
+					failExitCode = 4
+				default:
+					failExitCode = 5
 				}
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type":    "task.failed",
-						"code":    ev.Code,
-						"message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					switch ev.Code {
 					case "insufficient_credits":

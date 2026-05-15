@@ -94,6 +94,23 @@ const (
 	CodeAccountPendingDeletion = "account_pending_deletion"
 )
 
+// IsRetryableCode reports whether the operation that produced this code
+// is likely to succeed if the caller retries the same request unchanged.
+// Used by transports that cannot read a server-supplied retryable flag —
+// in particular the SSE stream path, where the backend currently emits
+// neither `code` nor `retryable` on its terminal `error` event, so the
+// CLI must derive the answer from the code label alone.
+//
+// Codes not listed return false: the safer default is to not promise a
+// retry will help when we cannot prove it.
+func IsRetryableCode(code string) bool {
+	switch code {
+	case "rate_limited", "internal_error", "concurrent_work_limit":
+		return true
+	}
+	return false
+}
+
 // MapBusinessCode maps a 100xxx-range backend envelope code to a stable
 // CLI error code label. Returns ok=false for codes outside that range so
 // callers can fall back to their own mapping (e.g. HTTP-class for HTTP,

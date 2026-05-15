@@ -1,6 +1,6 @@
 ---
 name: vibeknow-create
-version: 0.6.2
+version: 0.6.3
 description: "Generate videos from documents/URLs/files, track video task progress, download results, list voice templates. Use when: user wants to create a video, check task status, download video, or browse voices."
 metadata:
   requires:
@@ -108,20 +108,21 @@ For detailed error handling and recovery, see [errors.md](references/errors.md) 
 
 ## NDJSON Event Summary
 
-Events share common fields: `schema_version`, `ts`, `event`, `task_id`.
+Events share common fields: `schema_version`, `ts`, `type`.
 
-Key events:
+Key events (pipeline engine):
 
 | Event | Extra Fields | Meaning |
 |-------|-------------|---------|
-| `task.submitted` | — | Task accepted |
-| `stage.started` | `stage` | Pipeline stage begins |
-| `stage.progress` | `stage`, `percent`, `message?` | Progress update |
-| `stage.succeeded` | `stage`, `duration_ms` | Stage done |
-| `task.succeeded` | `video_url`, `duration_ms` | **Terminal**: video ready |
-| `task.failed` | `failed_stage`, `error_code`, `error_message`, `retryable` | **Terminal**: task failed |
+| `node.started` | `stage`, `node`, `message` | Pipeline node begins |
+| `node.succeeded` | `stage`, `node`, `message` | Node done |
+| `node.failed` | `stage`, `node`, `message` | Node failed (not necessarily terminal — wait for `task.failed`) |
+| `task.succeeded` | `session_id`, `video_url`, `duration_ms` | **Terminal**: video ready |
+| `task.failed` | `code`, `message`, `retryable` | **Terminal**: task failed (`retryable=true` → exit 4, `false` → exit 5) |
 
-See [events.md](references/events.md) for the complete list (including `task.queued`, `stage.failed`, `task.cancelled`) and parsing examples.
+Agent engine (`--engine agent`) replaces `node.started/succeeded/failed` with `node.progress` carrying `status` + `message`, and omits `duration_ms` from `task.succeeded`.
+
+See [events.md](references/events.md) for the complete field reference, engine differences, and parsing examples.
 
 ## References
 

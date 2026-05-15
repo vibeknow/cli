@@ -140,6 +140,132 @@ func TestStreamChat_ScriptInvalidCode(t *testing.T) {
 	if events[0].Message != "讲稿超过 8000 字" {
 		t.Fatalf("expected backend message verbatim, got %q", events[0].Message)
 	}
+	if events[0].Retryable {
+		t.Fatalf("script_invalid must not be retryable (it's a permanent input error)")
+	}
+}
+
+// concurrent_work_limit is the canonical transient business code: same
+// request can succeed once the user's other tasks finish, so the CLI must
+// surface Retryable=true here.
+func TestStreamChat_ConcurrentLimitIsRetryable(t *testing.T) {
+	sseBody := `data: {"code":100003,"data":{"message":"too many concurrent works"}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Code != "concurrent_work_limit" {
+		t.Fatalf("expected Code=concurrent_work_limit, got %+v", events)
+	}
+	if !events[0].Retryable {
+		t.Fatalf("concurrent_work_limit must be retryable")
+	}
+}
+
+// Plain `error` SSE (no envelope code) is the v=2 agent failure shape.
+// Backend sends no retryable flag and no code, so the CLI must default
+// Retryable=false rather than guess true.
+func TestStreamChat_PlainErrorEventIsNotRetryable(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"error","message":"agent crashed"}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.failed" {
+		t.Fatalf("expected task.failed, got %v", events)
+	}
+	if events[0].Retryable {
+		t.Fatalf("plain error SSE has no code — must not be marked retryable")
+	}
+}
+
+// aim_result on v=3 pipeline: video URL in `html_path`, duration_ms in
+// the metadata bag. Both must surface on the task.succeeded event so
+// agent consumers can act on the result.
+func TestStreamChat_AimResultV3HasVideoURLAndDuration(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"aim_result","session_id":"s_v3","html_path":"https://cdn.example.com/v/s_v3.html","data":{"duration_ms":42500,"fps":30}}}
+
+data: [DONE]
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_v3"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.succeeded" {
+		t.Fatalf("expected task.succeeded, got %+v", events)
+	}
+	if events[0].VideoURL != "https://cdn.example.com/v/s_v3.html" {
+		t.Fatalf("VideoURL = %q, want html_path value", events[0].VideoURL)
+	}
+	if events[0].DurationMs != 42500 {
+		t.Fatalf("DurationMs = %d, want 42500", events[0].DurationMs)
+	}
+}
+
+// aim_result on v=2 agent: video URL lives in `text`; no duration_ms.
+// Falling back to text — and not promising a duration we don't have —
+// is the contract this case pins.
+func TestStreamChat_AimResultV2UsesTextForVideoURL(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"aim_result","session_id":"s_v2","text":"https://cdn.example.com/v/s_v2.html"}}
+
+data: [DONE]
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_v2"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].VideoURL != "https://cdn.example.com/v/s_v2.html" {
+		t.Fatalf("expected VideoURL from text field, got %+v", events)
+	}
+	if events[0].DurationMs != 0 {
+		t.Fatalf("v=2 has no duration_ms — DurationMs must be 0, got %d", events[0].DurationMs)
+	}
 }
 
 func TestStreamChat_AgentEngineUsesAgent2Path(t *testing.T) {

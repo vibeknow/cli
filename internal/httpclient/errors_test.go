@@ -13,6 +13,34 @@ func TestErrObjectAsErrsObject(t *testing.T) {
 	}
 }
 
+func TestIsRetryableCode(t *testing.T) {
+	tests := []struct {
+		code string
+		want bool
+	}{
+		// Transient: re-running the same request can succeed.
+		{"rate_limited", true},
+		{"internal_error", true},
+		{"concurrent_work_limit", true},
+		// Permanent: user must change something first.
+		{"insufficient_credits", false},
+		{"script_invalid", false},
+		{"freeze_not_found", false},
+		{"auth_required", false},
+		{"business_error", false},
+		// Empty / unknown: never promise retry will help.
+		{"", false},
+		{"unknown_label", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.code, func(t *testing.T) {
+			if got := IsRetryableCode(tc.code); got != tc.want {
+				t.Errorf("IsRetryableCode(%q) = %v, want %v", tc.code, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMapEnvelopeCode(t *testing.T) {
 	tests := []struct {
 		name       string

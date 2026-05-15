@@ -1,6 +1,6 @@
 ---
 name: vibeknow-doc
-version: 0.6.2
+version: 0.6.3
 description: "Upload documents to vectoria and check processing status. Use when: user wants to upload a document, check if a document is ready, or get a doc_id for use with vibeknow create."
 metadata:
   requires:
