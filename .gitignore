@@ -9,5 +9,8 @@
 .worktrees/
 hero-and-task-detail-flow.md
 bin/
-test.pdf
 docs/*.mp4
+# Local sample docs / PDFs used during real-backend smoke testing.
+# Catches the long-standing test.pdf as well.
+*.pdf
+*.docx

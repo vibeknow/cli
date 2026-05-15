@@ -57,15 +57,21 @@ func buildVideoProfile(t *testing.T, figlensURL string) string {
 	return buildProfile(t, map[string]string{"figlens": figlensURL})
 }
 
-// runVideoCmd runs the binary with the given args, capturing stdout and stderr
-// separately. Returns stdout, combined output, and exit code.
+// runVideoCmd runs the binary with the given args, capturing stdout and
+// stderr separately. Returns stdout, stderr, and exit code. Also used by
+// non-video tests (kb prune, create-credits, create-mode, create-engine)
+// despite the legacy name; rename to runCLI is a follow-up.
+//
+// Sets test-friendly env vars: VIBEKNOW_TOKEN=fake-token (most mock
+// backends ignore auth), VIBEKNOW_CONFIG_HOME from the caller, and
+// VIBEKNOW_EXPORT_TIMEOUT=10s so tests that don't care about export
+// polling don't get stuck on the default 5min timeout.
 func runVideoCmd(t *testing.T, bin, configHome string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
 		"VIBEKNOW_CONFIG_HOME="+configHome,
-		// Keep export timeout short in tests.
 		"VIBEKNOW_EXPORT_TIMEOUT=10s",
 	)
 	var stdoutBuf, stderrBuf strings.Builder
@@ -77,8 +83,7 @@ func runVideoCmd(t *testing.T, bin, configHome string, args ...string) (string, 
 	if ee, ok := err.(*exec.ExitError); ok {
 		code = ee.ExitCode()
 	}
-	combined := stdoutBuf.String() + stderrBuf.String()
-	return stdoutBuf.String(), combined, code
+	return stdoutBuf.String(), stderrBuf.String(), code
 }
 
 // TestDownload_BeforeExport_Exits2 verifies that `vk video download` exits
@@ -112,9 +117,10 @@ func TestDownload_BeforeExport_Exits2(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, figlens.URL)
 
-	_, combined, code := runVideoCmd(t, bin, configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
 		"video", "download", "42", "--session-id", "s_integ",
 	)
+	combined := stdout + stderr
 
 	if code != 2 {
 		t.Fatalf("expected exit 2, got %d\ncombined:\n%s", code, combined)
@@ -173,13 +179,14 @@ func TestExport_AsyncReturnsImmediately(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, figlens.URL)
 
-	stdout, combined, code := runVideoCmd(t, bin, configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
 		"video", "export", "42",
 		"--session-id", "s_integ",
 		"--async",
 		"--yes",
 		"--output", "json",
 	)
+	combined := stdout + stderr
 
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\ncombined:\n%s", code, combined)
@@ -267,13 +274,14 @@ func TestExport_NDJSON(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, figlens.URL)
 
-	stdout, combined, code := runVideoCmd(t, bin, configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
 		"video", "export", "42",
 		"--session-id", "s_integ",
 		"--yes",
 		"--output", "ndjson",
 		"--poll-interval", "1ms",
 	)
+	combined := stdout + stderr
 
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\ncombined:\n%s", code, combined)

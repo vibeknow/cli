@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.1 — 2026-05-14
+
+### Changed
+
+- Integration tests now build the `vibeknow` binary **once per `go
+  test ./tests/integration/...` run** (via `sync.Once` + `TestMain`)
+  instead of rebuilding inside each of the 15+ test functions that
+  called `build(t)`. Removes redundant compile work on cold-cache CI.
+- `runVideoCmd` helper signature changed from `(stdout, combined,
+  exitCode)` to `(stdout, stderr, exitCode)`. Callers that want a
+  combined view compute `stdout + stderr` explicitly. All hand-rolled
+  `exec.Command(bin, ...)` blocks in the integration tests
+  (`create_credits`, `create_engine`, `create_mode`, `kb_prune`)
+  migrated to use this helper, removing ~80 lines of duplicated
+  env-setup / ExitError-unwrap boilerplate.
+
+### Fixed (housekeeping)
+
+- `.gitignore` now covers `*.pdf` and `*.docx` (with `!test.pdf`
+  preserved) so local smoke-test files don't appear as untracked
+  candidates for accidental commit.
+
 ## 0.6.0 — 2026-05-14
 
 ### New

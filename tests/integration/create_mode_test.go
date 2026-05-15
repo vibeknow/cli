@@ -1,13 +1,10 @@
 package integration
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -98,25 +95,12 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, figlens.URL)
 
-	cmd := exec.Command(bin, "create", "--mode", "replica", "--from", "doc_abc12345")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"create", "--mode", "replica", "--from", "doc_abc12345",
 	)
 
-	err := cmd.Run()
-	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
-		code = ee.ExitCode()
-	} else if err != nil {
-		t.Fatalf("run: %v\nstderr: %s", err, stderr.String())
-	}
-
 	if code != 0 {
-		t.Fatalf("create exit %d\nstdout: %s\nstderr: %s", code, stdout.String(), stderr.String())
+		t.Fatalf("create exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 
 	mu.Lock()
@@ -134,8 +118,8 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 	if bodies["stream"]["video_kind"] != "replica" {
 		t.Fatalf("stream body video_kind = %v, want \"replica\"", bodies["stream"]["video_kind"])
 	}
-	out := stdout.String() + stderr.String()
+	out := stdout + stderr
 	if !strings.Contains(out, "doc_replica_plan") {
-		t.Fatalf("expected doc_replica_plan in output (proves stage map), got:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
+		t.Fatalf("expected doc_replica_plan in output (proves stage map), got:\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -45,23 +43,18 @@ func TestKBPrune_DryRunDoesNotDelete(t *testing.T) {
 	bin := build(t)
 	configHome := buildProfile(t, map[string]string{"vectoria": srv.URL})
 
-	cmd := exec.Command(bin, "kb", "prune", "--pattern", "vibeknow-cli-*")
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"kb", "prune", "--pattern", "vibeknow-cli-*",
 	)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("dry-run unexpected exit: %v\nstdout:%s\nstderr:%s", err, stdout.String(), stderr.String())
+	if code != 0 {
+		t.Fatalf("dry-run unexpected exit %d\nstdout:%s\nstderr:%s", code, stdout, stderr)
 	}
-	combined := stdout.String() + stderr.String()
+	combined := stdout + stderr
 	if !strings.Contains(combined, "vibeknow-cli-1") {
-		t.Fatalf("dry-run output should list matched kb:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+		t.Fatalf("dry-run output should list matched kb:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 	if !strings.Contains(combined, "dry run") {
-		t.Fatalf("dry-run output should mention 'dry run' hint:\nstdout:%s\nstderr:%s", stdout.String(), stderr.String())
+		t.Fatalf("dry-run output should mention 'dry run' hint:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 	mu.Lock()
 	dc := deleteCalls
@@ -106,16 +99,11 @@ func TestKBPrune_ApplyDeletesMatchedOnly(t *testing.T) {
 	bin := build(t)
 	configHome := buildProfile(t, map[string]string{"vectoria": srv.URL})
 
-	cmd := exec.Command(bin, "kb", "prune", "--pattern", "vibeknow-cli-*", "--yes")
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	_, stderr, code := runVideoCmd(t, bin, configHome,
+		"kb", "prune", "--pattern", "vibeknow-cli-*", "--yes",
 	)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("apply unexpected exit: %v\nstderr:%s", err, stderr.String())
+	if code != 0 {
+		t.Fatalf("apply unexpected exit %d\nstderr:%s", code, stderr)
 	}
 
 	mu.Lock()
@@ -142,23 +130,13 @@ func TestKBPrune_NoFilterExits2(t *testing.T) {
 	}
 	bin := build(t)
 	configHome := buildProfile(t, map[string]string{"vectoria": "http://example.invalid"})
-	cmd := exec.Command(bin, "kb", "prune", "--yes")
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append(os.Environ(),
-		"VIBEKNOW_TOKEN=fake-token",
-		"VIBEKNOW_CONFIG_HOME="+configHome,
+	_, stderr, code := runVideoCmd(t, bin, configHome,
+		"kb", "prune", "--yes",
 	)
-	err := cmd.Run()
-	ee, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("expected exec.ExitError, got err=%v stderr=%s", err, stderr.String())
+	if code != 2 {
+		t.Fatalf("expected exit 2, got %d\nstderr:%s", code, stderr)
 	}
-	if ee.ExitCode() != 2 {
-		t.Fatalf("expected exit 2, got %d\nstderr:%s", ee.ExitCode(), stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "--pattern") || !strings.Contains(stderr.String(), "--older-than") {
-		t.Fatalf("error message should mention --pattern AND --older-than, got: %s", stderr.String())
+	if !strings.Contains(stderr, "--pattern") || !strings.Contains(stderr, "--older-than") {
+		t.Fatalf("error message should mention --pattern AND --older-than, got: %s", stderr)
 	}
 }
