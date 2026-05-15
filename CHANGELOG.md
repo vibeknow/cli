@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2 — 2026-05-14
+
+### Fixed
+
+- `vk create --from <vectoria-uuid>` now recognizes the UUID form
+  vectoria actually returns (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
+  lowercase hex) as a doc-id and skips the upload step. Previously
+  the `docIDRe` only accepted a hypothetical `doc_<alnum>` form that
+  vectoria has never used, so re-passing the `doc_id:` line printed
+  by a prior `vk create` run got treated as a local file path and
+  failed with "stat: no such file or directory". Backward compatible:
+  the legacy `doc_<alnum>` form still matches.
+
 ## 0.6.1 — 2026-05-14
 
 ### Changed
