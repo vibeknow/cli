@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/exportpoll"
@@ -168,6 +170,18 @@ var createCmd = &cobra.Command{
 		}
 		task, err = fc.InitTask(ctx, initParams)
 		if err != nil {
+			// NDJSON consumers expect exactly one terminal task.failed event
+			// for every failure regardless of where in the pipeline it
+			// happened. Without this synthesis, a pre-stream InitTask
+			// failure would leave stdout empty and force consumers to
+			// special-case "no terminal event implies it failed before
+			// the stream started" — they would have to read stderr to
+			// classify the failure, defeating the point of NDJSON output.
+			format, _ := cmd.Flags().GetString("output")
+			if format == "ndjson" {
+				emitPreStreamFailure(cmd.OutOrStdout(), err)
+			}
+
 			if errs.HasCode(err, "insufficient_credits") {
 				// Mirror the stream-side path's exit code: business failure → 5.
 				// os.Exit skips defers — clean up the orphan kb inline first.
@@ -185,6 +199,19 @@ var createCmd = &cobra.Command{
 					return clerr.Validation(o.Message)
 				}
 				return clerr.Validation(err.Error())
+			}
+			// Retryable codes (rate_limited, internal_error,
+			// concurrent_work_limit): exit 4 so agent consumers can branch
+			// on "same command will probably succeed if I just wait". The
+			// in-stream task.failed path already does this; without this
+			// branch, an InitTask-time concurrent_work_limit would exit 1
+			// while the same code mid-stream would exit 4 — same condition,
+			// different exit code is the exact agent-confusing inconsistency
+			// the retryable flag exists to prevent. The deferred orphan-kb
+			// cleanup above fires on the return path.
+			var o *errs.Object
+			if errors.As(err, &o) && httpclient.IsRetryableCode(o.Code) {
+				return clerr.Newf("%s", o.Message).WithCode(4)
 			}
 			return err
 		}
@@ -223,9 +250,7 @@ var createCmd = &cobra.Command{
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.failed":
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": ev.Type, "stage": ev.Stage, "node": ev.Node, "message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					switch ev.Type {
 					case "node.started":
@@ -238,11 +263,7 @@ var createCmd = &cobra.Command{
 				}
 			case "node.progress":
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type":    "node.progress",
-						"status":  ev.Status,
-						"message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
 					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
@@ -253,23 +274,21 @@ var createCmd = &cobra.Command{
 					successSessionID = task.SessionID
 				}
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type": "task.succeeded", "session_id": ev.SessionID,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 				}
 			case "task.failed":
-				failExitCode = 5
-				if ev.Code == "script_invalid" {
+				switch {
+				case ev.Code == "script_invalid":
 					failExitCode = 2
+				case ev.Retryable:
+					failExitCode = 4
+				default:
+					failExitCode = 5
 				}
 				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-						"type":    "task.failed",
-						"code":    ev.Code,
-						"message": ev.Message,
-					})
+					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
 					switch ev.Code {
 					case "insufficient_credits":
@@ -490,6 +509,33 @@ func uploadURL(ctx context.Context, url string) (string, string, error) {
 	}
 	cleanup = nil
 	return kbID, docID, nil
+}
+
+// emitPreStreamFailure writes a synthetic task.failed NDJSON event for
+// errors raised before the SSE stream opens (InitTask, future pre-stream
+// hooks). The wire shape mirrors the in-stream task.failed event emitted
+// by StreamEvent.NDJSONFields so consumers don't have to special-case
+// where the failure happened: every CLI exit ≠ 0 in `--output ndjson`
+// mode ships exactly one terminal task.failed line on stdout.
+//
+// Implementation deliberately mirrors NDJSONFields manually instead of
+// constructing a fake StreamEvent — the SSE path is the source of truth
+// for the stream-side shape, and faking events into it would be a foot
+// gun if NDJSONFields gains divergent semantics.
+func emitPreStreamFailure(w io.Writer, err error) {
+	code := ""
+	msg := err.Error()
+	var o *errs.Object
+	if errors.As(err, &o) {
+		code = o.Code
+		msg = o.Message
+	}
+	_ = output.NewNDJSON(w).Event(map[string]any{
+		"type":      "task.failed",
+		"code":      code,
+		"message":   msg,
+		"retryable": httpclient.IsRetryableCode(code),
+	})
 }
 
 // cleanupOrphanKB best-effort deletes a kb the CLI created when the

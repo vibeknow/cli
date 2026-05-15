@@ -54,18 +54,12 @@ var waitCmd = &cobra.Command{
 		var taskFailed, taskSucceeded bool
 		var successSessionID string
 
+		var failedCode string
+		var failedRetryable bool
+
 		emit := func(ev figlens.StreamEvent) {
 			if emitEvent != nil {
-				out := map[string]any{
-					"type":    ev.Type,
-					"stage":   ev.Stage,
-					"node":    ev.Node,
-					"message": ev.Message,
-				}
-				if ev.SessionID != "" {
-					out["session_id"] = ev.SessionID
-				}
-				_ = emitEvent(out)
+				_ = emitEvent(ev.NDJSONFields())
 			} else {
 				switch ev.Type {
 				case "node.started":
@@ -74,6 +68,8 @@ var waitCmd = &cobra.Command{
 					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
 				case "node.failed":
 					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
+				case "node.progress":
+					fmt.Fprintf(stderr, "[agent] %s\n", ev.Message)
 				case "task.succeeded":
 					fmt.Fprintf(stderr, "task succeeded\n")
 				case "task.failed":
@@ -90,6 +86,8 @@ var waitCmd = &cobra.Command{
 				}
 			case "task.failed":
 				taskFailed = true
+				failedCode = ev.Code
+				failedRetryable = ev.Retryable
 			}
 		}
 
@@ -102,7 +100,17 @@ var waitCmd = &cobra.Command{
 			return clerr.Newf("stream interrupted: %s", err).WithCode(6)
 		}
 		if taskFailed {
-			return clerr.Newf("task failed").WithCode(5)
+			// Mirror `vk create`: script_invalid → 2, retryable → 4,
+			// otherwise 5. Keeps exit codes consistent across the two
+			// stream-consuming entry points.
+			code := 5
+			switch {
+			case failedCode == "script_invalid":
+				code = 2
+			case failedRetryable:
+				code = 4
+			}
+			return clerr.Newf("task failed").WithCode(code)
 		}
 		if !taskSucceeded {
 			return nil

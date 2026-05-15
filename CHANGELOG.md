@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.6.3 — 2026-05-15
+
+### Fixed (NDJSON terminal events were missing result data)
+
+- `task.succeeded` events emitted by `vk create --output ndjson` and
+  `vk video wait --output ndjson` now include `video_url` (and, on the
+  pipeline engine, `duration_ms`). Previously the CLI dropped these
+  fields from the backend `aim_result` SSE payload and forwarded only
+  `session_id`, so any NDJSON consumer (agent or shell script) had no
+  way to retrieve the rendered video URL from the terminal event
+  without making a separate `vk video status` follow-up call.
+- `task.failed` events now include a `retryable` boolean derived on
+  the CLI side from the error code (transient codes — `rate_limited`,
+  `internal_error`, `concurrent_work_limit` — map to `retryable=true`;
+  permanent codes like `insufficient_credits` and `script_invalid`
+  map to `retryable=false`). The backend's terminal `error` event
+  carries no retryable flag of its own, so the CLI is the source of
+  truth for this signal.
+- `vk create` exit codes now honor the `retryable` flag: transient
+  task failures exit **4** (previously always 5). `vk video wait`
+  gained the same exit-code mapping plus `script_invalid → exit 2`
+  parity with `vk create`. Shell scripts that previously hard-coded
+  `[ $? = 5 ]` to detect any task failure should switch to
+  `[ $? -ge 4 ] && [ $? -le 5 ]` or branch on the NDJSON `retryable`
+  field directly.
+- HTTP `/v1/tasks/init` errors now share the same retryable exit-code
+  mapping as in-stream `task.failed` events. Previously a backend
+  envelope code of `concurrent_work_limit` / `rate_limited` /
+  `internal_error` returned by InitTask exited **1** (cobra default),
+  while the same code surfaced mid-stream exited **4** — same
+  condition, different exit code is precisely the agent-confusing
+  inconsistency the `retryable` flag exists to prevent. After this
+  patch both paths exit 4 and emit identical `task.failed` NDJSON
+  events when `--output ndjson` is set. Verified end-to-end against
+  the beta backend: a real `concurrent_work_limit` at InitTask now
+  produces exit 4 + a structured terminal event with
+  `retryable: true`.
+- `vk create --output ndjson` now synthesizes a terminal
+  `task.failed` event on stdout for **pre-stream** failures (InitTask
+  errors). Previously a pre-stream failure left stdout empty,
+  forcing NDJSON consumers to special-case "no terminal event implies
+  it failed before the stream started". Every CLI exit ≠ 0 in NDJSON
+  mode now ships exactly one terminal `task.failed` line on stdout.
+
+### Docs
+
+- `skills/vibeknow-create/references/events.md` rewritten against
+  the actual emitted event taxonomy. Previously documented but
+  never-emitted events (`task.submitted`, `task.queued`, `stage.*`,
+  `task.cancelled`) removed. Engine-difference section added to make
+  the pipeline-vs-agent split explicit. Schema version stays `"1"`;
+  a `"2"` bump is reserved for renaming `node.*` → `stage.*` or
+  `code` → `error_code`, neither of which ships in this release.
+
+### Internal
+
+- New `figlens.StreamEvent.NDJSONFields()` helper produces the wire
+  shape both `vk create` and `vk video wait` emit. The two commands
+  previously diverged in subtle ways (wait emitted `stage` / `node`
+  on every event regardless of type and never emitted `code`,
+  `retryable`, `video_url`); they now share one canonical projection.
+- New `httpclient.IsRetryableCode(code)` centralizes the retryable
+  inference so the SSE path no longer needs an ad-hoc switch.
+
 ## 0.6.2 — 2026-05-14
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "vibeknow-cli",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "VibeKnow CLI — turn docs / URLs into videos",
   "license": "MIT",
   "bin": {
