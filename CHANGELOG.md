@@ -25,6 +25,24 @@
   `[ $? = 5 ]` to detect any task failure should switch to
   `[ $? -ge 4 ] && [ $? -le 5 ]` or branch on the NDJSON `retryable`
   field directly.
+- HTTP `/v1/tasks/init` errors now share the same retryable exit-code
+  mapping as in-stream `task.failed` events. Previously a backend
+  envelope code of `concurrent_work_limit` / `rate_limited` /
+  `internal_error` returned by InitTask exited **1** (cobra default),
+  while the same code surfaced mid-stream exited **4** — same
+  condition, different exit code is precisely the agent-confusing
+  inconsistency the `retryable` flag exists to prevent. After this
+  patch both paths exit 4 and emit identical `task.failed` NDJSON
+  events when `--output ndjson` is set. Verified end-to-end against
+  the beta backend: a real `concurrent_work_limit` at InitTask now
+  produces exit 4 + a structured terminal event with
+  `retryable: true`.
+- `vk create --output ndjson` now synthesizes a terminal
+  `task.failed` event on stdout for **pre-stream** failures (InitTask
+  errors). Previously a pre-stream failure left stdout empty,
+  forcing NDJSON consumers to special-case "no terminal event implies
+  it failed before the stream started". Every CLI exit ≠ 0 in NDJSON
+  mode now ships exactly one terminal `task.failed` line on stdout.
 
 ### Docs
 

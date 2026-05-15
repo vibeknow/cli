@@ -10,6 +10,54 @@ import (
 	"testing"
 )
 
+// TestCreate_ConcurrentLimitOnInit_Exits4 covers the 0.6.3 fix: when
+// InitTask returns code 100003 (concurrent_work_limit, a transient
+// "wait then retry" condition), the CLI must exit 4 (retryable) — same
+// as the SSE stream-side handling of the same code. Before this fix,
+// the HTTP path returned exit 1 (cobra default) while the SSE path
+// returned exit 4, producing an agent-confusing inconsistency where
+// the same condition gave different exit codes depending on whether
+// the backend rejected at HTTP-init time vs mid-stream.
+//
+// Also pins the NDJSON pre-stream synthesis: `--output ndjson` consumers
+// see a terminal task.failed event on stdout even when failure happens
+// before the SSE stream opens.
+func TestCreate_ConcurrentLimitOnInit_Exits4(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/tasks/init", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":    100003,
+			"message": "concurrent work limit reached",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	bin := build(t)
+	configHome := buildProfile(t, map[string]string{"figlens": srv.URL})
+
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"create", "--from", "doc_concurrentlimit12345", "--output", "ndjson",
+	)
+
+	if code != 4 {
+		t.Fatalf("exit code = %d, want 4 (retryable). stderr: %s", code, stderr)
+	}
+	failed := findEvent(t, stdout, "task.failed")
+	if failed["code"] != "concurrent_work_limit" {
+		t.Errorf("ndjson code = %v, want concurrent_work_limit", failed["code"])
+	}
+	if failed["retryable"] != true {
+		t.Errorf("ndjson retryable = %v, want true", failed["retryable"])
+	}
+}
+
 // TestCreate_InsufficientCreditsOnInit_Exits5 covers the bug fixed in 0.5.1:
 // when the backend rejects InitTask with envelope code 100001 (insufficient
 // credits), the CLI must exit 5 (business failure) to match the stream-side

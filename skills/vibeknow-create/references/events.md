@@ -80,7 +80,7 @@ Video generation completed. Always the last event emitted on success.
 
 ### task.failed (**terminal**)
 
-Task failed permanently within the stream. Always the last event emitted on failure.
+Task failed permanently. Always the last event emitted on failure — either inside the SSE stream (`stage.failed`-like conditions, backend `error` event, business-code SSE envelope) or **synthesized by the CLI for pre-stream failures** (e.g. when `/v1/tasks/init` rejects with a business code before the SSE stream opens). Consumers should treat both sources identically; the wire shape is the same.
 
 | Field | Type | Description |
 |-------|------|-------------|
