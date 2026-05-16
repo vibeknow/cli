@@ -1,14 +1,32 @@
 ---
 name: vibeknow-core
-version: 0.6.3
 description: "vibeknow CLI setup, authentication, profile management, and diagnostics. Use when: first-time setup, auth errors, switching environments, diagnosing connection issues."
+version: 0.6.3
+emoji: "🔧"
+homepage: https://github.com/vibeknow/cli
+allowed-tools: Bash(vibeknow:*)
 metadata:
-  requires:
-    bins: ["vibeknow"]
-  cliHelp: "vibeknow --help"
+  openclaw:
+    requires:
+      bins: ["vibeknow"]
+    install:
+      - kind: node
+        package: vibeknow-cli
+        bins: [vibeknow]
+    primaryEnv: VIBEKNOW_TOKEN
+    envVars:
+      - name: VIBEKNOW_TOKEN
+        required: false
+        description: "API token. Optional — if unset, the CLI uses OS keychain or encrypted file via `vibeknow auth login`. When set, takes priority over stored credentials."
+      - name: VIBEKNOW_CONFIG_HOME
+        required: false
+        description: "Override the config directory (default: OS user config dir). Useful for portable/test setups."
+      - name: VIBEKNOW_LANG
+        required: false
+        description: "Force CLI output language (e.g. `en`, `zh`). Falls back to `LANG`."
 ---
 
-# vibeknow-core (v0.3.0)
+# vibeknow-core
 
 ## TRIGGER
 

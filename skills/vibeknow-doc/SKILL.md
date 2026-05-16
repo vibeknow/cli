@@ -1,14 +1,26 @@
 ---
 name: vibeknow-doc
-version: 0.6.3
 description: "Upload documents to vectoria and check processing status. Use when: user wants to upload a document, check if a document is ready, or get a doc_id for use with vibeknow create."
+version: 0.6.3
+emoji: "📄"
+homepage: https://github.com/vibeknow/cli
+allowed-tools: Bash(vibeknow:*)
 metadata:
-  requires:
-    bins: ["vibeknow"]
-  cliHelp: "vibeknow doc --help"
+  openclaw:
+    requires:
+      bins: ["vibeknow"]
+    install:
+      - kind: node
+        package: vibeknow-cli
+        bins: [vibeknow]
+    primaryEnv: VIBEKNOW_TOKEN
+    envVars:
+      - name: VIBEKNOW_TOKEN
+        required: false
+        description: "API token. Optional — if unset, the CLI uses credentials configured via `vibeknow auth login` (managed by vibeknow-core)."
 ---
 
-# vibeknow-doc (v0.3.0)
+# vibeknow-doc
 
 ## TRIGGER
 
@@ -78,7 +90,7 @@ vibeknow create --from "$doc_id"
 | 0 | Success | — |
 | 1 | General error | Read stderr |
 | 2 | Invalid arguments | Check file path exists, doc_id format |
-| 3 | Auth error | → vibeknow-core |
+| 3 | Auth error | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
 | 130 | User interrupt | — |
 
 For full error reference, see [errors.md](references/errors.md).

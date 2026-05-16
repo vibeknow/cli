@@ -101,13 +101,29 @@ For CI / container environments with a pre-issued JWT, skip the Device Flow enti
 
 ## Agent Skills
 
+The [`./skills/`](./skills/) directory ships three skills in the open
+[Agent Skills](https://agentskills.io) format, compatible with 55+ AI agent
+runtimes (Claude Code, Cursor, OpenCode, GitHub Copilot, Gemini CLI, and more).
+
 | Skill | Description |
 |-------|-------------|
 | `vibeknow-core` | Profile setup, auth management, environment diagnostics, credential configuration |
 | `vibeknow-create` | End-to-end video generation: `create` command, `video status/wait/download`, voice selection, async workflows |
 | `vibeknow-doc` | Document upload (file + URL), parsing status polling, document retrieval |
 
-Skills are located in [`./skills/`](./skills/) and follow the `SKILL.md` + `references/` structure. Each skill includes trigger/skip conditions, command recipes, and error handling guides.
+### Install
+
+```bash
+npx skills add vibeknow/cli             # install all three to current project
+npx skills add vibeknow/cli -g          # install globally (across projects)
+npx skills add vibeknow/cli --skill vibeknow-create   # install one
+```
+
+Auto-detects locally installed agents and symlinks the skills into each agent's
+skill directory. See [skills.sh](https://skills.sh) for the full option set.
+
+Each skill follows the `SKILL.md` + `references/` structure with trigger/skip
+conditions, command recipes, and exit-code-driven error handling.
 
 ## Authentication
 

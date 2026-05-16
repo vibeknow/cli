@@ -101,13 +101,29 @@ CI / 容器环境如果已经持有 JWT，可以跳过 Device Flow —— 见下
 
 ## Agent 技能
 
+[`./skills/`](./skills/) 目录包含三个采用开放 [Agent Skills](https://agentskills.io)
+规范的技能，兼容 55+ AI Agent 运行时（Claude Code、Cursor、OpenCode、
+GitHub Copilot、Gemini CLI 等）。
+
 | 技能 | 描述 |
 |------|------|
 | `vibeknow-core` | Profile 配置、认证管理、环境诊断、凭证配置 |
 | `vibeknow-create` | 端到端视频生成：`create` 命令、`video status/wait/download`、音色选择、异步工作流 |
 | `vibeknow-doc` | 文档上传（文件 + URL）、解析状态轮询、文档检索 |
 
-技能文件位于 [`./skills/`](./skills/)，采用 `SKILL.md` + `references/` 结构。每个技能包含触发/跳过条件、命令配方和错误处理指南。
+### 安装
+
+```bash
+npx skills add vibeknow/cli             # 全部三个，安装到当前项目
+npx skills add vibeknow/cli -g          # 全局安装（所有项目可用）
+npx skills add vibeknow/cli --skill vibeknow-create   # 单独安装某一个
+```
+
+自动识别本机已装的 Agent 运行时并把技能 symlink 到对应目录。详见
+[skills.sh](https://skills.sh)。
+
+每个技能采用 `SKILL.md` + `references/` 结构，包含触发/跳过条件、命令配方
+和按 exit code 驱动的错误处理。
 
 ## 认证
 

@@ -1,14 +1,29 @@
 ---
 name: vibeknow-create
-version: 0.6.3
 description: "Generate videos from documents/URLs/files, track video task progress, download results, list voice templates. Use when: user wants to create a video, check task status, download video, or browse voices."
+version: 0.6.3
+emoji: "🎬"
+homepage: https://github.com/vibeknow/cli
+allowed-tools: Bash(vibeknow:*)
 metadata:
-  requires:
-    bins: ["vibeknow"]
-  cliHelp: "vibeknow --help"
+  openclaw:
+    requires:
+      bins: ["vibeknow"]
+    install:
+      - kind: node
+        package: vibeknow-cli
+        bins: [vibeknow]
+    primaryEnv: VIBEKNOW_TOKEN
+    envVars:
+      - name: VIBEKNOW_TOKEN
+        required: false
+        description: "API token. Optional — if unset, the CLI uses credentials configured via `vibeknow auth login` (managed by vibeknow-core)."
+      - name: VIBEKNOW_EXPORT_TIMEOUT
+        required: false
+        description: "Override the default 15-minute timeout for synchronous video export polling (Go duration format, e.g. `30m`)."
 ---
 
-# vibeknow-create (v0.3.0)
+# vibeknow-create
 
 ## TRIGGER
 
@@ -98,7 +113,7 @@ vibeknow video download t_xxx --session-id s_yyy --output ./my-video.mp4 --overw
 | 0 | Success | Extract `video_url` from output |
 | 1 | General error | Read stderr |
 | 2 | Invalid arguments | Fix command syntax |
-| 3 | Auth error | → vibeknow-core: check credentials |
+| 3 | Auth error | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
 | 4 | Task failed, **retryable** | Re-submit the same `create` command |
 | 5 | Task failed, **not retryable** | Report error to user, do not retry |
 | 6 | Stream interrupted, **task status unknown** | `vibeknow video wait <task_id> --session-id <sid>` to reconnect. Do NOT re-submit. |
