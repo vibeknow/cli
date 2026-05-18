@@ -42,8 +42,8 @@ func TestResolveShare_Default(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve share: %v", err)
 	}
-	if url != "https://beta.lab.shiliu.chat/share" {
-		t.Fatalf("url = %q, want https://beta.lab.shiliu.chat/share", url)
+	if url != "https://vibeknow.com/share" {
+		t.Fatalf("url = %q, want https://vibeknow.com/share", url)
 	}
 }
 

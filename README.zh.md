@@ -80,7 +80,7 @@ vibeknow auth login --no-wait
 # {
 #   "device_code":      "dc_2913bcc...",
 #   "user_code":        "UWWA-R8KS",
-#   "verification_uri": "https://beta.lab.shiliu.chat/account/device",
+#   "verification_uri": "https://vibeknow.com/account/device",
 #   "expires_in":       900,
 #   "hint":             "请访问 https://... 并输入验证码 UWWA-R8KS"
 # }

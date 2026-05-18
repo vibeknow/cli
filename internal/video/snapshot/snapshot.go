@@ -63,7 +63,7 @@ func ShareURL(base, token string) string {
 		return ""
 	}
 	if base == "" {
-		base = "https://beta.lab.shiliu.chat/share"
+		base = "https://vibeknow.com/share"
 	}
 	return strings.TrimRight(base, "/") + "/" + token
 }

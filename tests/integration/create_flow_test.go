@@ -122,7 +122,7 @@ profiles:
 	if !strings.Contains(output, "Integration Test Video") {
 		t.Errorf("expected video title in output:\n%s", output)
 	}
-	if !strings.Contains(output, "share_url=https://beta.lab.shiliu.chat/share/tok_integ") {
+	if !strings.Contains(output, "share_url=https://vibeknow.com/share/tok_integ") {
 		t.Errorf("expected share_url in output:\n%s", output)
 	}
 }

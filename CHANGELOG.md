@@ -34,7 +34,7 @@
   inconsistency the `retryable` flag exists to prevent. After this
   patch both paths exit 4 and emit identical `task.failed` NDJSON
   events when `--output ndjson` is set. Verified end-to-end against
-  the beta backend: a real `concurrent_work_limit` at InitTask now
+  the backend: a real `concurrent_work_limit` at InitTask now
   produces exit 4 + a structured terminal event with
   `retryable: true`.
 - `vk create --output ndjson` now synthesizes a terminal
@@ -288,7 +288,7 @@
 
 ## [0.3.1] — 2026-04-18
 ### Fixed
-- `CloudDefaults` pointed at unreachable placeholder hostnames (`*.vibeknow.com`). Fresh `npm install -g vibeknow-cli && vibeknow init` now reaches the device-code step against the beta cluster instead of failing DNS resolution.
+- `CloudDefaults` pointed at unreachable placeholder hostnames. Fresh `npm install -g vibeknow-cli && vibeknow init` now reaches the device-code step instead of failing DNS resolution.
 
 ### Added
 - `vibeknow auth status --output json` emits a machine-parseable envelope (`authenticated / profile / source / auth_method / token_status / expires_at / user`) for AI Agents and CI.

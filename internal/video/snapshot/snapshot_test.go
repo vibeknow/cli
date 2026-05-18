@@ -12,7 +12,7 @@ func TestShareURL(t *testing.T) {
 	cases := []struct {
 		name, base, token, want string
 	}{
-		{"default base", "", "abc123", "https://beta.lab.shiliu.chat/share/abc123"},
+		{"default base", "", "abc123", "https://vibeknow.com/share/abc123"},
 		{"custom base", "https://self.example/s", "abc123", "https://self.example/s/abc123"},
 		{"trailing slash stripped", "https://self.example/s/", "abc123", "https://self.example/s/abc123"},
 		{"empty token returns empty", "https://self.example/s", "", ""},
