@@ -111,13 +111,13 @@ func mapStatus(s int, exporting bool) string {
 		return i18n.T("video.list.status.exporting")
 	}
 	switch s {
-	case 0:
+	case figlens.WorkStatusGenerating:
 		return i18n.T("video.list.status.running")
-	case 1:
+	case figlens.WorkStatusActive:
 		return i18n.T("video.list.status.done")
-	case 2:
+	case figlens.WorkStatusDeleted:
 		return i18n.T("video.list.status.deleted")
-	case 3:
+	case figlens.WorkStatusFailed:
 		return i18n.T("video.list.status.failed")
 	}
 	return i18n.T("video.list.status.unknown")

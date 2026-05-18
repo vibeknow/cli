@@ -91,7 +91,10 @@ func Build(in BuildInput) Snapshot {
 		s.Engine = figlens.RemapEngineForDisplay(in.Work.Engine)
 		s.DurationMs = in.Work.Duration
 		s.CoverURL = in.Work.CoverURL
-		s.Preview.Ready = in.Work.ShareToken != ""
+		// Preview is only "ready" once the backend marks the work Active.
+		// ShareToken alone is not a signal — it's generated at submit time,
+		// long before the pipeline finishes.
+		s.Preview.Ready = in.Work.Status == figlens.WorkStatusActive && in.Work.ShareToken != ""
 		s.Preview.ShareURL = ShareURL(in.ShareBase, in.Work.ShareToken)
 	}
 	s.Export = deriveExport(in)

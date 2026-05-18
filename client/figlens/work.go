@@ -5,6 +5,16 @@ import (
 	"fmt"
 )
 
+// WorkStatus values mirror the figlens backend's WorkStatus enum.
+// Kept in lockstep with the backend so the CLI can reason about a work's
+// lifecycle without hardcoding magic numbers at every call site.
+const (
+	WorkStatusGenerating = 0 // pipeline still running
+	WorkStatusActive     = 1 // generation completed, preview/share URL live
+	WorkStatusDeleted    = 2 // user-deleted; do not surface as ready
+	WorkStatusFailed     = 3 // pipeline failed terminally
+)
+
 type Work struct {
 	ID         int64  `json:"id"`
 	SessionID  string `json:"session_id"`
@@ -16,6 +26,7 @@ type Work struct {
 	Exporting  int    `json:"exporting"`
 	Duration   int64  `json:"duration"`
 	Engine     string `json:"engine,omitempty"`
+	Status     int    `json:"status"`
 }
 
 func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work, error) {

@@ -106,6 +106,7 @@ func TestDownload_BeforeExport_Exits2(t *testing.T) {
 					"video_path":  "",
 					"share_token": "tok_integ",
 					"exporting":   0,
+					"status":      1,
 				},
 			})
 		default:
@@ -168,6 +169,7 @@ func TestExport_AsyncReturnsImmediately(t *testing.T) {
 					"video_path":  "",
 					"share_token": "tok_integ",
 					"exporting":   1,
+					"status":      1,
 				},
 			})
 		default:
@@ -263,6 +265,7 @@ func TestExport_NDJSON(t *testing.T) {
 					"video_path":  "final.mp4",
 					"share_token": "tok_integ",
 					"exporting":   0,
+					"status":      1,
 				},
 			})
 		default:
@@ -375,6 +378,7 @@ func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
 				"data": map[string]any{
 					"id": 78, "session_id": "s_partial", "title": "Partial",
 					"share_token": "tok_7", "html_path": "w/x.html", "duration": 10000,
+					"status": 1,
 				},
 			})
 		case "/v1/agent2forVideo/exportRemoteV2":

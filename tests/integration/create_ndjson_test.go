@@ -45,7 +45,7 @@ func TestCreateNDJSON_TaskSucceededIncludesVideoURLAndDuration(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
-				"data": map[string]any{"id": 8, "title": "t", "video_path": "/x.mp4", "duration": 30, "share_token": "tok"},
+				"data": map[string]any{"id": 8, "title": "t", "video_path": "/x.mp4", "duration": 30, "share_token": "tok", "status": 1},
 			})
 		default:
 			w.WriteHeader(404)

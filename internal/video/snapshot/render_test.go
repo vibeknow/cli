@@ -15,6 +15,7 @@ func TestRenderText_PreviewReady(t *testing.T) {
 		TaskID: 42, SessionID: "s_1",
 		Work: &figlens.Work{
 			ID: 99, Title: "Hello", Duration: 42000, ShareToken: "tok",
+			Status: figlens.WorkStatusActive,
 		},
 		ShareBase: "https://vibeknow.com/share",
 	})

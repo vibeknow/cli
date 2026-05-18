@@ -83,6 +83,7 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 					"html_path":   "works/replica/index.html",
 					"share_token": "tok_replica",
 					"exporting":   0,
+					"status":      1,
 				},
 			})
 

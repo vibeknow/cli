@@ -70,6 +70,7 @@ func TestCreate_EngineAgent_WiresV2AndSurfacesProgress(t *testing.T) {
 				"share_token": "tok_agent",
 				"exporting":   0,
 				"engine":      "agent",
+				"status":      1,
 			},
 		})
 	})

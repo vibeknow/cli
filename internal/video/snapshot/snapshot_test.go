@@ -34,6 +34,7 @@ func TestBuild_PreviewReadyExportIdle(t *testing.T) {
 		Work: &figlens.Work{
 			ID: 99, Title: "Hi", Duration: 30_000,
 			HtmlPath: "w/index.html", ShareToken: "tok",
+			Status:    figlens.WorkStatusActive,
 			Exporting: 0, VideoPath: "",
 		},
 		ShareBase: "https://vibeknow.com/share",
@@ -56,7 +57,7 @@ func TestBuild_ExportRunningFromExportingFlag(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID:    42,
 		SessionID: "s_1",
-		Work:      &figlens.Work{ShareToken: "t", Exporting: 1},
+		Work:      &figlens.Work{ShareToken: "t", Status: figlens.WorkStatusActive, Exporting: 1},
 		ShareBase: "https://vibeknow.com/share",
 	})
 	if s.Export.Status != snapshot.StatusRunning {
@@ -71,7 +72,7 @@ func TestBuild_ExportSucceeded_VideoPathPresent(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID:    42,
 		SessionID: "s_1",
-		Work:      &figlens.Work{ShareToken: "t", VideoPath: "v/out.mp4"},
+		Work:      &figlens.Work{ShareToken: "t", Status: figlens.WorkStatusActive, VideoPath: "v/out.mp4"},
 		ShareBase: "https://vibeknow.com/share",
 	})
 	if s.Export.Status != snapshot.StatusSucceeded {
@@ -89,7 +90,7 @@ func TestBuild_ExportFailed_FromExportResult(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID:    42,
 		SessionID: "s_1",
-		Work:      &figlens.Work{ShareToken: "t"},
+		Work:      &figlens.Work{ShareToken: "t", Status: figlens.WorkStatusActive},
 		Export:    &figlens.ExportResult{Status: "failed", Error: "boom"},
 		ShareBase: "https://vibeknow.com/share",
 	})
@@ -104,11 +105,11 @@ func TestBuild_ExportFailed_FromExportResult(t *testing.T) {
 	}
 }
 
-func TestBuild_PreviewNotReady(t *testing.T) {
+func TestBuild_PreviewNotReady_NoShareToken(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID:    42,
 		SessionID: "s_1",
-		Work:      &figlens.Work{ShareToken: ""},
+		Work:      &figlens.Work{ShareToken: "", Status: figlens.WorkStatusActive},
 		ShareBase: "https://vibeknow.com/share",
 	})
 	if s.Preview.Ready {
@@ -119,11 +120,42 @@ func TestBuild_PreviewNotReady(t *testing.T) {
 	}
 }
 
+// TestBuild_PreviewNotReady_StatusGenerating pins the fix for the prod bug
+// where the backend populates ShareToken at task submit time (not at
+// completion). Status==Generating means the pipeline is still running, even
+// if a share_token is already present, so Preview.Ready must be false.
+func TestBuild_PreviewNotReady_StatusGenerating(t *testing.T) {
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID:    42,
+		SessionID: "s_1",
+		Work:      &figlens.Work{ShareToken: "tok", Status: figlens.WorkStatusGenerating},
+		ShareBase: "https://vibeknow.com/share",
+	})
+	if s.Preview.Ready {
+		t.Fatal("preview must not be reported ready while the work is still generating")
+	}
+	if !containsCmd(s.NextActions, "vk video wait 42") {
+		t.Fatalf("expected wait next_action while generating, got %+v", s.NextActions)
+	}
+}
+
+func TestBuild_PreviewNotReady_StatusFailed(t *testing.T) {
+	s := snapshot.Build(snapshot.BuildInput{
+		TaskID:    42,
+		SessionID: "s_1",
+		Work:      &figlens.Work{ShareToken: "tok", Status: figlens.WorkStatusFailed},
+		ShareBase: "https://vibeknow.com/share",
+	})
+	if s.Preview.Ready {
+		t.Fatal("preview must not be reported ready when the work failed")
+	}
+}
+
 func TestBuild_ExportRunningFromExportResult_PopulatesProgress(t *testing.T) {
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID:       42,
 		SessionID:    "s_1",
-		Work:         &figlens.Work{ShareToken: "t"},
+		Work:         &figlens.Work{ShareToken: "t", Status: figlens.WorkStatusActive},
 		Export:       &figlens.ExportResult{Status: "processing", Progress: 47, ProgressMsg: "rendering"},
 		ExportTaskID: 77007,
 		ShareBase:    "https://vibeknow.com/share",
@@ -145,7 +177,7 @@ func TestBuild_NextActionsOmitTaskIDWhenZero(t *testing.T) {
 	// the task_id positional so the command is valid as-is.
 	s := snapshot.Build(snapshot.BuildInput{
 		TaskID: 0, SessionID: "s_1",
-		Work: &figlens.Work{ShareToken: "t"},
+		Work: &figlens.Work{ShareToken: "t", Status: figlens.WorkStatusActive},
 	})
 	if len(s.NextActions) == 0 {
 		t.Fatal("expected next_actions even when TaskID=0")
@@ -171,6 +203,7 @@ func containsCmd(actions []snapshot.Action, substr string) bool {
 func TestBuild_RemapsEngineSuiteToPipeline(t *testing.T) {
 	work := &figlens.Work{
 		ID: 1, SessionID: "s", ShareToken: "tok",
+		Status: figlens.WorkStatusActive,
 		Engine: "suite",
 	}
 	s := snapshot.Build(snapshot.BuildInput{

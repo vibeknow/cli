@@ -67,6 +67,7 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 					"id": 43, "title": "Integration Test Video",
 					"video_path": "/test.mp4", "cover_url": "", "duration": 30,
 					"share_token": "tok_integ",
+					"status":      1,
 				},
 			})
 		default:
