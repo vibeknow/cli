@@ -10,6 +10,7 @@ func init() {
 		"msg.profile.removed":   "removed profile %q",
 		"doctor.header":         "vibeknow doctor — environment and endpoint diagnostics",
 		"doctor.ok":             "[ok] %s",
+		"doctor.warn":           "[warn] %s: %s",
 		"doctor.fail":           "[fail] %s: %s",
 
 		// init wizard
@@ -169,6 +170,7 @@ func init() {
 		"msg.profile.removed":   "已删除 profile %q",
 		"doctor.header":         "vibeknow doctor — 环境与 endpoint 诊断",
 		"doctor.ok":             "[通过] %s",
+		"doctor.warn":           "[降级] %s: %s",
 		"doctor.fail":           "[失败] %s: %s",
 
 		// init wizard

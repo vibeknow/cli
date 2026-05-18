@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,10 +107,10 @@ func checkLocale() error {
 	return nil
 }
 
-// checkEndpoints resolves each service endpoint and probes /healthz
-// concurrently. Each backend is expected to expose a /healthz that returns
-// HTTP 200 with {"status":"healthy"} when up, and HTTP 503 with
-// {"status":"unhealthy"} when down.
+// checkEndpoints resolves each service endpoint and probes its health route
+// concurrently. Each backend is expected to expose /healthz (with /health as
+// a fallback) returning HTTP 200 + {"status":"healthy"} when fully up, or
+// HTTP 503 + {"status":"unhealthy"} when degraded.
 func checkEndpoints() int {
 	f, err := config.LoadProfiles()
 	if err != nil || f.Current == "" {
@@ -127,7 +129,7 @@ func checkEndpoints() int {
 	services := []string{"account", "vectoria", "figlens", "vibeknow"}
 	type result struct {
 		svc, url string
-		ok       bool
+		status   probeStatus
 		detail   string
 	}
 	results := make([]result, len(services))
@@ -138,11 +140,11 @@ func checkEndpoints() int {
 			defer wg.Done()
 			url, err := endpoints.Resolve(*prof, svc)
 			if err != nil {
-				results[i] = result{svc: svc, detail: err.Error()}
+				results[i] = result{svc: svc, status: probeFail, detail: err.Error()}
 				return
 			}
 			results[i] = result{svc: svc, url: url}
-			results[i].ok, results[i].detail = probeHealth(url)
+			results[i].status, results[i].detail = probeHealth(url)
 		}(i, svc)
 	}
 	wg.Wait()
@@ -150,9 +152,16 @@ func checkEndpoints() int {
 	failed := 0
 	for _, r := range results {
 		name := fmt.Sprintf("%s endpoint %s", r.svc, r.url)
-		if r.ok {
-			fmt.Println(i18n.T("doctor.ok", name+"  "+r.detail))
-		} else {
+		switch r.status {
+		case probeOK:
+			msg := name
+			if r.detail != "" {
+				msg = name + "  " + r.detail
+			}
+			fmt.Println(i18n.T("doctor.ok", msg))
+		case probeDegraded:
+			fmt.Println(i18n.T("doctor.warn", name, r.detail))
+		case probeFail:
 			fmt.Println(i18n.T("doctor.fail", name, r.detail))
 			failed++
 		}
@@ -160,28 +169,77 @@ func checkEndpoints() int {
 	return failed
 }
 
-// probeHealth GETs /healthz and returns (ok, detail). A response is healthy
-// iff it returns HTTP 200 and a body with `"status": "healthy"`.
-func probeHealth(baseURL string) (bool, string) {
+type probeStatus int
+
+const (
+	probeOK probeStatus = iota
+	probeDegraded
+	probeFail
+)
+
+// probeHealth checks a service's health endpoint and classifies the result.
+// It probes /healthz first; if that 404s, it falls back to /health so backends
+// that haven't standardised on the /healthz path still report correctly.
+//
+//   - probeOK:       HTTP 200 (the service is reachable and self-reports up;
+//                    body status string varies across services — "healthy",
+//                    "ok", "up" — so we treat any 2xx as success rather than
+//                    coupling to a specific keyword)
+//   - probeDegraded: HTTP 503 + body status="unhealthy" but pillars.databases
+//                    is healthy (non-critical subsystem like email is down,
+//                    primary request path is still usable)
+//   - probeFail:     transport error, unexpected HTTP, DB pillar unhealthy,
+//                    or 503 with no parseable pillars info
+func probeHealth(baseURL string) (probeStatus, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
-	req, _ := http.NewRequestWithContext(ctx, "GET", baseURL+"/healthz", nil)
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err.Error()
-	}
-	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	code, header, body, err := tryProbe(ctx, client, baseURL+"/healthz")
+	if err == nil && code == http.StatusNotFound {
+		code, header, body, err = tryProbe(ctx, client, baseURL+"/health")
+	}
+	if err != nil {
+		return probeFail, err.Error()
+	}
+
+	if code == http.StatusOK {
+		detail := ""
+		if v := header.Get("X-Vibeknow-Api-Version"); v != "" {
+			detail = "api=" + v
+		}
+		return probeOK, detail
+	}
+
 	var shape struct {
-		Status string `json:"status"`
+		Status  string `json:"status"`
+		Pillars map[string]struct {
+			Status string `json:"status"`
+		} `json:"pillars"`
 	}
 	_ = json.Unmarshal(body, &shape)
 
-	if resp.StatusCode == 200 && shape.Status == "healthy" {
-		return true, "api=" + resp.Header.Get("X-Vibeknow-Api-Version")
+	if code == http.StatusServiceUnavailable && shape.Pillars["databases"].Status == "healthy" {
+		var down []string
+		for name, p := range shape.Pillars {
+			if p.Status != "healthy" {
+				down = append(down, name)
+			}
+		}
+		sort.Strings(down)
+		return probeDegraded, fmt.Sprintf("non-critical pillars down: %s", strings.Join(down, ","))
 	}
-	return false, fmt.Sprintf("http=%d status=%q", resp.StatusCode, shape.Status)
+
+	return probeFail, fmt.Sprintf("http=%d status=%q", code, shape.Status)
+}
+
+func tryProbe(ctx context.Context, client *http.Client, url string) (int, http.Header, []byte, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, body, nil
 }
