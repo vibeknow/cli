@@ -1,7 +1,7 @@
 ---
 name: vibeknow-doc
 description: "Upload documents to vectoria and check processing status. Use when: user wants to upload a document, check if a document is ready, or get a doc_id for use with vibeknow create."
-version: 0.6.3
+version: 0.7.0
 emoji: "📄"
 homepage: https://github.com/vibeknow/cli
 allowed-tools: Bash(vibeknow:*)

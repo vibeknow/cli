@@ -1,7 +1,7 @@
 ---
 name: vibeknow-core
 description: "vibeknow CLI setup, authentication, profile management, and diagnostics. Use when: first-time setup, auth errors, switching environments, diagnosing connection issues."
-version: 0.6.3
+version: 0.7.0
 emoji: "🔧"
 homepage: https://github.com/vibeknow/cli
 allowed-tools: Bash(vibeknow:*)

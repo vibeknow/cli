@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0 — 2026-05-20
+
+### Changed (default endpoints now point at the production cluster)
+
+- `CloudDefaults` (account / vectoria / figlens / vibeknow / share) now
+  resolve to `https://vibeknow.com/<service>` for fresh installs. Existing
+  profiles with explicit `endpoints:` overrides in `profiles.yaml` are
+  unaffected. Tokens issued against earlier defaults will not authenticate
+  against the new endpoints; re-run `vibeknow auth login` (or
+  `vibeknow init`) after upgrading.
+
+### Fixed (`preview.ready` reported true while the pipeline was still running)
+
+- The backend generates `Work.ShareToken` at task-submit time, not at
+  completion. The previous `Preview.Ready = ShareToken != ""` heuristic
+  was therefore true from the moment a task was created — the CLI happily
+  reported `preview.ready: true` with a share URL that served a 404 page
+  until rendering actually completed.
+- Switch to the backend's `Work.Status` enum (already present in
+  `WorkResponse` but not parsed by the CLI's `Work` struct). Use
+  `Status == Active && ShareToken != ""` defensively. Adds
+  `WorkStatus{Generating,Active,Deleted,Failed}` constants on
+  `client/figlens/work.go`, in lockstep with the figlens backend's
+  WorkStatus enum. Replaces the 0/1/2/3 magic numbers in
+  `cmd/video/list.go` with the same constants.
+
+### Fixed (`vibeknow doctor` false-fails against partially-degraded services)
+
+- `probeHealth` now probes `/healthz` first and falls back to `/health`
+  on 404, restoring the probe-chain originally documented in 0.3.2 but
+  silently dropped from code.
+- HTTP 503 with `pillars.databases.status == "healthy"` is now reported
+  as `[warn]` (degraded — non-critical pillar down) rather than `[fail]`.
+  The exit code is unaffected by warns. Pin the canonical example: an
+  account service with a degraded email subsystem is operationally
+  usable (SMS-only login flows) and should not break `doctor`.
+- HTTP 200 is sufficient to mark a probe healthy regardless of the body's
+  `status` string. Different services report `"healthy"` vs `"ok"` vs
+  similar; coupling the CLI to a specific keyword caused vectoria
+  (`status: "ok"`) to false-fail.
+
 ## 0.6.3 — 2026-05-15
 
 ### Fixed (NDJSON terminal events were missing result data)
