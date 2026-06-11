@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 — 2026-06-11
 
 ### Added (image 讲稿生图 mode + mandatory images)
 
