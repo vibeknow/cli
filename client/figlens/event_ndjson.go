@@ -10,7 +10,7 @@ package figlens
 // `duration_ms`, which the agent engine simply does not produce.
 func (e StreamEvent) NDJSONFields() map[string]any {
 	switch e.Type {
-	case "node.started", "node.succeeded", "node.failed":
+	case "node.started", "node.succeeded", "node.failed", "node.warning":
 		return map[string]any{
 			"type":    e.Type,
 			"stage":   e.Stage,

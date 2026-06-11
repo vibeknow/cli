@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +38,9 @@ var (
 	flagCreateAspect  string
 	flagCreateBGM     bool
 	flagCreateEngine  string
+	flagCreateKBID    string
+	flagCreatePages   int
+	flagCreateImages  string
 )
 
 // docIDRe matches a vectoria document identifier supplied via `--from`.
@@ -79,6 +83,28 @@ var createCmd = &cobra.Command{
 		if err := validateEngineModeCombo(engine, videoKind); err != nil {
 			return err
 		}
+		if flagCreatePages != 0 && videoKind != figlens.VideoKindImage2 {
+			return clerr.Validation(i18n.T("create.err.pages_needs_image"))
+		}
+		if flagCreatePages < 0 {
+			return clerr.Validation(i18n.T("create.err.pages_invalid", flagCreatePages))
+		}
+		imageIndexes, err := resolveImageIndexes(flagCreateImages)
+		if err != nil {
+			return err
+		}
+		if len(imageIndexes) > 0 {
+			// Backend constraints: mandatory images ride the pipeline
+			// standard line (default/script/image modes); replica runs an
+			// independent graph that rejects them, and the agent engine
+			// has no such mechanism.
+			if videoKind == figlens.VideoKindReplica {
+				return clerr.Validation(i18n.T("create.err.images_not_replica"))
+			}
+			if engine == figlens.EngineAgent {
+				return clerr.Validation(i18n.T("create.err.images_needs_pipeline"))
+			}
+		}
 
 		ctx := context.Background()
 
@@ -87,8 +113,11 @@ var createCmd = &cobra.Command{
 
 		switch {
 		case docIDRe.MatchString(flagCreateFrom):
-			// Direct doc_id — skip upload.
+			// Direct doc_id — skip upload. --kb-id (printed by `vk doc
+			// upload` / a prior create) restores the kb half of the
+			// binding; the backend requires the pair together.
 			docID = flagCreateFrom
+			kbID = strings.TrimSpace(flagCreateKBID)
 			fmt.Fprintf(os.Stderr, "using doc_id: %s\n", docID)
 
 		case strings.HasPrefix(flagCreateFrom, "http://") || strings.HasPrefix(flagCreateFrom, "https://"):
@@ -110,6 +139,11 @@ var createCmd = &cobra.Command{
 
 		if videoKind == figlens.VideoKindScriptLock && kbID == "" {
 			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
+		}
+		if len(imageIndexes) > 0 && (kbID == "" || docID == "") {
+			// Mandatory-image snapshots are validated against the (user,
+			// doc) clips at init time, so the kb/doc pair must be known.
+			return clerr.Validation(i18n.T("create.err.images_needs_doc"))
 		}
 
 		// Orphan kb cleanup: drop the kb if InitTask never returns OK
@@ -163,8 +197,14 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind}
-		if videoKind == figlens.VideoKindScriptLock {
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, SelectedImageIndexes: imageIndexes}
+		if (videoKind != "" || len(imageIndexes) > 0) && kbID != "" && docID != "" {
+			// Modes with init-time preflights (script_lock quality check,
+			// replica PPT check, doc-support check) and mandatory-image
+			// snapshots need the kb/doc binding at init, not just on the
+			// stream. The pair must travel together — the backend rejects
+			// one without the other — so a bare doc_id (no --kb-id) keeps
+			// the legacy lean init body, as does the default mode.
 			initParams.KnowledgeID = kbID
 			initParams.DocID = docID
 		}
@@ -191,14 +231,12 @@ var createCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
 				os.Exit(5)
 			}
-			if errs.HasCode(err, "script_invalid") {
-				// Backend's localized message already lives on the error.
-				// Exit 2 via clerr.Validation — this is a user-input problem.
-				var o *errs.Object
-				if errors.As(err, &o) {
-					return clerr.Validation(o.Message)
-				}
-				return clerr.Validation(err.Error())
+			var fixable *errs.Object
+			if errors.As(err, &fixable) && httpclient.IsUserFixableCode(fixable.Code) {
+				// Preflight rejections (script/replica/doc-support): the
+				// backend's localized message already lives on the error.
+				// Exit 2 via clerr.Validation — these are user-input problems.
+				return clerr.Validation(fixable.Message)
 			}
 			// Retryable codes (rate_limited, internal_error,
 			// concurrent_work_limit): exit 4 so agent consumers can branch
@@ -236,19 +274,21 @@ var createCmd = &cobra.Command{
 		var successSessionID string
 
 		err = fc.StreamChat(ctx, figlens.StreamParams{
-			TaskID:      task.TaskID,
-			SessionID:   task.SessionID,
-			Query:       query,
-			KnowledgeID: kbID,
-			DocID:       docID,
-			VoiceID:     flagCreateVoiceID,
-			BGMEnabled:  flagCreateBGM,
-			Aspect:      aspect,
-			VideoKind:   videoKind,
-			Engine:      engine,
+			TaskID:               task.TaskID,
+			SessionID:            task.SessionID,
+			Query:                query,
+			KnowledgeID:          kbID,
+			DocID:                docID,
+			VoiceID:              flagCreateVoiceID,
+			BGMEnabled:           flagCreateBGM,
+			Aspect:               aspect,
+			VideoKind:            videoKind,
+			PageCount:            flagCreatePages,
+			SelectedImageIndexes: imageIndexes,
+			Engine:               engine,
 		}, func(ev figlens.StreamEvent) {
 			switch ev.Type {
-			case "node.started", "node.succeeded", "node.failed":
+			case "node.started", "node.succeeded", "node.warning", "node.failed":
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
@@ -257,6 +297,8 @@ var createCmd = &cobra.Command{
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
 					case "node.succeeded":
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
+					case "node.warning":
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_warning", ev.Node, ev.Message))
 					case "node.failed":
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
 					}
@@ -280,7 +322,7 @@ var createCmd = &cobra.Command{
 				}
 			case "task.failed":
 				switch {
-				case ev.Code == "script_invalid":
+				case httpclient.IsUserFixableCode(ev.Code):
 					failExitCode = 2
 				case ev.Retryable:
 					failExitCode = 4
@@ -290,10 +332,11 @@ var createCmd = &cobra.Command{
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
-					switch ev.Code {
-					case "insufficient_credits":
+					switch {
+					case ev.Code == "insufficient_credits":
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
-					case "script_invalid":
+					case httpclient.IsUserFixableCode(ev.Code):
+						// Backend's localized preflight message, verbatim.
 						fmt.Fprintln(os.Stderr, ev.Message)
 					default:
 						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
@@ -413,6 +456,9 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
 	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
 	createCmd.Flags().StringVar(&flagCreateEngine, "engine", "", i18n.T("create.flag.engine"))
+	createCmd.Flags().StringVar(&flagCreateKBID, "kb-id", "", i18n.T("create.flag.kb_id"))
+	createCmd.Flags().IntVar(&flagCreatePages, "pages", 0, i18n.T("create.flag.pages"))
+	createCmd.Flags().StringVar(&flagCreateImages, "images", "", i18n.T("create.flag.images"))
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -585,9 +631,42 @@ func resolveVideoKind(flag string) (string, error) {
 		return figlens.VideoKindReplica, nil
 	case "script":
 		return figlens.VideoKindScriptLock, nil
+	case "image":
+		// User-facing name for the 讲稿生图 line; the wire value carries
+		// an internal model codename we deliberately do not surface.
+		return figlens.VideoKindImage2, nil
 	default:
 		return "", clerr.Validation(i18n.T("create.err.mode_invalid", flag))
 	}
+}
+
+// resolveImageIndexes parses --images ("1,3,5") into mandatory-image
+// image_index values, as printed by `vk doc images`. Empty input passes
+// through as nil (caller omits the field); duplicates and whitespace are
+// tolerated, anything non-positive or non-numeric is a Validation error.
+func resolveImageIndexes(flag string) ([]int, error) {
+	flag = strings.TrimSpace(flag)
+	if flag == "" {
+		return nil, nil
+	}
+	seen := make(map[int]bool)
+	var out []int
+	for _, part := range strings.Split(flag, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil || n <= 0 {
+			return nil, clerr.Validation(i18n.T("create.err.images_invalid", part))
+		}
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	return out, nil
 }
 
 // resolveAspect normalizes --aspect (canonical words + 16:9 / 9:16 aliases)
@@ -623,6 +702,9 @@ func resolveEngine(flag string) (figlens.Engine, error) {
 func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
 	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindReplica {
 		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
+	}
+	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindImage2 {
+		return clerr.Validation(i18n.T("create.err.image_needs_pipeline"))
 	}
 	return nil
 }

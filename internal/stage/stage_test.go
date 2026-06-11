@@ -50,8 +50,8 @@ func TestNodeToStage_Unknown(t *testing.T) {
 
 func TestAllNodes(t *testing.T) {
 	nodes := stage.AllNodes()
-	if len(nodes) != 14 {
-		t.Fatalf("expected 14 nodes, got %d", len(nodes))
+	if len(nodes) != 18 {
+		t.Fatalf("expected 18 nodes, got %d", len(nodes))
 	}
 }
 
@@ -64,6 +64,76 @@ func TestStageOrder(t *testing.T) {
 	for i, s := range stages {
 		if s != expected[i] {
 			t.Fatalf("stage[%d] = %q, want %q", i, s, expected[i])
+		}
+	}
+}
+
+// Nodes introduced by the go-figlens pipeline rework (script_writing /
+// video_director / storyboard_plan / scene_filling replaced the old
+// text_speech / content_analyze / design / scene_generate naming; the old
+// IDs stay mapped for older deployments).
+func TestNodeToStage_ReworkedPipelineNodes(t *testing.T) {
+	tests := []struct {
+		node string
+		want string
+	}{
+		{"script_writing", "outline"},
+		{"video_director", "outline"},
+		{"storyboard_plan", "outline"},
+		{"scene_filling", "render"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.node, func(t *testing.T) {
+			got, ok := stage.FromNode(tt.node)
+			if !ok {
+				t.Fatalf("node %q not found in mapping", tt.node)
+			}
+			if got != tt.want {
+				t.Fatalf("FromNode(%q) = %q, want %q", tt.node, got, tt.want)
+			}
+		})
+	}
+}
+
+// Wire step_ids from the image-mode (讲稿生图) line and the replica
+// doc_dissect split. The image2_* prefix is the backend's wire naming;
+// DisplayName sanitizes it before any user-facing output.
+func TestNodeToStage_ImageModeAndDissectNodes(t *testing.T) {
+	tests := []struct {
+		node string
+		want string
+	}{
+		{"doc_dissect", "outline"},
+		{"image2_style_select", "outline"},
+		{"image2_storyboard", "outline"},
+		{"image2_gen", "render"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.node, func(t *testing.T) {
+			got, ok := stage.FromNode(tt.node)
+			if !ok {
+				t.Fatalf("node %q not found in mapping", tt.node)
+			}
+			if got != tt.want {
+				t.Fatalf("FromNode(%q) = %q, want %q", tt.node, got, tt.want)
+			}
+		})
+	}
+}
+
+// DisplayName must sanitize wire step_ids that carry internal codenames
+// and pass everything else through unchanged.
+func TestDisplayName_SanitizesCodenames(t *testing.T) {
+	tests := map[string]string{
+		"image2_style_select": "style_select",
+		"image2_storyboard":   "image_storyboard",
+		"image2_gen":          "image_gen",
+		"prepare":             "prepare",     // identity fallback
+		"future_node":         "future_node", // unknown passes through
+	}
+	for node, want := range tests {
+		if got := stage.DisplayName(node); got != want {
+			t.Fatalf("DisplayName(%q) = %q, want %q", node, got, want)
 		}
 	}
 }

@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased
+
+### Added (image 讲稿生图 mode + mandatory images)
+
+- `vk create --mode image` targets the backend's new AI-illustration line:
+  a script is written from the doc, a visual style is vector-matched, and
+  each page gets a generated image. Pipeline engine only — `--engine agent`
+  is rejected client-side, mirroring the backend.
+- `--pages N` (image mode only) pins the exact page count; image-generation
+  cost scales with it, `0` lets the storyboard decide. Validated client-side
+  so `--pages` without `--mode image` fails fast instead of being silently
+  ignored by the backend.
+- `vk doc images <doc_id> --kb-id <kb>` lists a parsed document's candidate
+  images (`POST /v1/task/extractDocImages`, idempotent) with their
+  `image_index` values; `vk create --images 1,3,5` passes the picked
+  indexes as `selected_image_indexes` on both `tasks/init` and the stream.
+  Rejected client-side for `--mode replica` and `--engine agent`, matching
+  backend constraints.
+- `vk create --kb-id` restores the kb half of the binding when `--from` is
+  a bare doc_id (the backend requires knowledge_id/doc_id as a pair).
+- `node.warning` stream events: the backend reports non-fatal degradations
+  (e.g. image mode falling back to a placeholder for a failed page) as
+  `process` logs with `status=warning`; the CLI previously dropped them.
+  Now rendered as `[node] warning: …` in text mode and emitted on NDJSON.
+
+### Changed (mode preflights now fire at init)
+
+- For `--mode replica|script|image` (and whenever `--images` is set) the
+  CLI sends the kb/doc pair on `tasks/init`, so the backend's preflights
+  (script quality, replica PPT check, doc-support check) reject bad input
+  before any credits are spent. New business codes mapped: `100005 →
+  replica_invalid`, `100006 → knowledge_unsupported`; both exit 2
+  (user-fixable input), and the backend's localized message is printed
+  verbatim — previously they fell through as generic `business_error`.
+- Stage map covers the replica line's new `doc_dissect` node and the image
+  mode's nodes (shown as `style_select`, `image_storyboard`, `image_gen`;
+  wire step_ids are sanitized before display).
+
+### Fixed (pipeline creates lost `video_url`/`duration_ms` after the figlens assistant_event rework)
+
+- The figlens update restructured SSE terminal events: the aim_result
+  payload now nests under `answer_done` (`answer_done.html_path` carries
+  the playable URL on v=3, `answer_done.text` on v=2,
+  `answer_done.data.duration_ms` the duration) and failure details nest
+  under `error.message`. The CLI still parsed the legacy flat
+  `html_path`/`text`/`data`/`message` fields, so `task.succeeded` NDJSON
+  events shipped with no `video_url` and no `duration_ms` — downstream
+  consumers (e.g. the OpenClaw plugin's `video_url` push) read that as
+  "no video was generated" — and `task.failed` dumped raw JSON instead
+  of the backend's failure message.
+- `client/figlens/stream.go` now parses both shapes: nested
+  `answer_done`/`error` first, legacy flat fields as fallback. The
+  `text`→URL fallback is gated on an `http(s)://` prefix because on v=3
+  the nested `text` is a human-readable completion message, not a URL.
+- `internal/stage`: the pipeline graph rework renamed mid-graph nodes
+  (`script_writing`/`video_director`/`storyboard_plan`/`scene_filling`
+  replaced `text_speech`/`content_analyze`/`design`/`scene_generate`).
+  The CLI's known-node filter silently dropped the new IDs, leaving long
+  progress gaps that read as a hung generation. Both generations are now
+  mapped; old IDs stay for older deployments.
+- Adds an integration test pinning the current backend wire format
+  end-to-end: `event: data` frames, `retry:` preamble, heartbeat comment
+  lines, nested `answer_done`, stream close after `session_completed`
+  with no `[DONE]` sentinel.
+
 ## 0.7.0 — 2026-05-20
 
 ### Changed (default endpoints now point at the production cluster)

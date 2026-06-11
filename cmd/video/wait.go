@@ -9,6 +9,7 @@ import (
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
@@ -66,6 +67,8 @@ var waitCmd = &cobra.Command{
 					fmt.Fprintf(stderr, "[%s] started\n", ev.Node)
 				case "node.succeeded":
 					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
+				case "node.warning":
+					fmt.Fprintf(stderr, "[%s] warning: %s\n", ev.Node, ev.Message)
 				case "node.failed":
 					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
 				case "node.progress":
@@ -100,12 +103,12 @@ var waitCmd = &cobra.Command{
 			return clerr.Newf("stream interrupted: %s", err).WithCode(6)
 		}
 		if taskFailed {
-			// Mirror `vk create`: script_invalid → 2, retryable → 4,
+			// Mirror `vk create`: user-fixable input → 2, retryable → 4,
 			// otherwise 5. Keeps exit codes consistent across the two
 			// stream-consuming entry points.
 			code := 5
 			switch {
-			case failedCode == "script_invalid":
+			case httpclient.IsUserFixableCode(failedCode):
 				code = 2
 			case failedRetryable:
 				code = 4

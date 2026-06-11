@@ -22,7 +22,14 @@ type StreamParams struct {
 	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
 	Aspect      string `json:"aspect,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
-	Engine      Engine `json:"-"` // selects endpoint, never emitted in body
+	// PageCount is image-mode-only: the exact page count for generated
+	// images (image-generation cost scales with it). 0 lets the
+	// storyboard decide.
+	PageCount int `json:"page_count,omitempty"`
+	// SelectedImageIndexes mirrors InitTaskParams; sending it on the stream
+	// too covers the second-generation path where no init call happens.
+	SelectedImageIndexes []int  `json:"selected_image_indexes,omitempty"`
+	Engine               Engine `json:"-"` // selects endpoint, never emitted in body
 }
 
 type StreamEvent struct {
@@ -55,11 +62,30 @@ type sseData struct {
 	Log       json.RawMessage `json:"log,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	Message   string          `json:"message,omitempty"`
-	// aim_result terminal-event fields. The two engines disagree on
-	// where the playable URL lives — see resolveVideoURL.
+	// Current backend (assistant_event rework) nests terminal payloads:
+	// aim_result fields under answer_done, failure details under error.
+	AnswerDone *sseAnswerDone `json:"answer_done,omitempty"`
+	Err        *sseError      `json:"error,omitempty"`
+	// Legacy flat aim_result fields (pre-rework deployments). The two
+	// engines disagree on where the playable URL lives — see resolveVideoURL.
 	HtmlPath string          `json:"html_path,omitempty"`  // v=3 pipeline
 	Text     string          `json:"text,omitempty"`       // v=2 agent (also free text on v=3, ignored there)
 	DataMap  json.RawMessage `json:"data,omitempty"`       // v=3 metadata bag, contains duration_ms etc.
+}
+
+// sseAnswerDone mirrors the backend's AssistantAnswerDone: html_path holds
+// the playable URL on v=3, text holds it on v=2 (where text doubles as a
+// human-readable completion message on v=3), data is the v=3 metadata bag.
+type sseAnswerDone struct {
+	Text     string          `json:"text"`
+	HtmlPath string          `json:"html_path,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+}
+
+// sseError mirrors the backend's AssistantError carried by `error` events.
+type sseError struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message"`
 }
 
 // aimResultData captures the v=3 metadata bag. Other fields exist
@@ -85,18 +111,31 @@ func mapSSECode(code int) string {
 }
 
 // resolveVideoURL extracts the playable HTML URL from an aim_result payload.
-// The two engines disagree on which field holds it:
+// The current backend nests it under answer_done; older deployments emit it
+// flat. The two shapes never mix on the wire, so each is resolved on its own
+// — the nested branch must not fall back to flat fields. Within either shape
+// the two engines disagree on which field holds the URL:
 //   - v=3 pipeline: `html_path` (preferred — engine emits a structured URL).
 //   - v=2 agent:    `text` (the agent only has one free-form result field;
 //     it puts the HTML URL there directly).
-//
-// Picking HtmlPath first means v=3 wins cleanly when both happen to be set,
-// which they shouldn't be — but we defend against the cross-engine drift
-// case rather than assume the backend stays in its lane.
 func resolveVideoURL(d sseData) string {
+	if d.AnswerDone != nil {
+		if d.AnswerDone.HtmlPath != "" {
+			return d.AnswerDone.HtmlPath
+		}
+		// On v=3 the nested text is a human-readable completion message
+		// ("视频已生成"), which must not leak into a URL field — hence
+		// the prefix gate on the v=2 fallback.
+		if strings.HasPrefix(d.AnswerDone.Text, "http://") || strings.HasPrefix(d.AnswerDone.Text, "https://") {
+			return d.AnswerDone.Text
+		}
+		return ""
+	}
 	if d.HtmlPath != "" {
 		return d.HtmlPath
 	}
+	// Legacy flat `text` carried only the URL; accept it verbatim so
+	// pre-rework v=2 deployments that returned object keys keep working.
 	return d.Text
 }
 
@@ -186,6 +225,14 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 					Type: "node.succeeded", Stage: stageName,
 					Node: displayName, Message: log.Message,
 				})
+			case "warning":
+				// Non-fatal degradation (e.g. image mode falls back to a
+				// placeholder for a failed page). The task still succeeds;
+				// surface it so users learn why the output looks off.
+				onEvent(StreamEvent{
+					Type: "node.warning", Stage: stageName,
+					Node: displayName, Message: log.Message,
+				})
 			case "error":
 				onEvent(StreamEvent{
 					Type: "node.failed", Stage: stageName,
@@ -196,9 +243,13 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 		case "aim_result":
 			ev := StreamEvent{Type: "task.succeeded", SessionID: d.SessionID}
 			ev.VideoURL = resolveVideoURL(d)
-			if len(d.DataMap) > 0 {
+			dataMap := d.DataMap
+			if d.AnswerDone != nil && len(d.AnswerDone.Data) > 0 {
+				dataMap = d.AnswerDone.Data
+			}
+			if len(dataMap) > 0 {
 				var ar aimResultData
-				if json.Unmarshal(d.DataMap, &ar) == nil {
+				if json.Unmarshal(dataMap, &ar) == nil {
 					ev.DurationMs = ar.DurationMs
 				}
 			}
@@ -206,6 +257,9 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 
 		case "error", "ERROR":
 			msg := d.Message
+			if d.Err != nil && d.Err.Message != "" {
+				msg = d.Err.Message
+			}
 			if msg == "" {
 				msg = string(payload.Data)
 			}

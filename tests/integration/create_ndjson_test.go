@@ -143,3 +143,70 @@ func jsonNumberInt(t *testing.T, v any) int64 {
 	}
 	return int64(f)
 }
+
+// Pins the CURRENT go-figlens wire format end-to-end: SSE frames carry an
+// `event: data` name and a `retry:` preamble, heartbeats arrive as comment
+// lines, the aim_result payload nests under answer_done, and the stream
+// closes after session_completed without a [DONE] sentinel. The CLI must
+// still emit task.succeeded with video_url/duration_ms and exit 0.
+func TestCreateNDJSON_CurrentBackendNestedFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	figlens := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/tasks/init":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": map[string]any{"task_id": 9, "session_id": "s_cur", "work_id": 10, "v": 3},
+			})
+		case "/v1/agent3forVideo/stream":
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher, _ := w.(http.Flusher)
+			fmt.Fprint(w, "retry: 10000\n\n")
+			fmt.Fprint(w, ": heartbeat\n\n")
+			for _, e := range []string{
+				`{"code":200,"data":{"type":"process","session_id":"s_cur","log":{"message":"讲稿撰写","status":"start","step_id":"script_writing"}}}`,
+				`{"code":200,"data":{"type":"process","session_id":"s_cur","log":{"message":"讲稿完成","status":"success","step_id":"script_writing"}}}`,
+				`{"code":200,"data":{"type":"aim_result","session_id":"s_cur","answer_done":{"text":"视频已生成","html_path":"https://cdn.example.com/v/s_cur.html","data":{"duration_ms":42000,"watermark":true}}}}`,
+				`{"code":200,"data":{"type":"session_completed","completed":{"session_id":"s_cur","work_id":10,"task_id":9}}}`,
+			} {
+				fmt.Fprintf(w, "event: data\ndata: %s\n\n", e)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		case "/v1/works/detailBySession":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": map[string]any{"id": 10, "title": "t", "duration": 42000, "share_token": "tok_cur", "status": 1},
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer figlens.Close()
+
+	configHome := buildProfile(t, map[string]string{"figlens": figlens.URL})
+	stdout, stderr, code := runVideoCmd(t, build(t), configHome,
+		"create", "--from", "doc_smoke12345", "--output", "ndjson")
+
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, stderr)
+	}
+
+	started := findEvent(t, stdout, "node.started")
+	if started["node"] != "script_writing" {
+		t.Errorf("node = %v, want script_writing recognised", started["node"])
+	}
+	succeeded := findEvent(t, stdout, "task.succeeded")
+	if succeeded["video_url"] != "https://cdn.example.com/v/s_cur.html" {
+		t.Errorf("video_url = %v, want answer_done.html_path", succeeded["video_url"])
+	}
+	if got, want := jsonNumberInt(t, succeeded["duration_ms"]), int64(42000); got != want {
+		t.Errorf("duration_ms = %d, want %d", got, want)
+	}
+}

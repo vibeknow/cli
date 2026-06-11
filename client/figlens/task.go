@@ -5,11 +5,13 @@ import (
 	"fmt"
 )
 
-// Backend video_kind wire values. The CLI flag names (`replica`, `script`)
-// map to these via cmd.resolveVideoKind.
+// Backend video_kind wire values. The CLI flag names (`replica`, `script`,
+// `image`) map to these via cmd.resolveVideoKind; the wire values are not
+// CLI-facing names.
 const (
 	VideoKindReplica    = "replica"
 	VideoKindScriptLock = "script_lock"
+	VideoKindImage2     = "image2"
 )
 
 type Task struct {
@@ -24,6 +26,11 @@ type InitTaskParams struct {
 	KnowledgeID string `json:"knowledge_id,omitempty"`
 	DocID       string `json:"doc_id,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
+	// SelectedImageIndexes are mandatory-image picks from `vk doc images`
+	// (user_clip image_index values). Backend validates ownership, promotes
+	// the draft clips to the task, and snapshots them onto the new work.
+	// Only honored on the pipeline standard line; rejected for replica.
+	SelectedImageIndexes []int `json:"selected_image_indexes,omitempty"`
 }
 
 type initTaskWire struct {

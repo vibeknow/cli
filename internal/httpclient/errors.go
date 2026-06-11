@@ -111,6 +111,20 @@ func IsRetryableCode(code string) bool {
 	return false
 }
 
+// IsUserFixableCode reports whether the code labels a rejected user input
+// (bad script, wrong doc type, unsupported document): retrying unchanged
+// will never help, but fixing the input will. Consumers map these to exit
+// code 2. Kept next to MapBusinessCode so a new preflight code is added
+// once and every exit-code site (create init-time, create stream-time,
+// video wait) stays in sync.
+func IsUserFixableCode(code string) bool {
+	switch code {
+	case "script_invalid", "replica_invalid", "knowledge_unsupported":
+		return true
+	}
+	return false
+}
+
 // MapBusinessCode maps a 100xxx-range backend envelope code to a stable
 // CLI error code label. Returns ok=false for codes outside that range so
 // callers can fall back to their own mapping (e.g. HTTP-class for HTTP,
@@ -127,6 +141,14 @@ func MapBusinessCode(envCode int) (string, bool) {
 		return "concurrent_work_limit", true
 	case 100004:
 		return "script_invalid", true
+	case 100005:
+		// Replica (PPT 讲解) preflight rejection: doc is not a PPT-style
+		// PDF or exceeds the content limit. User-fixable input error.
+		return "replica_invalid", true
+	case 100006:
+		// Knowledge document unsupported: parsed to completion but empty
+		// content (e.g. image-only PDF, unfetchable link). User-fixable.
+		return "knowledge_unsupported", true
 	}
 	if envCode >= 100000 {
 		return "business_error", true

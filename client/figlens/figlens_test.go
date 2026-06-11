@@ -243,3 +243,54 @@ func TestInitTask_AgentEngineSendsV2(t *testing.T) {
 		t.Fatalf("v on wire = %v, want 2", gotBody["v"])
 	}
 }
+
+func TestExtractDocImages(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/task/extractDocImages" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"images":[{"image_index":1,"url":"https://cdn/x.png","description":"图表A","type":"image","context":"第5页"},{"image_index":2,"url":"https://cdn/y.png","description":"","type":"image"}]}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	images, err := c.ExtractDocImages(context.Background(), "kb_1", "doc_1", "")
+	if err != nil {
+		t.Fatalf("ExtractDocImages: %v", err)
+	}
+	if gotBody["knowledge_id"] != "kb_1" || gotBody["doc_id"] != "doc_1" {
+		t.Fatalf("request body = %v", gotBody)
+	}
+	if len(images) != 2 || images[0].ImageIndex != 1 || images[0].Description != "图表A" {
+		t.Fatalf("images = %+v", images)
+	}
+}
+
+func TestInitTask_SendsSelectedImageIndexes(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"task_id":1,"session_id":"s","work_id":2,"v":3}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EnginePipeline, VideoKind: figlens.VideoKindImage2,
+		KnowledgeID: "kb_1", DocID: "doc_1", SelectedImageIndexes: []int{2, 4},
+	})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	if gotBody["v"] != float64(3) || gotBody["video_kind"] != "image2" {
+		t.Fatalf("body = %v", gotBody)
+	}
+	idx, _ := gotBody["selected_image_indexes"].([]any)
+	if len(idx) != 2 || idx[0] != float64(2) {
+		t.Fatalf("selected_image_indexes = %v", gotBody["selected_image_indexes"])
+	}
+}

@@ -170,3 +170,66 @@ func TestDocIDRegex(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveVideoKind_ImageMode(t *testing.T) {
+	got, err := resolveVideoKind("image")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != figlens.VideoKindImage2 {
+		t.Fatalf("resolveVideoKind(image) = %q, want %q", got, figlens.VideoKindImage2)
+	}
+	// The wire value is an internal model codename; it must not be
+	// accepted (and thereby advertised) as a CLI flag value.
+	if _, err := resolveVideoKind("image2"); err == nil {
+		t.Fatal("resolveVideoKind must reject the backend codename \"image2\"")
+	}
+}
+
+func TestValidateEngineModeCombo_Image2(t *testing.T) {
+	if err := validateEngineModeCombo(figlens.EngineAgent, figlens.VideoKindImage2); err == nil {
+		t.Fatal("agent+image2 must be rejected (no image2 branch on the agent engine)")
+	}
+	if err := validateEngineModeCombo(figlens.EnginePipeline, figlens.VideoKindImage2); err != nil {
+		t.Fatalf("pipeline+image2 must be allowed, got %v", err)
+	}
+}
+
+func TestResolveImageIndexes(t *testing.T) {
+	tests := []struct {
+		flag    string
+		want    []int
+		wantErr bool
+	}{
+		{"", nil, false},
+		{"1,3,5", []int{1, 3, 5}, false},
+		{" 2 , 4 ", []int{2, 4}, false},
+		{"3,3,3", []int{3}, false}, // duplicates collapse
+		{"1,,2", []int{1, 2}, false},
+		{"0", nil, true},  // image_index is 1-based on the backend
+		{"-1", nil, true},
+		{"a,b", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.flag, func(t *testing.T) {
+			got, err := resolveImageIndexes(tt.flag)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.flag)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("resolveImageIndexes(%q) = %v, want %v", tt.flag, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("resolveImageIndexes(%q) = %v, want %v", tt.flag, got, tt.want)
+				}
+			}
+		})
+	}
+}

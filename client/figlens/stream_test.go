@@ -329,3 +329,183 @@ data: [DONE]
 		t.Fatalf("event[2] = %+v", events[2])
 	}
 }
+
+// Current go-figlens (since the 2026-05/06 pipeline rework) nests the
+// aim_result payload under `answer_done`: the playable URL lives at
+// answer_done.html_path (v=3) and the metadata bag at answer_done.data.
+// The flat top-level html_path/text/data shape is the legacy contract;
+// both must parse.
+func TestStreamChat_AimResultNestedAnswerDone(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"aim_result","session_id":"s_v3","answer_done":{"text":"视频已生成","html_path":"https://cdn.example.com/works/s_v3/index.html","data":{"duration_ms":30000,"watermark":true}}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_v3", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.succeeded" {
+		t.Fatalf("expected task.succeeded, got %v", events)
+	}
+	if events[0].VideoURL != "https://cdn.example.com/works/s_v3/index.html" {
+		t.Fatalf("VideoURL = %q, want nested answer_done.html_path", events[0].VideoURL)
+	}
+	if events[0].DurationMs != 30000 {
+		t.Fatalf("DurationMs = %d, want 30000 from answer_done.data", events[0].DurationMs)
+	}
+}
+
+// v=2 agent puts the playable URL in answer_done.text (it has no html_path).
+func TestStreamChat_AimResultNestedAgentTextURL(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"aim_result","session_id":"s_v2","answer_done":{"text":"https://cdn.example.com/works/s_v2/index.html"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_v2", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].VideoURL != "https://cdn.example.com/works/s_v2/index.html" {
+		t.Fatalf("expected VideoURL from answer_done.text, got %+v", events)
+	}
+}
+
+// v=3 answer_done.text is a human-readable completion message, not a URL.
+// When html_path is absent the CLI must leave VideoURL empty rather than
+// leak the message into a URL field.
+func TestStreamChat_AimResultNestedTextNotURL(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"aim_result","session_id":"s_v3","answer_done":{"text":"视频已生成"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_v3", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.succeeded" {
+		t.Fatalf("expected task.succeeded, got %v", events)
+	}
+	if events[0].VideoURL != "" {
+		t.Fatalf("VideoURL = %q, want empty (text is a message, not a URL)", events[0].VideoURL)
+	}
+}
+
+// Current backend nests failure details under `error`: {"type":"error",
+// "error":{"message":"..."}}. The CLI must surface error.message instead
+// of dumping the raw JSON payload.
+func TestStreamChat_ErrorEventNestedMessage(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"error","session_id":"s_1","error":{"message":"分镜生成失败"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_1"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "task.failed" {
+		t.Fatalf("expected task.failed, got %v", events)
+	}
+	if events[0].Message != "分镜生成失败" {
+		t.Fatalf("Message = %q, want nested error.message", events[0].Message)
+	}
+}
+
+// image2 degrades per-page instead of failing the task (placeholder image,
+// style fallback). The backend reports these as process logs with
+// status="warning"; the CLI must surface them as node.warning rather than
+// dropping them on the floor.
+func TestStreamChat_WarningProcessEvent(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"process","session_id":"s_w","log":{"step_id":"image2_gen","status":"warning","message":"第5页配图失败，已使用占位图"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_w", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) == 0 || events[0].Type != "node.warning" {
+		t.Fatalf("expected node.warning, got %v", events)
+	}
+	// Display name is sanitized: the wire step_id carries an internal
+	// model codename that must not surface in user-facing output.
+	if events[0].Node != "image_gen" || events[0].Message == "" {
+		t.Fatalf("node.warning lost node/message or leaked codename: %+v", events[0])
+	}
+}
+
+// Pins the image2 request additions: page_count and selected_image_indexes
+// must reach the wire body (and be omitted when zero-valued).
+func TestStreamChat_SendsImage2Params(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s", Query: "q",
+		VideoKind: figlens.VideoKindImage2, PageCount: 8,
+		SelectedImageIndexes: []int{1, 3},
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotBody["video_kind"] != "image2" {
+		t.Fatalf("video_kind = %v, want image2", gotBody["video_kind"])
+	}
+	if gotBody["page_count"] != float64(8) {
+		t.Fatalf("page_count = %v, want 8", gotBody["page_count"])
+	}
+	idx, _ := gotBody["selected_image_indexes"].([]any)
+	if len(idx) != 2 || idx[0] != float64(1) || idx[1] != float64(3) {
+		t.Fatalf("selected_image_indexes = %v, want [1 3]", gotBody["selected_image_indexes"])
+	}
+}
