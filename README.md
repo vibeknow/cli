@@ -156,17 +156,42 @@ vibeknow auth logout
 # Generate video from a URL
 vibeknow create --from https://example.com/article
 
-# List available voice IDs first, then pass one via --voice
+# List voices first, then pass either column (# or SPEECH_VOICE_ID)
 vibeknow voice list
-vibeknow create --from report.pdf --voice <voice-id-from-above>
+vibeknow create --from report.pdf --voice 1
+
+# Reuse an already-uploaded document (doc_id needs its --kb-id)
+vibeknow create --from <doc_id> --kb-id <kb_id>
 
 # Custom prompt
 vibeknow create --from data.csv --prompt "Create a 2-minute explainer video"
 
-# Async mode — get task ID immediately, check later
+# Async mode — submit, confirm the run started, then detach
 vibeknow create --from doc.pdf --async
-vibeknow video wait <task_id> --session-id <session_id>
+vibeknow video wait          # reattaches to the most recent run
 ```
+
+`--async` returns once the backend confirms the run is live (seconds),
+not once the video is done (minutes). The render continues server-side
+after the CLI disconnects. An immediate rejection — bad input, no
+credits — is reported by `--async` itself with a non-zero exit, so a
+printed `task_id` means the run really started.
+
+### Finding a run again
+
+Every run is a `(task_id, session_id)` pair, and `create` records it
+locally so you never have to keep it yourself:
+
+```bash
+vk jobs list                  # every run this machine started, newest first
+vk jobs list --active         # only the ones still going
+vk video wait                 # reattach to the most recent
+vk video wait 42              # …or to a specific task, session looked up for you
+vk jobs prune --terminal      # forget finished runs
+```
+
+Passing `--session-id` explicitly still works and always wins over the
+ledger.
 
 ### Document Management
 
@@ -188,10 +213,10 @@ vibeknow doc get --kb-id <kb_id> --doc-id <doc_id>
 vibeknow video status <task_id>
 
 # Stream progress (blocks until complete)
-vibeknow video wait <task_id> --session-id <session_id>
+vibeknow video wait <task_id>
 
-# Download rendered video
-vibeknow video download <task_id> --session-id <session_id>
+# Download rendered video (--dest is the file path; --output is the format)
+vibeknow video download <task_id> --dest ./final.mp4
 ```
 
 ### Create a shareable video
@@ -217,14 +242,27 @@ $ vk video download 42 --session-id sess_xxx
 output=sess_xxx.mp4
 ```
 
+A failed render exits **7**, not 0 — `vk video export` takes its exit
+code from the state it waited for.
+
 Or one-shot: `vk create --from ... --export --yes`.
 
 ### Choose a video mode
 
 ```bash
 vk create --from deck.pdf  --mode replica   # PPT/PDF page-by-page
-vk create --from talk.docx --mode script    # narrate the doc verbatim
+vk create --from post.md   --mode image --pages 8   # one AI illustration per page
+vk create --from notes.md  --mode handdraw  # hand-drawn animation
 vk create --from <src>     --aspect vertical --bgm
+```
+
+`--script-lock` narrates the document verbatim instead of writing a
+script from it, and stacks on top of any mode (it replaced the old
+`--mode script`, which still works but warns):
+
+```bash
+vk create --from talk.docx --script-lock                 # verbatim narration
+vk create --from talk.docx --mode image --script-lock    # …illustrated per page
 ```
 
 ### Pick a generation engine (optional)

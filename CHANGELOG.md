@@ -1,5 +1,195 @@
 # Changelog
 
+## Unreleased
+
+### Added — run ledger (`vk jobs`)
+
+- Every run is addressed by a `(task_id, session_id)` pair, and the CLI
+  used to print it once and forget it. `--session-id` was mandatory on
+  every `video` subcommand, so a caller that lost that string — an agent
+  whose context was trimmed, a closed terminal, a restarted process —
+  could not reach a run that was live and still billing. The only way
+  forward was `vk create` again: a second render, a second charge.
+
+  `vk create` now records the pair in `<config-dir>/jobs.jsonl`, and
+  `--session-id` became optional everywhere it was required:
+
+  ```
+  vk video wait          # reattach to the most recent run
+  vk video wait 42       # session_id looked up for task 42
+  vk jobs list --active  # runs that have not reached a terminal state
+  ```
+
+  An explicit `--session-id` always wins, so a stale entry can never
+  override the caller. The ledger is local and advisory — the backend
+  owns run state, a missing entry means "not recorded here". Writes are
+  best-effort: a failure warns on stderr and never fails the run it was
+  describing.
+
+  `vk jobs list|get|prune` inspect it. A bare `prune` is refused: it
+  would drop the pointer to a run still in flight, which is not
+  recoverable from the CLI. The file is append-only so concurrent
+  `vk create` processes need no lock, and it compacts itself.
+
+### Fixed — commands that reported failure as success
+
+- `vk video export` exited **0** when the render failed. `PollExport`
+  treats "the backend reported failure" as a successful poll and returns
+  the failed result with a nil error, and the command passed that
+  straight through: `export.status: "failed"` in the payload, exit 0 on
+  the process. An agent branching on the exit code went on to
+  `vk video download` an MP4 that was never produced. It now exits **7**,
+  matching the `vk create --export` chain.
+
+  The rule is now stated in AGENTS.md: a command that *blocks until a
+  terminal state* (`create`, `video wait`, `video export`) takes its exit
+  code from that state; a *single-shot query* (`video status`,
+  `video export-status`) exits 0 and reports the state in its payload.
+
+- `create --async --export` silently dropped `--export` and exited 0.
+  Export runs after the preview snapshot, which `--async` never reaches
+  — so a caller asking for an MP4 got a preview and no signal. The
+  combination now exits **2** before any network call, with the two-step
+  sequence that does work.
+
+- `AuthMiddleware` discarded errors from `Token()` and sent the request
+  unauthenticated. "No credential found", "login expired" and
+  "session replaced on another device" all became an opaque backend 401,
+  losing the instruction that would have fixed them. They now surface as
+  exit **3** with the provider's own message; the underlying structured
+  error stays reachable through `errors.As`.
+
+- `vk api call` exited 1 on 401/403, making an expired login
+  indistinguishable from a bad path. It now exits **3**. Its token
+  provider also no longer swallows resolver errors.
+
+### Changed — output contract
+
+- 19 of 33 commands accepted `--output json`, ignored it, and printed
+  human prose on stdout at exit 0. A caller piping into `jq` got a parse
+  error with no way to tell a broken command from an unimplemented flag.
+  Every command now honours it, including `doc upload`,
+  `credits balance`, `doctor`, `version`, `auth whoami|logout|login`, and
+  the whole `config` / `profile` family.
+
+- `--output` help claimed it "auto-selects based on TTY". It never did.
+  The text is corrected rather than the behaviour implemented: auto-
+  switching would change the output of every existing pipeline on
+  upgrade, and `gh`, `kubectl` and `docker` all keep the format explicit.
+  `VIBEKNOW_OUTPUT` is the middle path — it sets the default for
+  non-interactive callers, and an explicit `--output` still wins.
+
+- An unrecognized `--output` value is now a validation error (exit 2).
+  `--output jsonl` used to print prose and exit 0.
+
+- **Breaking:** `vk video download --output <path>` is now
+  `--dest <path>`. The local flag shadowed the global format flag, so
+  `vk video download --output json` wrote a file literally named "json".
+  Passing a path to `--output` fails with exit 2 and a message naming
+  `--dest`.
+
+- `vk doc upload` moves its progress narration to stderr, so
+  `vk doc upload x.pdf --output json | jq -r .doc_id` works. `vk doctor`
+  renders its report before returning the failure error, so
+  `--output json` still gets the report when checks fail — precisely when
+  it is wanted.
+
+- `vk video download` binds its HTTP GET to the command context, so
+  Ctrl-C interrupts a large download.
+
+### Fixed (`--async` never started the task — #10)
+
+- `create --async` returned right after `tasks/init`, never issuing the
+  generation request. But init only reserves the task/session/work rows;
+  the *stream* request is what dispatches the pipeline. Every `--async`
+  task was therefore a zombie: stamped "generating" by init, never picked
+  up by anything, still at 0% hours later. `video wait` then found no
+  events to replay and exited **0** with no output — a silent success for
+  a task that never ran, which is the worst possible signal for the agent
+  callers this mode exists for.
+
+  `--async` now issues the generation request like the synchronous path
+  and detaches once the backend emits its first event, proving the run is
+  live. The run survives the disconnect: the backend derives its run
+  context from `context.Background()` on its own goroutine, so it is not
+  tied to the HTTP request. A rejection that arrives before the first
+  progress event (bad input, no credits) is reported by `--async` itself
+  with the same exit code the synchronous path uses, instead of handing
+  back a task_id for a doomed run. If the backend accepts the request but
+  stays silent for 60s, the CLI detaches anyway and says so rather than
+  implying the run is confirmed.
+
+- `video wait` no longer exits 0 when the stream closes without a
+  terminal event. It exits **6** (task state unknown) and distinguishes
+  "no events at all — the task was never dispatched, or the session-id
+  does not match" from "stream ended mid-run", each with the check to run
+  next.
+
+- `create --async` now honours `--output`: `json` emits
+  `{"task_id":…,"session_id":…}` and `ndjson` a `task.submitted` event.
+  Previously it printed `task_id=…` as bare text regardless of format,
+  forcing agent callers to scrape it.
+
+### Fixed (`--voice` accepted a number that could never work — #12)
+
+- `vk voice list` heads two identifier columns, and only `SPEECH_VOICE_ID`
+  works. Passing the other one was accepted silently and blew up minutes
+  later inside the TTS node with `40401 音色不存在` — after cover and
+  background images had been generated and billed.
+
+  `--voice` now takes either: a list reference number is translated to its
+  speech_voice_id before anything is uploaded, and one that is not in the
+  list exits **2** immediately. Non-numeric values still pass through
+  unvalidated, since cloned voices are absent from the template list. The
+  list's numeric column is now headed `#` rather than `ID`, and the flag
+  help names both forms.
+
+### Fixed (`--from <doc_id>` failed late with a backend message — #11)
+
+- The backend only accepts a doc_id together with its knowledge_id, but
+  the CLI let a bare doc_id through to the stream, where it failed with
+  the raw `knowledge_id and doc_id must be provided together` after a
+  task, session and work row already existed. `--kb-id` (0.7.1) supplied
+  the missing half but nothing pointed users to it — `create --help` still
+  advertised doc_id as usable on its own.
+
+  A bare doc_id now exits **2** before any network call, naming `--kb-id`
+  and where to find the value. There is no client-side reverse lookup to
+  offer instead: every vectoria document call is itself scoped by kb.
+
+### Fixed (script lock was silently a no-op)
+
+- `--mode script` sent `video_kind: "script_lock"`, which the backend
+  stopped honouring when it split 原稿锁定 out of the `video_kind` enum
+  into an orthogonal `script_lock` boolean. Nothing errored: the value
+  matched no pipeline graph, so the request fell through to the standard
+  line with the lock off — the user's own script was quietly demoted to
+  reference material and rewritten, and the script-quality preflight
+  (which is gated on the boolean alone) never ran. Only `--engine agent`
+  still worked, since the v=2 line kept reading the string.
+
+  `script_lock` is now a real field on both `tasks/init` and the stream
+  request, driven by a new **`--script-lock`** flag that composes with
+  every `--mode` (e.g. `--mode image --script-lock` illustrates the
+  user's verbatim script). `--mode script` is kept as a deprecated alias
+  that resolves to the boolean and prints a warning, so existing scripts
+  keep working — and now actually do what they always claimed to.
+
+  Note the prompt-optimize endpoint is unaffected and still keys on
+  `video_kind: "script_lock"`; there the value only selects a fixed
+  prompt to display, so the CLI flattens the two axes back for that one
+  call.
+
+### Added
+
+- `vk create --mode handdraw` runs the backend's hand-drawn animation
+  line (illustration → vectorization), the one production mode the CLI
+  could not reach. Pipeline engine only.
+- `--engine agent` now also rejects `--mode image` and `--mode handdraw`
+  alongside `--mode replica`. All three run dedicated graphs the agent
+  engine never dispatches to, so the combination previously produced an
+  ordinary video with no indication the requested mode was dropped.
+
 ## 0.7.1 — 2026-06-11
 
 ### Added (image 讲稿生图 mode + mandatory images)

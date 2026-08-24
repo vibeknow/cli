@@ -3,6 +3,8 @@ package httpclient
 import (
 	"context"
 	"net/http"
+
+	"github.com/vibeknow/cli/internal/clerr"
 )
 
 type TokenProvider interface {
@@ -29,7 +31,22 @@ func (m AuthMiddleware) Wrap(next http.RoundTripper) http.RoundTripper {
 	return roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		if m.Provider != nil {
 			tok, err := m.Provider.Token(r.Context())
-			if err == nil && tok != "" {
+			if err != nil {
+				// Token() only fails for reasons the user has to act on:
+				// no credential stored, login expired, session killed on
+				// another device. Sending the request anyway turned every
+				// one of those into an opaque backend 401 and lost the
+				// instruction that would have fixed it, so fail here with
+				// the provider's own message and exit 3.
+				//
+				// WithCause keeps the underlying *errs.Object reachable, so
+				// callers matching on codes like session_expired still see
+				// it through the wrapper.
+				return nil, clerr.Auth(err.Error()).
+					WithHint("run `vibeknow auth login`").
+					WithCause(err)
+			}
+			if tok != "" {
 				r.Header.Set("X-Authorization-Token", tok)
 			}
 		}

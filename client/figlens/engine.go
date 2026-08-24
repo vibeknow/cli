@@ -22,6 +22,17 @@ func (e Engine) Wire() int {
 	}
 }
 
+// String returns the --engine spelling, so logs and the run ledger record
+// what the user typed rather than an opaque integer.
+func (e Engine) String() string {
+	switch e {
+	case EngineAgent:
+		return "agent"
+	default:
+		return "pipeline"
+	}
+}
+
 // StreamPath returns the SSE endpoint path for this engine.
 func (e Engine) StreamPath() string {
 	switch e {

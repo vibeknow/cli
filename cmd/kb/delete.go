@@ -3,6 +3,7 @@ package kb
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,16 +45,29 @@ var deleteCmd = &cobra.Command{
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		alreadyGone := false
 		if err := vc.DeleteKB(ctx, kbID); err != nil {
 			// 404 → idempotent success (rm -f semantics).
-			if errs.HasCode(err, "not_found") {
-				fmt.Println(i18n.T("kb.delete.already_gone"))
-				return nil
+			if !errs.HasCode(err, "not_found") {
+				return err
 			}
-			return err
+			alreadyGone = true
 		}
-		fmt.Println(i18n.T("kb.delete.done"))
-		return nil
+		// already_gone rides in the payload rather than in the exit code:
+		// the outcome the caller asked for ("this kb should not exist")
+		// holds either way, but a caller reconciling state wants to know
+		// whether this run is what made it true.
+		return cmdutil.Emit(cmd, map[string]any{
+			"kb_id":        kbID,
+			"deleted":      !alreadyGone,
+			"already_gone": alreadyGone,
+		}, "kb.deleted", func(w io.Writer) {
+			if alreadyGone {
+				fmt.Fprintln(w, i18n.T("kb.delete.already_gone"))
+				return
+			}
+			fmt.Fprintln(w, i18n.T("kb.delete.done"))
+		})
 	},
 }
 

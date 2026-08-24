@@ -5,32 +5,65 @@ import (
 	"testing"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/client/vibeknow"
+	"github.com/vibeknow/cli/internal/clerr"
 )
 
-func TestResolveVideoKind(t *testing.T) {
+func TestResolveMode(t *testing.T) {
 	tests := []struct {
-		flag    string
-		want    string
-		wantErr bool
+		desc           string
+		mode           string
+		scriptLockFlag bool
+		wantKind       string
+		wantLock       bool
+		wantDeprecated bool
+		wantErr        bool
 	}{
-		{"", "", false},
-		{"replica", "replica", false},
-		{"script", "script_lock", false},
-		{"SCRIPT", "script_lock", false},
-		{"script_lock", "", true}, // backend jargon, not a CLI flag value
-		{"bogus", "", true},
+		{desc: "empty is the freeform line", mode: "", wantKind: ""},
+		{desc: "replica", mode: "replica", wantKind: figlens.VideoKindReplica},
+		{desc: "image", mode: "image", wantKind: figlens.VideoKindImage2},
+		{desc: "handdraw", mode: "handdraw", wantKind: figlens.VideoKindHandDraw},
+		{desc: "case-insensitive", mode: "HandDraw", wantKind: figlens.VideoKindHandDraw},
+
+		// script_lock is a separate axis now: it must survive every --mode,
+		// not be swallowed by one.
+		{desc: "lock alone", mode: "", scriptLockFlag: true, wantKind: "", wantLock: true},
+		{desc: "lock rides image", mode: "image", scriptLockFlag: true, wantKind: figlens.VideoKindImage2, wantLock: true},
+		{desc: "lock rides replica", mode: "replica", scriptLockFlag: true, wantKind: figlens.VideoKindReplica, wantLock: true},
+		{desc: "lock rides handdraw", mode: "handdraw", scriptLockFlag: true, wantKind: figlens.VideoKindHandDraw, wantLock: true},
+
+		// The deprecated alias must land on the boolean, NOT on video_kind —
+		// sending "script_lock" as a video_kind is exactly the silent
+		// no-op this split exists to fix.
+		{desc: "deprecated alias sets the boolean", mode: "script", wantKind: "", wantLock: true, wantDeprecated: true},
+		{desc: "deprecated alias case-insensitive", mode: "SCRIPT", wantKind: "", wantLock: true, wantDeprecated: true},
+
+		// Backend wire values are not CLI flag values.
+		{desc: "rejects backend jargon script_lock", mode: "script_lock", wantErr: true},
+		{desc: "rejects backend jargon image2", mode: "image2", wantErr: true},
+		{desc: "rejects backend jargon hand-draw", mode: "hand-draw", wantErr: true},
+		{desc: "rejects unknown", mode: "bogus", wantErr: true},
 	}
 	for _, tt := range tests {
-		t.Run(tt.flag, func(t *testing.T) {
-			got, err := resolveVideoKind(tt.flag)
-			if tt.wantErr && err == nil {
-				t.Fatalf("expected error for %q", tt.flag)
+		t.Run(tt.desc, func(t *testing.T) {
+			kind, lock, deprecated, err := resolveMode(tt.mode, tt.scriptLockFlag)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.mode)
+				}
+				return
 			}
-			if !tt.wantErr && err != nil {
+			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tt.want {
-				t.Fatalf("resolveVideoKind(%q) = %q, want %q", tt.flag, got, tt.want)
+			if kind != tt.wantKind {
+				t.Errorf("video_kind = %q, want %q", kind, tt.wantKind)
+			}
+			if lock != tt.wantLock {
+				t.Errorf("script_lock = %v, want %v", lock, tt.wantLock)
+			}
+			if deprecated != tt.wantDeprecated {
+				t.Errorf("deprecated = %v, want %v", deprecated, tt.wantDeprecated)
 			}
 		})
 	}
@@ -66,14 +99,19 @@ func TestResolveAspect(t *testing.T) {
 	}
 }
 
-func TestResolveVideoKind_ErrorMessageMentionsValues(t *testing.T) {
-	_, err := resolveVideoKind("xyz")
+func TestResolveMode_ErrorMessageMentionsValues(t *testing.T) {
+	_, _, _, err := resolveMode("xyz", false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "replica") || !strings.Contains(msg, "script") {
-		t.Fatalf("error must list allowed values, got: %q", msg)
+	for _, want := range []string{"replica", "image", "handdraw", "--script-lock"} {
+		if !strings.Contains(msg, want) {
+			// --script-lock is in there because a user typing a bad --mode
+			// is the most likely person to be reaching for the old
+			// `--mode script`; the error is where they will look.
+			t.Errorf("error must mention %q, got: %q", want, msg)
+		}
 	}
 }
 
@@ -118,19 +156,33 @@ func TestEngineAgentRejectsReplica(t *testing.T) {
 	}
 }
 
-func TestEngineAgentAllowsOtherModes(t *testing.T) {
-	for _, mode := range []string{"", figlens.VideoKindScriptLock} {
-		if err := validateEngineModeCombo(figlens.EngineAgent, mode); err != nil {
-			t.Fatalf("--engine agent + mode %q should be allowed: %v", mode, err)
-		}
+func TestEngineAgentAllowsDefaultMode(t *testing.T) {
+	// The agent engine only has its own line. Script lock is not listed
+	// here because it is no longer a video_kind at all — it rides along
+	// as a boolean and constrains nothing about the engine.
+	if err := validateEngineModeCombo(figlens.EngineAgent, ""); err != nil {
+		t.Fatalf("--engine agent with no --mode should be allowed: %v", err)
 	}
 }
 
 func TestEnginePipelineAllowsAllModes(t *testing.T) {
-	for _, mode := range []string{"", figlens.VideoKindReplica, figlens.VideoKindScriptLock} {
+	for _, mode := range []string{"", figlens.VideoKindReplica, figlens.VideoKindImage2, figlens.VideoKindHandDraw} {
 		if err := validateEngineModeCombo(figlens.EnginePipeline, mode); err != nil {
 			t.Fatalf("--engine pipeline + mode %q should be allowed: %v", mode, err)
 		}
+	}
+}
+
+func TestValidateEngineModeCombo_HandDraw(t *testing.T) {
+	// hand-draw runs a dedicated graph the agent engine never dispatches
+	// to; accepting the combination would silently render an ordinary
+	// video instead of a hand-drawn one.
+	err := validateEngineModeCombo(figlens.EngineAgent, figlens.VideoKindHandDraw)
+	if err == nil {
+		t.Fatal("agent+handdraw must be rejected (no hand-draw branch on the agent engine)")
+	}
+	if !strings.Contains(err.Error(), "handdraw") || !strings.Contains(err.Error(), "pipeline") {
+		t.Fatalf("error should mention both handdraw and pipeline, got: %q", err.Error())
 	}
 }
 
@@ -171,18 +223,18 @@ func TestDocIDRegex(t *testing.T) {
 	}
 }
 
-func TestResolveVideoKind_ImageMode(t *testing.T) {
-	got, err := resolveVideoKind("image")
+func TestResolveMode_ImageMode(t *testing.T) {
+	got, _, _, err := resolveMode("image", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != figlens.VideoKindImage2 {
-		t.Fatalf("resolveVideoKind(image) = %q, want %q", got, figlens.VideoKindImage2)
+		t.Fatalf("resolveMode(image) = %q, want %q", got, figlens.VideoKindImage2)
 	}
 	// The wire value is an internal model codename; it must not be
 	// accepted (and thereby advertised) as a CLI flag value.
-	if _, err := resolveVideoKind("image2"); err == nil {
-		t.Fatal("resolveVideoKind must reject the backend codename \"image2\"")
+	if _, _, _, err := resolveMode("image2", false); err == nil {
+		t.Fatal("resolveMode must reject the backend codename \"image2\"")
 	}
 }
 
@@ -192,6 +244,66 @@ func TestValidateEngineModeCombo_Image2(t *testing.T) {
 	}
 	if err := validateEngineModeCombo(figlens.EnginePipeline, figlens.VideoKindImage2); err != nil {
 		t.Fatalf("pipeline+image2 must be allowed, got %v", err)
+	}
+}
+
+func TestVoiceRefNeedsLookup(t *testing.T) {
+	tests := []struct {
+		ref  string
+		want bool
+		why  string
+	}{
+		{"1", true, "list reference number"},
+		{"42", true, "multi-digit reference"},
+		{"", false, "unset — nothing to resolve"},
+		{"t260312180132IV37e603", false, "already a speech_voice_id"},
+		// Cloned voices are not in the template list, so anything
+		// non-numeric must pass through rather than be rejected as unknown.
+		{"custom_clone_abc", false, "cloned voice id"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.why, func(t *testing.T) {
+			if got := voiceRefNeedsLookup(tt.ref); got != tt.want {
+				t.Fatalf("voiceRefNeedsLookup(%q) = %v, want %v", tt.ref, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMapVoiceRef(t *testing.T) {
+	templates := []vibeknow.VoiceTemplate{
+		{ID: 1, Name: "若溪", SpeechVoiceID: "t260312180132IV37e603"},
+		{ID: 2, Name: "无声", SpeechVoiceID: ""},
+	}
+
+	got, err := mapVoiceRef("1", templates)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The whole point: the number the user reads off the table must not be
+	// what reaches the backend — TTS only knows the speech_voice_id.
+	if got != "t260312180132IV37e603" {
+		t.Fatalf("mapVoiceRef(1) = %q, want the speech_voice_id", got)
+	}
+
+	// An unknown reference must fail here, at exit 2, rather than minutes
+	// later inside the TTS node with cover and background images already
+	// generated and billed.
+	_, err = mapVoiceRef("99", templates)
+	if err == nil {
+		t.Fatal("mapVoiceRef must reject a reference that is not in the list")
+	}
+	if clerr.ExitCodeFor(err) != clerr.ExitValidation {
+		t.Errorf("unknown voice ref should exit %d, got %d", clerr.ExitValidation, clerr.ExitCodeFor(err))
+	}
+	if !strings.Contains(err.Error(), "voice list") {
+		t.Errorf("error should point at `vk voice list`, got: %q", err.Error())
+	}
+
+	// A listed voice with no usable id must not be forwarded as an empty
+	// voice — that silently swaps the user's choice for the default.
+	if _, err := mapVoiceRef("2", templates); err == nil {
+		t.Fatal("mapVoiceRef must reject a template with an empty speech_voice_id")
 	}
 }
 

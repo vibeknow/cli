@@ -19,13 +19,18 @@ var exportStatusCmd = &cobra.Command{
 	Example: `  vk video export-status 424242 --session-id sess_xxx
   vk video export-status 424242 --session-id sess_xxx --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if flagExportStatusSessionID == "" {
-			return clerr.Validation("--session-id is required")
-		}
 		exportTaskID, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return clerr.Validationf("export_task_id must be an integer: %v", err)
 		}
+		// The positional argument here is an export_task_id, not a task_id,
+		// so it is no help in finding the session — only the flag or the
+		// most recent recorded run can supply it.
+		_, sessionID, err := resolveTarget(nil, flagExportStatusSessionID)
+		if err != nil {
+			return err
+		}
+		flagExportStatusSessionID = sessionID
 
 		c, err := newFiglensClient()
 		if err != nil {
@@ -41,14 +46,21 @@ var exportStatusCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		// task_id is not recoverable from export_task_id alone; pass 0.
 		// Agents that care have it from the original `vk create` response.
-		return emitSnapshot(cmd, format, snapshot.BuildInput{
+		//
+		// This is a single-shot query, so a failed export is reported in the
+		// payload (export.status="failed") and the command still exits 0 —
+		// it succeeded at answering. Only the blocking form, `vk video
+		// export` without --async, adopts the export's terminal state as its
+		// own exit code.
+		_, err = emitSnapshot(cmd, format, snapshot.BuildInput{
 			SessionID:    flagExportStatusSessionID,
 			Export:       result,
 			ExportTaskID: exportTaskID,
 		}, c)
+		return err
 	},
 }
 
 func init() {
-	exportStatusCmd.Flags().StringVar(&flagExportStatusSessionID, "session-id", "", "session ID (required)")
+	exportStatusCmd.Flags().StringVar(&flagExportStatusSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
 }

@@ -2,10 +2,11 @@ package profile
 
 import (
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
 )
 
@@ -17,17 +18,32 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if len(f.Profiles) == 0 {
-			fmt.Fprintln(os.Stdout, "(no profiles)")
-			return nil
-		}
+		items := make([]map[string]any, 0, len(f.Profiles))
 		for _, p := range f.Profiles {
-			marker := "  "
-			if p.Name == f.Current {
-				marker = "* "
-			}
-			fmt.Printf("%s%s\t%s\n", marker, p.Name, p.APIEndpoint)
+			items = append(items, map[string]any{
+				"name":          p.Name,
+				"current":       p.Name == f.Current,
+				"api_endpoint":  p.APIEndpoint,
+				"trust":         p.Trust,
+				"is_production": p.IsProduction,
+			})
 		}
-		return nil
+		return cmdutil.Emit(cmd, map[string]any{
+			"profiles": items,
+			"current":  f.Current,
+			"total":    len(items),
+		}, "profile.list", func(w io.Writer) {
+			if len(f.Profiles) == 0 {
+				fmt.Fprintln(w, "(no profiles)")
+				return
+			}
+			for _, p := range f.Profiles {
+				marker := "  "
+				if p.Name == f.Current {
+					marker = "* "
+				}
+				fmt.Fprintf(w, "%s%s\t%s\n", marker, p.Name, p.APIEndpoint)
+			}
+		})
 	},
 }

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,12 +17,14 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/client/vibeknow"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/video/snapshot"
@@ -41,7 +44,15 @@ var (
 	flagCreateKBID    string
 	flagCreatePages   int
 	flagCreateImages  string
+
+	flagCreateScriptLock bool
 )
+
+// asyncDetachTimeout bounds how long `--async` waits for the backend's first
+// stream event before detaching anyway. Reaching it is not fatal (the run
+// request has been delivered) but is reported, since the run was never
+// observed to start.
+const asyncDetachTimeout = 60 * time.Second
 
 // docIDRe matches a vectoria document identifier supplied via `--from`.
 // Two forms are accepted:
@@ -60,7 +71,8 @@ var createCmd = &cobra.Command{
 	Long: `create resolves --from to a document, then generates a video via the figlens pipeline.
 
 --from accepts:
-  - a doc_id (e.g. doc_abc12345) — used directly
+  - a doc_id (e.g. doc_abc12345) — reused directly, and requires --kb-id
+    (the backend only accepts a document together with its knowledge base)
   - a URL (http:// or https://) — uploaded to vectoria
   - a local file path — uploaded to vectoria`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,9 +80,20 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("--from is required")
 		}
 
-		videoKind, err := resolveVideoKind(flagCreateMode)
+		// --export runs after the preview snapshot, which --async never
+		// reaches: it detaches as soon as the run is confirmed. Combining
+		// them used to drop --export on the floor and still exit 0, so a
+		// caller asking for an MP4 got a preview and no way to tell.
+		if flagCreateAsync && flagCreateExport {
+			return clerr.Validation(i18n.T("create.err.async_with_export"))
+		}
+
+		videoKind, scriptLock, deprecatedModeAlias, err := resolveMode(flagCreateMode, flagCreateScriptLock)
 		if err != nil {
 			return err
+		}
+		if deprecatedModeAlias {
+			fmt.Fprintln(os.Stderr, i18n.T("create.warn.mode_script_deprecated"))
 		}
 		aspect, err := resolveAspect(flagCreateAspect)
 		if err != nil {
@@ -95,9 +118,10 @@ var createCmd = &cobra.Command{
 		}
 		if len(imageIndexes) > 0 {
 			// Backend constraints: mandatory images ride the pipeline
-			// standard line (default/script/image modes); replica runs an
-			// independent graph that rejects them, and the agent engine
-			// has no such mechanism.
+			// standard/image2/hand-draw graphs (all of which run the
+			// knowledge node that consumes them); replica runs an
+			// independent graph that rejects them outright, and the agent
+			// engine has no such mechanism.
 			if videoKind == figlens.VideoKindReplica {
 				return clerr.Validation(i18n.T("create.err.images_not_replica"))
 			}
@@ -107,6 +131,13 @@ var createCmd = &cobra.Command{
 		}
 
 		ctx := context.Background()
+
+		// Resolved before any upload: a bad voice reference should cost the
+		// user nothing, not a knowledgebase and a parsed document.
+		voiceID, err := resolveVoiceID(ctx, flagCreateVoiceID)
+		if err != nil {
+			return err
+		}
 
 		// Step 1: resolve --from to kb_id + doc_id.
 		var kbID, docID string
@@ -118,6 +149,15 @@ var createCmd = &cobra.Command{
 			// binding; the backend requires the pair together.
 			docID = flagCreateFrom
 			kbID = strings.TrimSpace(flagCreateKBID)
+			if kbID == "" {
+				// The backend rejects a doc_id without its knowledge_id, but
+				// only once the stream opens — by which point a task, session
+				// and work row exist and the user is reading a raw backend
+				// message about arguments they never saw. There is no way to
+				// look the pair up client-side (every vectoria document call
+				// is scoped by kb), so refuse here with the fix in hand.
+				return clerr.Validation(i18n.T("create.err.doc_needs_kb", docID))
+			}
 			fmt.Fprintf(os.Stderr, "using doc_id: %s\n", docID)
 
 		case strings.HasPrefix(flagCreateFrom, "http://") || strings.HasPrefix(flagCreateFrom, "https://"):
@@ -137,7 +177,7 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		if videoKind == figlens.VideoKindScriptLock && kbID == "" {
+		if scriptLock && kbID == "" {
 			return clerr.Validation(i18n.T("create.err.script_needs_doc"))
 		}
 		if len(imageIndexes) > 0 && (kbID == "" || docID == "") {
@@ -174,10 +214,20 @@ var createCmd = &cobra.Command{
 			} else {
 				fmt.Fprintln(os.Stderr, i18n.T("create.optimising_prompt"))
 			}
+			// The optimize endpoint keys 原稿锁定 off the video_kind string
+			// rather than a boolean (it predates the split and only uses the
+			// value to pick a fixed prompt to echo back), so the two axes
+			// have to be flattened back into one here. script_lock wins:
+			// with the script locked, the prompt is fixed regardless of
+			// which line will render it.
+			optimizeKind := videoKind
+			if scriptLock {
+				optimizeKind = figlens.OptimizeVideoKindScriptLock
+			}
 			optimized, err := fc.FastQueryOptimize(ctx, figlens.OptimizeParams{
 				KnowledgeID: kbID,
 				DocID:       docID,
-				VideoKind:   videoKind,
+				VideoKind:   optimizeKind,
 			}, onDelta)
 			if streaming {
 				fmt.Fprintln(os.Stderr)
@@ -197,14 +247,19 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, SelectedImageIndexes: imageIndexes}
-		if (videoKind != "" || len(imageIndexes) > 0) && kbID != "" && docID != "" {
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, ScriptLock: scriptLock, SelectedImageIndexes: imageIndexes}
+		if (videoKind != "" || scriptLock || len(imageIndexes) > 0) && kbID != "" && docID != "" {
 			// Modes with init-time preflights (script_lock quality check,
 			// replica PPT check, doc-support check) and mandatory-image
 			// snapshots need the kb/doc binding at init, not just on the
 			// stream. The pair must travel together — the backend rejects
 			// one without the other — so a bare doc_id (no --kb-id) keeps
 			// the legacy lean init body, as does the default mode.
+			//
+			// scriptLock is its own clause and not folded into videoKind:
+			// 原稿锁定 on the standard line leaves videoKind empty, and
+			// dropping the binding there would skip the script-quality
+			// preflight entirely — the run would only fail after billing.
 			initParams.KnowledgeID = kbID
 			initParams.DocID = docID
 		}
@@ -257,14 +312,35 @@ var createCmd = &cobra.Command{
 		// the deferred cleanup above will skip on any later error path
 		// (task.failed, stream interrupted, --async detach).
 
-		// Step 4: async or sync.
-		if flagCreateAsync {
-			fmt.Printf("task_id=%d\nsession_id=%s\n", task.TaskID, task.SessionID)
-			fmt.Fprintln(os.Stderr, i18n.T("create.async.hint", task.TaskID, task.SessionID))
-			return nil
-		}
+		// Record the run before starting it. Written here rather than after
+		// the stream so that a caller killed mid-render — or one whose agent
+		// context was discarded — can still find the (task_id, session_id)
+		// pair with `vk jobs list` instead of starting a second billed run.
+		recordJob(jobs.Record{
+			TaskID:    task.TaskID,
+			SessionID: task.SessionID,
+			WorkID:    task.WorkID,
+			Status:    jobs.StatusSubmitted,
+			Source:    flagCreateFrom,
+			Mode:      videoKind,
+			Engine:    engine.String(),
+		})
 
-		// Step 5: stream with progress.
+		// Step 4: start generating.
+		//
+		// StreamChat is the request that actually starts the pipeline —
+		// InitTask only reserves the task/session/work rows and returns.
+		// It already stamps the work row "generating", which is why a task
+		// that never received a stream request looks alive in `vk video
+		// list` yet never progresses: nothing is running behind it.
+		//
+		// So --async cannot skip this call. It differs from the sync path
+		// only in *when it stops listening*: it detaches as soon as the
+		// backend proves the run is live (first event on the wire) instead
+		// of staying for the whole render. The run survives the disconnect
+		// — the backend builds its run context from context.Background()
+		// and executes it on its own goroutine, so the pipeline is not tied
+		// to this HTTP request.
 		fmt.Fprintln(os.Stderr, i18n.T("create.generating", task.TaskID, task.SessionID))
 
 		format, _ := cmd.Flags().GetString("output")
@@ -273,20 +349,51 @@ var createCmd = &cobra.Command{
 		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
 
-		err = fc.StreamChat(ctx, figlens.StreamParams{
+		streamCtx := ctx
+		var detach context.CancelFunc
+		var detached, detachTimedOut atomic.Bool
+		if flagCreateAsync {
+			streamCtx, detach = context.WithCancel(ctx)
+			defer detach()
+			// Backstop: if the backend accepts the request but stays silent,
+			// do not hold an "--async" caller indefinitely. The run request
+			// has been delivered by then, so the exposure this guards
+			// against — the handler not yet having spawned the run — is a
+			// sub-second window, not a minute-long one.
+			timer := time.AfterFunc(asyncDetachTimeout, func() {
+				detachTimedOut.Store(true)
+				detach()
+			})
+			defer timer.Stop()
+		}
+
+		err = fc.StreamChat(streamCtx, figlens.StreamParams{
 			TaskID:               task.TaskID,
 			SessionID:            task.SessionID,
 			Query:                query,
 			KnowledgeID:          kbID,
 			DocID:                docID,
-			VoiceID:              flagCreateVoiceID,
+			VoiceID:              voiceID,
 			BGMEnabled:           flagCreateBGM,
 			Aspect:               aspect,
 			VideoKind:            videoKind,
+			ScriptLock:           scriptLock,
 			PageCount:            flagCreatePages,
 			SelectedImageIndexes: imageIndexes,
 			Engine:               engine,
 		}, func(ev figlens.StreamEvent) {
+			// --async: any event at all proves the backend dispatched the
+			// run, which is all this mode promised to wait for. Terminal
+			// events still fall through to the handlers below first, so an
+			// immediate failure (bad input, no credits) is reported here
+			// rather than left for the caller to discover by polling.
+			if flagCreateAsync {
+				defer func() {
+					detached.Store(true)
+					detach()
+				}()
+			}
+
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.warning", "node.failed":
 				if isNDJSONCreate {
@@ -329,6 +436,15 @@ var createCmd = &cobra.Command{
 				default:
 					failExitCode = 5
 				}
+				failMsg := ev.Message
+				failCode := ev.Code
+				updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+					r.Status = jobs.StatusFailed
+					r.Error = failMsg
+					if r.Error == "" {
+						r.Error = failCode
+					}
+				})
 				if isNDJSONCreate {
 					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
 				} else {
@@ -345,17 +461,64 @@ var createCmd = &cobra.Command{
 			}
 		})
 		if err != nil {
-			if errs.HasCode(err, "insufficient_credits") {
-				fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
-				os.Exit(5)
+			// A detach we asked for is not a failure: cancelling the context
+			// is how --async stops reading, and it surfaces as a read error.
+			if !(flagCreateAsync && errors.Is(err, context.Canceled)) {
+				if errs.HasCode(err, "insufficient_credits") {
+					updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+						r.Status = jobs.StatusFailed
+						r.Error = "insufficient_credits"
+					})
+					fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
+					os.Exit(5)
+				}
+				// Stream interrupted — exit 6. The run is very likely still
+				// going (the backend does not tie it to this connection), so
+				// the ledger keeps it as a non-terminal entry that `vk jobs
+				// list --active` will surface for reattachment.
+				updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+					r.Status = jobs.StatusUnknown
+					r.Error = err.Error()
+				})
+				fmt.Fprintln(os.Stderr, i18n.T("create.stream_interrupted", err))
+				os.Exit(6)
 			}
-			// Stream interrupted — exit 6.
-			fmt.Fprintln(os.Stderr, i18n.T("create.stream_interrupted", err))
-			os.Exit(6)
 		}
 
 		if failExitCode != 0 {
 			os.Exit(failExitCode)
+		}
+
+		if flagCreateAsync {
+			// Report the backstop honestly rather than implying the run is
+			// confirmed: the caller should verify before treating it as live.
+			if detachTimedOut.Load() && !detached.Load() {
+				fmt.Fprintln(os.Stderr, i18n.T("create.async.no_confirmation", int(asyncDetachTimeout.Seconds())))
+			}
+			// "running" only when an event was actually seen; the backstop
+			// path leaves it at "submitted", matching what was observed.
+			if detached.Load() {
+				updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+					r.Status = jobs.StatusRunning
+				})
+			}
+			switch format {
+			case "json":
+				return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
+					"task_id":    task.TaskID,
+					"session_id": task.SessionID,
+				})
+			case "ndjson":
+				return output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
+					"event":      "task.submitted",
+					"task_id":    task.TaskID,
+					"session_id": task.SessionID,
+				})
+			default:
+				fmt.Printf("task_id=%d\nsession_id=%s\n", task.TaskID, task.SessionID)
+				fmt.Fprintln(os.Stderr, i18n.T("create.async.hint", task.TaskID, task.SessionID))
+				return nil
+			}
 		}
 
 		if successSessionID == "" {
@@ -376,6 +539,13 @@ var createCmd = &cobra.Command{
 			Work:      w,
 			ShareBase: shareBase,
 		})
+		updateJob(task.TaskID, successSessionID, func(r *jobs.Record) {
+			r.Status = jobs.StatusSucceeded
+			r.WorkID = s.WorkID
+			r.Title = s.Title
+			r.ShareURL = s.Preview.ShareURL
+		})
+
 		if err := snapshot.Render(stdout, stderr, s, format); err != nil {
 			return err
 		}
@@ -435,6 +605,9 @@ var createCmd = &cobra.Command{
 		if format == "text" || format == "" {
 			fmt.Fprintln(stderr)
 		}
+		updateJob(task.TaskID, successSessionID, func(r *jobs.Record) {
+			r.VideoPath = finalSnap.Export.VideoPath
+		})
 		if err := snapshot.Render(stdout, stderr, finalSnap, format); err != nil {
 			return err
 		}
@@ -447,12 +620,13 @@ var createCmd = &cobra.Command{
 
 func init() {
 	createCmd.Flags().StringVar(&flagCreateFrom, "from", "", "doc_id, URL, or local file path (required)")
-	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice template ID")
+	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice from `vk voice list` — either the # or the speech_voice_id")
 	createCmd.Flags().StringVar(&flagCreatePrompt, "prompt", "", "custom prompt for video generation (default: auto-generated)")
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
 	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")
 	createCmd.Flags().BoolVarP(&flagCreateYes, "yes", "y", false, "skip export confirmation prompt")
 	createCmd.Flags().StringVar(&flagCreateMode, "mode", "", i18n.T("create.flag.mode"))
+	createCmd.Flags().BoolVar(&flagCreateScriptLock, "script-lock", false, i18n.T("create.flag.script_lock"))
 	createCmd.Flags().StringVar(&flagCreateAspect, "aspect", "", i18n.T("create.flag.aspect"))
 	createCmd.Flags().BoolVar(&flagCreateBGM, "bgm", false, i18n.T("create.flag.bgm"))
 	createCmd.Flags().StringVar(&flagCreateEngine, "engine", "", i18n.T("create.flag.engine"))
@@ -621,22 +795,92 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 	}
 }
 
-// resolveVideoKind maps the --mode flag to the backend video_kind wire value.
-// Empty passes through (caller omits the field); unrecognized → Validation error.
-func resolveVideoKind(flag string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(flag)) {
+// numericRe matches a --voice value given as the reference number printed in
+// the first column of `vk voice list`, rather than a speech_voice_id.
+var numericRe = regexp.MustCompile(`^[0-9]+$`)
+
+// resolveVoiceID turns whatever the user passed to --voice into the value the
+// backend's TTS actually keys on, the speech_voice_id.
+//
+// `vk voice list` prints two identifiers per row and only the long one works;
+// passing the short one used to be accepted silently and blow up minutes
+// later inside the TTS node with "音色不存在" — after cover and background
+// images had already been generated and billed. Rather than making the user
+// learn which column is real, a numeric value is looked up and translated
+// here, before anything is uploaded or spent.
+//
+// Non-numeric values pass through untouched: they are already speech_voice_ids,
+// and cloned voices do not appear in the template list, so a "not in the list"
+// check would reject valid input.
+func resolveVoiceID(ctx context.Context, flag string) (string, error) {
+	ref := strings.TrimSpace(flag)
+	if !voiceRefNeedsLookup(ref) {
+		return ref, nil
+	}
+
+	_, url, tp, err := cmdutil.Default().Service("vibeknow")
+	if err != nil {
+		return "", err
+	}
+	templates, err := vibeknow.New(url, tp).ListVoiceTemplates(ctx)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", i18n.T("create.err.voice_lookup_failed"), err)
+	}
+	return mapVoiceRef(ref, templates)
+}
+
+// voiceRefNeedsLookup reports whether a --voice value is a `vk voice list`
+// reference number that has to be translated, as opposed to a speech_voice_id
+// that can go to the backend as-is.
+func voiceRefNeedsLookup(ref string) bool {
+	return ref != "" && numericRe.MatchString(ref)
+}
+
+// mapVoiceRef translates a list reference number into its speech_voice_id.
+func mapVoiceRef(ref string, templates []vibeknow.VoiceTemplate) (string, error) {
+	for _, t := range templates {
+		if strconv.Itoa(t.ID) != ref {
+			continue
+		}
+		if t.SpeechVoiceID == "" {
+			// A listed template with no usable id is a backend data
+			// problem; failing here beats forwarding an empty voice.
+			return "", clerr.Validation(i18n.T("create.err.voice_no_speech_id", ref, t.Name))
+		}
+		fmt.Fprintln(os.Stderr, i18n.T("create.voice_resolved", ref, t.Name, t.SpeechVoiceID))
+		return t.SpeechVoiceID, nil
+	}
+	return "", clerr.Validation(i18n.T("create.err.voice_unknown_ref", ref))
+}
+
+// resolveMode maps --mode and --script-lock onto the two *orthogonal*
+// backend parameters they actually drive: video_kind (which pipeline graph
+// runs) and script_lock (whether that graph writes a script or uses the
+// document verbatim).
+//
+// They used to be one axis — 原稿锁定 was the video_kind value "script_lock"
+// — and `--mode script` still spells it that way. It is now a deprecated
+// alias: it resolves to no video_kind (the standard line) plus script_lock,
+// which is what the old value meant back when the axes were fused.
+//
+// Empty --mode passes through as an empty video_kind (caller omits the
+// field); an unrecognized value is a Validation error.
+func resolveMode(mode string, scriptLockFlag bool) (videoKind string, scriptLock bool, deprecatedAlias bool, err error) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "":
-		return "", nil
+		return "", scriptLockFlag, false, nil
 	case "replica":
-		return figlens.VideoKindReplica, nil
-	case "script":
-		return figlens.VideoKindScriptLock, nil
+		return figlens.VideoKindReplica, scriptLockFlag, false, nil
 	case "image":
 		// User-facing name for the 讲稿生图 line; the wire value carries
 		// an internal model codename we deliberately do not surface.
-		return figlens.VideoKindImage2, nil
+		return figlens.VideoKindImage2, scriptLockFlag, false, nil
+	case "handdraw":
+		return figlens.VideoKindHandDraw, scriptLockFlag, false, nil
+	case "script":
+		return "", true, true, nil
 	default:
-		return "", clerr.Validation(i18n.T("create.err.mode_invalid", flag))
+		return "", false, false, clerr.Validation(i18n.T("create.err.mode_invalid", mode))
 	}
 }
 
@@ -699,12 +943,22 @@ func resolveEngine(flag string) (figlens.Engine, error) {
 }
 
 // validateEngineModeCombo rejects engine+mode combinations the backend doesn't support.
+//
+// All three rejected modes are pipeline-only for the same structural reason:
+// each runs a dedicated graph selected by video_kind, and the agent engine
+// dispatches on none of them — it would accept the request and quietly run
+// its ordinary line instead.
 func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
-	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindReplica {
-		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
+	if engine != figlens.EngineAgent {
+		return nil
 	}
-	if engine == figlens.EngineAgent && videoKind == figlens.VideoKindImage2 {
+	switch videoKind {
+	case figlens.VideoKindReplica:
+		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
+	case figlens.VideoKindImage2:
 		return clerr.Validation(i18n.T("create.err.image_needs_pipeline"))
+	case figlens.VideoKindHandDraw:
+		return clerr.Validation(i18n.T("create.err.handdraw_needs_pipeline"))
 	}
 	return nil
 }

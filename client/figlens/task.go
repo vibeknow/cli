@@ -5,13 +5,20 @@ import (
 	"fmt"
 )
 
-// Backend video_kind wire values. The CLI flag names (`replica`, `script`,
-// `image`) map to these via cmd.resolveVideoKind; the wire values are not
+// Backend video_kind wire values. The CLI flag names (`replica`, `image`,
+// `handdraw`) map to these via cmd.resolveMode; the wire values are not
 // CLI-facing names.
+//
+// VideoKindScriptLock is deliberately absent from the generation path:
+// 原稿锁定 is no longer a video_kind, it is the orthogonal `script_lock`
+// boolean below (it composes with the standard line and with image2 alike).
+// The one place the backend still keys on the string is the prompt-optimize
+// endpoint, where `video_kind: "script_lock"` selects a fixed prompt for
+// display; see OptimizeVideoKindScriptLock in optimize.go.
 const (
-	VideoKindReplica    = "replica"
-	VideoKindScriptLock = "script_lock"
-	VideoKindImage2     = "image2"
+	VideoKindReplica  = "replica"
+	VideoKindImage2   = "image2"
+	VideoKindHandDraw = "hand-draw"
 )
 
 type Task struct {
@@ -26,6 +33,14 @@ type InitTaskParams struct {
 	KnowledgeID string `json:"knowledge_id,omitempty"`
 	DocID       string `json:"doc_id,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
+	// ScriptLock is 原稿锁定: use the document verbatim as the narration
+	// script instead of writing one. Orthogonal to VideoKind — it composes
+	// with the standard line and with image2. Sending it is what triggers
+	// the backend's script-quality preflight (length, character set, LLM
+	// suitability judgement), which rejects unusable scripts here rather
+	// than after a full billed pipeline run; the preflight keys on this
+	// field alone, so it must travel with the knowledge_id/doc_id pair.
+	ScriptLock bool `json:"script_lock,omitempty"`
 	// SelectedImageIndexes are mandatory-image picks from `vk doc images`
 	// (user_clip image_index values). Backend validates ownership, promotes
 	// the draft clips to the task, and snapshots them onto the new work.

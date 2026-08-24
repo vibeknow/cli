@@ -3,12 +3,14 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/account"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -35,8 +37,15 @@ var whoamiCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("uid: %d\nnickname: %s\nemail: %s\nphone: %s\n", u.UID, u.Nickname, u.Email, u.Phone)
-		return nil
+		return cmdutil.Emit(cmd, map[string]any{
+			"uid":      u.UID,
+			"nickname": u.Nickname,
+			"email":    u.Email,
+			"phone":    u.Phone,
+			"profile":  p.Name,
+		}, "auth.whoami", func(w io.Writer) {
+			fmt.Fprintf(w, "uid: %d\nnickname: %s\nemail: %s\nphone: %s\n", u.UID, u.Nickname, u.Email, u.Phone)
+		})
 	},
 }
 

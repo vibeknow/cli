@@ -269,6 +269,58 @@ func TestExtractDocImages(t *testing.T) {
 	}
 }
 
+// TestInitTask_SendsScriptLock guards the preflight, not the render: the
+// backend's script-quality check (length, character set, LLM suitability)
+// is gated on this field alone. Omit it and an unusable script sails past
+// init and only fails after a full billed pipeline run.
+func TestInitTask_SendsScriptLock(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"task_id":1,"session_id":"s","work_id":2,"v":3}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EnginePipeline, ScriptLock: true,
+		KnowledgeID: "kb_1", DocID: "doc_1",
+	})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	if gotBody["script_lock"] != true {
+		t.Errorf("script_lock on wire = %v, want true", gotBody["script_lock"])
+	}
+	// 原稿锁定 on the freeform line means no video_kind at all; the
+	// preflight still needs the kb/doc pair to have travelled.
+	if _, present := gotBody["video_kind"]; present {
+		t.Errorf("video_kind should be absent, got %v", gotBody["video_kind"])
+	}
+	if gotBody["knowledge_id"] != "kb_1" || gotBody["doc_id"] != "doc_1" {
+		t.Errorf("kb/doc pair missing from body: %v", gotBody)
+	}
+}
+
+func TestInitTask_OmitsScriptLockWhenOff(t *testing.T) {
+	var raw []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"task_id":1,"session_id":"s","work_id":2,"v":3}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, _ = c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EnginePipeline, KnowledgeID: "kb_1", DocID: "doc_1",
+	})
+	if strings.Contains(string(raw), "script_lock") {
+		t.Fatalf("script_lock unexpectedly present in wire body: %s", raw)
+	}
+}
+
 func TestInitTask_SendsSelectedImageIndexes(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

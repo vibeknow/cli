@@ -81,7 +81,7 @@ func TestCreate_EngineAgent_WiresV2AndSurfacesProgress(t *testing.T) {
 	configHome := buildVideoProfile(t, srv.URL)
 
 	stdout, stderr, code := runVideoCmd(t, bin, configHome,
-		"create", "--engine", "agent", "--from", "doc_abc12345",
+		"create", "--engine", "agent", "--from", "doc_abc12345", "--kb-id", "kb_test",
 	)
 
 	if code != 0 {

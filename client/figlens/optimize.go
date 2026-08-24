@@ -10,11 +10,22 @@ import (
 	"github.com/vibeknow/cli/internal/sse"
 )
 
+// OptimizeVideoKindScriptLock is the video_kind value the prompt-optimize
+// endpoint expects for 原稿锁定. It is NOT a generation-path video_kind — on
+// the generation path 原稿锁定 is the orthogonal `script_lock` boolean and
+// video_kind stays whatever line the user picked. This endpoint kept the
+// string because there it only selects which fixed prompt to echo back for
+// display, and it is the sole value the backend special-cases.
+const OptimizeVideoKindScriptLock = "script_lock"
+
 type OptimizeParams struct {
 	KnowledgeID string `json:"knowledge_id"`
 	DocID       string `json:"doc_id"`
 	Query       string `json:"query,omitempty"`
-	VideoKind   string `json:"video_kind,omitempty"`
+	// VideoKind selects the fixed-prompt branch; see
+	// OptimizeVideoKindScriptLock for why script_lock is spelled
+	// differently here than on the generation path.
+	VideoKind string `json:"video_kind,omitempty"`
 }
 
 type optimizePayload struct {

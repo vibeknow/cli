@@ -3,12 +3,14 @@ package doc
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/cmdutil"
 )
 
 var uploadCmd = &cobra.Command{
@@ -17,6 +19,9 @@ var uploadCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath := args[0]
+		// Progress narration goes to stderr throughout; stdout carries only
+		// the result, so `vk doc upload x.pdf --output json | jq` works.
+		stderr := cmd.ErrOrStderr()
 
 		fi, err := os.Stat(filePath)
 		if err != nil {
@@ -33,12 +38,12 @@ var uploadCmd = &cobra.Command{
 		ctx := context.Background()
 
 		kbName := fmt.Sprintf("vibeknow-cli-%d", time.Now().Unix())
-		fmt.Fprintf(os.Stderr, "creating knowledge base %q...\n", kbName)
+		fmt.Fprintf(stderr, "creating knowledge base %q...\n", kbName)
 		kbID, err := c.CreateKB(ctx, kbName)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "kb_id: %s\n", kbID)
+		fmt.Fprintf(stderr, "kb_id: %s\n", kbID)
 
 		f, err := os.Open(filePath)
 		if err != nil {
@@ -46,12 +51,12 @@ var uploadCmd = &cobra.Command{
 		}
 		defer f.Close()
 
-		fmt.Fprintf(os.Stderr, "uploading %q...\n", fi.Name())
+		fmt.Fprintf(stderr, "uploading %q...\n", fi.Name())
 		doc, err := c.UploadDoc(ctx, kbID, fi.Name(), f)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "doc_id: %s — polling for completion...\n", doc.ID)
+		fmt.Fprintf(stderr, "doc_id: %s — polling for completion...\n", doc.ID)
 
 		deadline := time.Now().Add(10 * time.Minute)
 		for {
@@ -66,12 +71,17 @@ var uploadCmd = &cobra.Command{
 
 			switch d.Status {
 			case "completed":
-				fmt.Printf("kb_id=%s\ndoc_id=%s\n", kbID, d.ID)
-				return nil
+				return cmdutil.Emit(cmd, map[string]any{
+					"kb_id":    kbID,
+					"doc_id":   d.ID,
+					"filename": fi.Name(),
+				}, "doc.uploaded", func(w io.Writer) {
+					fmt.Fprintf(w, "kb_id=%s\ndoc_id=%s\n", kbID, d.ID)
+				})
 			case "failed", "error":
 				return fmt.Errorf("document processing failed: %s", d.Error)
 			default:
-				fmt.Fprintf(os.Stderr, "status: %s\n", d.Status)
+				fmt.Fprintf(stderr, "status: %s\n", d.Status)
 				time.Sleep(2 * time.Second)
 			}
 		}

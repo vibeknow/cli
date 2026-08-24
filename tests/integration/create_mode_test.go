@@ -97,7 +97,7 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 	configHome := buildVideoProfile(t, figlens.URL)
 
 	stdout, stderr, code := runVideoCmd(t, bin, configHome,
-		"create", "--mode", "replica", "--from", "doc_abc12345",
+		"create", "--mode", "replica", "--from", "doc_abc12345", "--kb-id", "kb_test",
 	)
 
 	if code != 0 {
@@ -110,11 +110,15 @@ func TestCreate_ModeReplica_WiresVideoKind(t *testing.T) {
 	if bodies["init"]["video_kind"] != "replica" {
 		t.Fatalf("init body video_kind = %v, want \"replica\"", bodies["init"]["video_kind"])
 	}
-	if _, ok := bodies["init"]["knowledge_id"]; ok {
-		t.Fatalf("init body should not carry knowledge_id for non-script mode: %v", bodies["init"])
+	// replica has an init-time preflight (is this really a slide deck?),
+	// and that preflight is only reachable when the kb/doc pair travels
+	// with the init call — otherwise a document that cannot be replicated
+	// is rejected after a full billed pipeline run instead of before it.
+	if bodies["init"]["knowledge_id"] != "kb_test" {
+		t.Fatalf("init body must carry knowledge_id so the replica preflight can run: %v", bodies["init"])
 	}
-	if _, ok := bodies["init"]["doc_id"]; ok {
-		t.Fatalf("init body should not carry doc_id for non-script mode: %v", bodies["init"])
+	if bodies["init"]["doc_id"] != "doc_abc12345" {
+		t.Fatalf("init body must carry doc_id so the replica preflight can run: %v", bodies["init"])
 	}
 	if bodies["stream"]["video_kind"] != "replica" {
 		t.Fatalf("stream body video_kind = %v, want \"replica\"", bodies["stream"]["video_kind"])

@@ -36,9 +36,18 @@ type Error struct {
 	Message string
 	Hint    string
 	Detail  any
+	// Cause is the underlying error, if any. It is not rendered — Message
+	// carries the user-facing text — but it stays reachable through
+	// errors.Is/As so structured backend codes (errs.Object) survive being
+	// wrapped in a CLI error.
+	Cause error
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// Unwrap exposes Cause so errors.Is / errors.As / errs.HasCode can see
+// through a clerr wrapper to the error it was built from.
+func (e *Error) Unwrap() error { return e.Cause }
 
 func newTyped(typ string, code int, msg string) *Error {
 	return &Error{Type: typ, Code: code, Message: msg}
@@ -62,6 +71,7 @@ func (e *Error) WithHintf(format string, args ...any) *Error {
 	return e
 }
 func (e *Error) WithCode(code int) *Error  { e.Code = code; return e }
+func (e *Error) WithCause(c error) *Error { e.Cause = c; return e }
 func (e *Error) WithType(t string) *Error  { e.Type = t; return e }
 func (e *Error) WithDetail(d any) *Error   { e.Detail = d; return e }
 

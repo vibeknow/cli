@@ -44,7 +44,8 @@ metadata:
 - **Sync vs async**: Default is sync (blocks until done). `--async` returns task_id + session_id immediately.
 - **NDJSON event stream**: `--output ndjson` emits structured progress events (schema_version: "1"). See [events.md](references/events.md).
 - **6 pipeline stages**: `parse` → `outline` → `storyboard` → `tts` → `render` → `publish`.
-- **session_id**: All `video` subcommands require both `<task_id>` and `--session-id`. These are returned by `create`.
+- **session_id**: every `video` subcommand is addressed by a `(task_id, session_id)` pair, both returned by `create`. You do not have to carry them: `create` records the pair locally, so `vibeknow video wait` with no arguments reattaches to the most recent run and `vibeknow video wait <task_id>` looks up the session for you. Passing `--session-id` explicitly still works and always wins.
+- **Run ledger**: `vibeknow jobs list` shows what this machine started. Use it instead of re-running `create` when you have lost a task_id — a second `create` is a second billed render.
 
 ## Quick Reference
 
@@ -53,7 +54,9 @@ metadata:
 | `vibeknow create --from <source>` | Generate a video (sync by default) |
 | `vibeknow video status <task_id> --session-id <sid>` | Get task status |
 | `vibeknow video wait <task_id> --session-id <sid>` | Stream progress, block until done |
-| `vibeknow video download <task_id> --session-id <sid>` | Download rendered video |
+| `vibeknow video download <task_id> --dest out.mp4` | Download rendered video (`--dest` is the path; `--output` is the format) |
+| `vibeknow jobs list [--active]` | Recorded runs, newest first |
+| `vibeknow jobs get [task_id]` | One recorded run (default: most recent) |
 | `vibeknow voice list` | List available voice templates |
 
 For full flags and output examples, see [commands.md](references/commands.md).
@@ -96,14 +99,25 @@ vibeknow create --from doc_abc --output ndjson
 # Terminal event: task.succeeded (with video_url) or task.failed
 ```
 
+### Find a run you lost track of
+
+```bash
+vibeknow jobs list --output json     # every recorded run, newest first
+vibeknow jobs list --active          # only the ones still going
+vibeknow video wait                  # reattach to the most recent
+```
+
+Reach for this before re-running `create`: re-creating a run that is
+already going costs a second render.
+
 ### Download the result
 
 ```bash
 vibeknow video download t_xxx --session-id s_yyy
-# Default output: <session_id>.mp4
+# Default destination: <session_id>.mp4
 
-vibeknow video download t_xxx --session-id s_yyy --output ./my-video.mp4
-vibeknow video download t_xxx --session-id s_yyy --output ./my-video.mp4 --overwrite
+vibeknow video download t_xxx --session-id s_yyy --dest ./my-video.mp4
+vibeknow video download t_xxx --session-id s_yyy --dest ./my-video.mp4 --overwrite
 ```
 
 ## Exit Code Handling
@@ -116,7 +130,8 @@ vibeknow video download t_xxx --session-id s_yyy --output ./my-video.mp4 --overw
 | 3 | Auth error | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
 | 4 | Task failed, **retryable** | Re-submit the same `create` command |
 | 5 | Task failed, **not retryable** | Report error to user, do not retry |
-| 6 | Stream interrupted, **task status unknown** | `vibeknow video wait <task_id> --session-id <sid>` to reconnect. Do NOT re-submit. |
+| 6 | Stream interrupted, **task status unknown** | `vibeknow video wait <task_id>` to reconnect. Do NOT re-submit. |
+| 7 | Partial success: preview is ready, the MP4 render failed | Report the preview `share_url`; retry only the export |
 | 130 | User interrupt (SIGINT) | — |
 
 For detailed error handling and recovery, see [errors.md](references/errors.md) and [recipes.md](references/recipes.md).

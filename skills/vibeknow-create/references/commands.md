@@ -4,7 +4,7 @@
 
 | Flag | Description |
 |------|-------------|
-| `--output string` | Output format: `text\|json\|ndjson` (auto-selects based on TTY) |
+| `--output string` | Output format: `text\|json\|ndjson` (default `text`; `VIBEKNOW_OUTPUT` sets the default, an explicit flag wins). An unrecognized value exits 2 rather than falling back to text. |
 | `--profile string` | Override active profile for this command |
 | `--verbose` | Emit request/response summaries (credentials redacted) |
 
@@ -34,8 +34,11 @@ vibeknow create [flags]
 - Non-TTY / `--output ndjson`: NDJSON event stream, one JSON object per line.
 
 **Async mode (`--async`):**
-- Prints `task_id` and `session_id`, then exits immediately (exit 0).
-- `--output json`: outputs `{"event":"task.submitted","task_id":"...","session_id":"...","schema_version":"1"}`.
+- Waits until the backend confirms the run started (seconds), then detaches and exits 0. A run rejected at submit time — bad input, no credits — exits non-zero here instead of handing back a `task_id` for a run that never began.
+- `--output json`: outputs `{"task_id":42,"session_id":"s_yyy","schema_version":"1"}` (`task_id` is a number).
+- `--output ndjson`: one `{"event":"task.submitted",...}` line.
+- Cannot be combined with `--export`: export only starts once the preview is done, which `--async` does not wait for. The combination exits 2.
+- The pair is also written to the local run ledger, so `vibeknow video wait` with no arguments reattaches to it.
 
 ## video status
 
@@ -47,7 +50,7 @@ vibeknow video status <task_id> [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--session-id string` | Session ID **(required)** |
+| `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
 
 ## video wait
 
@@ -59,7 +62,7 @@ vibeknow video wait <task_id> [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--session-id string` | Session ID **(required)** |
+| `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
 
 Behavior is identical to sync-mode `create` once the task is already submitted. Useful after `create --async` or to recover from exit code 6 (stream interrupted).
 
@@ -73,11 +76,11 @@ vibeknow video download <task_id> [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--session-id string` | Session ID **(required)** |
-| `--output string` | Output file path (default: `<session_id>.mp4`) |
+| `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
+| `--dest string` | Destination file path (default: `<session_id>.mp4`) |
 | `--overwrite` | Overwrite existing output file |
 
-**Note:** The `--output` flag on `download` sets the file path, NOT the output format. The global `--output` (format) flag is not available on this subcommand.
+**Note:** The file path is `--dest`. Until 0.8 it was `--output`, which shadowed the global format flag; `--output` now means format here as it does on every other command. Passing a path to `--output` fails with exit 2 and a message pointing at `--dest`.
 
 Supports HTTP Range (resume). If download is interrupted, re-run the same command to resume.
 

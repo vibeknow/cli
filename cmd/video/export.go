@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -17,11 +16,11 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
-
 
 var (
 	flagExportSessionID    string
@@ -35,24 +34,18 @@ var exportCmd = &cobra.Command{
 	Use:   "export [task_id]",
 	Short: "render the MP4 for a work (~several minutes, extra credits)",
 	Args:  cobra.MaximumNArgs(1),
-	Example: `  vk video export --session-id sess_xxx
+	Example: `  vk video export
   vk video export --session-id sess_xxx --async
   vk video export 123 --session-id sess_xxx --yes --timeout 20m`,
 	RunE: runExport,
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
-	if flagExportSessionID == "" {
-		return clerr.Validation("--session-id is required")
+	taskID, sessionID, err := resolveTarget(args, flagExportSessionID)
+	if err != nil {
+		return err
 	}
-	var taskID int64
-	if len(args) == 1 {
-		parsed, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return clerr.Validationf("task_id must be an integer: %v", err)
-		}
-		taskID = parsed
-	}
+	flagExportSessionID = sessionID
 	c, err := newFiglensClient()
 	if err != nil {
 		return err
@@ -83,11 +76,14 @@ func runExport(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.submitted", exportTaskID))
 
 	if flagExportAsync {
-		return emitSnapshot(cmd, format, snapshot.BuildInput{
+		// Submit-and-return: nothing has been observed yet, so there is no
+		// terminal state to translate into an exit code.
+		_, err := emitSnapshot(cmd, format, snapshot.BuildInput{
 			TaskID:       taskID,
 			SessionID:    flagExportSessionID,
 			ExportTaskID: exportTaskID,
 		}, c)
+		return err
 	}
 
 	// Sync polling loop.
@@ -120,12 +116,35 @@ func runExport(cmd *cobra.Command, args []string) error {
 	if pollErr != nil {
 		return pollErr
 	}
-	return emitSnapshot(cmd, format, snapshot.BuildInput{
+	s, err := emitSnapshot(cmd, format, snapshot.BuildInput{
 		TaskID:       taskID,
 		SessionID:    flagExportSessionID,
 		Export:       result,
 		ExportTaskID: exportTaskID,
 	}, c)
+	if err != nil {
+		return err
+	}
+	// PollExport treats "the backend reported failure" as a successful poll
+	// and hands the failed result back with a nil error. Blocking commands
+	// take their exit code from the state they waited for, so a render that
+	// failed must not leave this command exiting 0 — an agent would go on to
+	// `video download` a file that was never produced. Exit 7 (partial
+	// success: the preview exists, the MP4 does not), matching the
+	// `vk create --export` chain in cmd/create.go.
+	if s.Export.Status == snapshot.StatusFailed {
+		e := clerr.New(i18n.T("export.failed", s.Export.Error)).WithCode(7)
+		// nextActions already computed the retry command for this state,
+		// including the task_id-omitted form when the id is unknown.
+		if len(s.NextActions) > 0 {
+			e = e.WithHint(s.NextActions[0].Command)
+		}
+		return e
+	}
+	noteJob(taskID, flagExportSessionID, func(r *jobs.Record) {
+		r.VideoPath = s.Export.VideoPath
+	})
+	return nil
 }
 
 func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID int64, ev exportpoll.Event) {
@@ -172,20 +191,22 @@ func eventType(status string) string {
 }
 
 // emitSnapshot fetches the work row and renders the snapshot in the user's
-// chosen format. Shared with export_status.go via package scope.
-func emitSnapshot(cmd *cobra.Command, format string, in snapshot.BuildInput, c *figlens.Client) error {
+// chosen format, returning what it rendered so blocking callers can derive
+// an exit code from the terminal state. Shared with export_status.go via
+// package scope.
+func emitSnapshot(cmd *cobra.Command, format string, in snapshot.BuildInput, c *figlens.Client) (snapshot.Snapshot, error) {
 	work, err := c.GetWorkBySession(cmd.Context(), in.SessionID)
 	if err != nil {
-		return err
+		return snapshot.Snapshot{}, err
 	}
 	in.Work = work
 	in.ShareBase = cmdutil.ShareBaseURL()
 	s := snapshot.Build(in)
-	return snapshot.Render(cmd.OutOrStdout(), cmd.ErrOrStderr(), s, format)
+	return s, snapshot.Render(cmd.OutOrStdout(), cmd.ErrOrStderr(), s, format)
 }
 
 func init() {
-	exportCmd.Flags().StringVar(&flagExportSessionID, "session-id", "", "session ID (required)")
+	exportCmd.Flags().StringVar(&flagExportSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
 	exportCmd.Flags().BoolVar(&flagExportAsync, "async", false, "submit and return; do not wait")
 	exportCmd.Flags().BoolVarP(&flagExportYes, "yes", "y", false, "skip confirmation prompt")
 	exportCmd.Flags().DurationVar(&flagExportTimeout, "timeout", exportpoll.DefaultTimeout(), "sync-mode deadline")

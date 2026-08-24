@@ -2,9 +2,11 @@ package profile
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/i18n"
 )
@@ -17,7 +19,10 @@ var useCmd = &cobra.Command{
 		if err := config.UseProfile(args[0]); err != nil {
 			return err
 		}
-		fmt.Println(i18n.T("msg.profile.switched", args[0]))
-		return nil
+		return cmdutil.Emit(cmd, map[string]any{
+			"current": args[0],
+		}, "profile.switched", func(w io.Writer) {
+			fmt.Fprintln(w, i18n.T("msg.profile.switched", args[0]))
+		})
 	},
 }

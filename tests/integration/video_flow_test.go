@@ -398,7 +398,7 @@ func TestCreate_Export_PartialSuccess_Exits7(t *testing.T) {
 	bin := build(t)
 
 	cmd := exec.Command(bin, "create",
-		"--from", "doc_abcdef12345678",
+		"--from", "doc_abcdef12345678", "--kb-id", "kb_test",
 		"--export", "--yes", "--output", "json",
 	)
 	cmd.Env = append(os.Environ(),

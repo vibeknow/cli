@@ -45,10 +45,19 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tCATEGORY\tSPEECH_VOICE_ID")
+		// The first column is headed "#", not "ID": it is a display index,
+		// while SPEECH_VOICE_ID is the identifier the backend's TTS keys on.
+		// Heading it "ID" invited users to pass it to `--voice`, which the
+		// backend then rejected deep inside the TTS node. `--voice` accepts
+		// either now, but the header should still say which one is real.
+		fmt.Fprintln(w, "#\tNAME\tCATEGORY\tSPEECH_VOICE_ID")
 		for _, t := range templates {
 			fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", t.ID, t.Name, t.Category, t.SpeechVoiceID)
 		}
-		return w.Flush()
+		if err := w.Flush(); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "\npass either column to `vk create --voice` (e.g. --voice 1 or --voice <SPEECH_VOICE_ID>)")
+		return nil
 	},
 }

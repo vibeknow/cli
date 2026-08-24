@@ -256,7 +256,7 @@ func nextActions(s Snapshot, in BuildInput) []Action {
 		}}
 	case s.Export.Status == StatusSucceeded:
 		return []Action{{
-			Command: "vk video download " + base + " --output out.mp4",
+			Command: "vk video download " + base + " --dest out.mp4",
 			Purpose: "Download the rendered MP4",
 		}}
 	case s.Export.Status == StatusFailed:

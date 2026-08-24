@@ -113,6 +113,70 @@ data: [DONE]
 	}
 }
 
+// TestStreamChat_SendsScriptLockAlongsideVideoKind pins the split that
+// 原稿锁定 went through: it is a boolean carried *next to* video_kind, not a
+// video_kind value. The pipeline entry dispatches the graph on video_kind
+// and reads the lock off this boolean; a request that spells the lock as
+// video_kind="script_lock" matches no graph, falls through to the standard
+// line with the lock off, and silently rewrites the user's script.
+func TestStreamChat_SendsScriptLockAlongsideVideoKind(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"code":200,"data":{"type":"aim_result","session_id":"s_abc"}}
+
+data: [DONE]
+
+`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s_abc", Query: "q",
+		VideoKind: figlens.VideoKindImage2, ScriptLock: true,
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotBody["script_lock"] != true {
+		t.Errorf("script_lock = %v, want true", gotBody["script_lock"])
+	}
+	// The two axes must both survive: locking the script does not change
+	// which line renders it.
+	if gotBody["video_kind"] != "image2" {
+		t.Errorf("video_kind = %v, want \"image2\"", gotBody["video_kind"])
+	}
+}
+
+func TestStreamChat_SendsHandDrawVideoKind(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"code":200,"data":{"type":"aim_result","session_id":"s_abc"}}
+
+data: [DONE]
+
+`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s_abc", Query: "q",
+		VideoKind: figlens.VideoKindHandDraw,
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	// Hyphen, not underscore — the backend compares the literal string.
+	if gotBody["video_kind"] != "hand-draw" {
+		t.Fatalf("video_kind = %v, want \"hand-draw\"", gotBody["video_kind"])
+	}
+}
+
 func TestStreamChat_ScriptInvalidCode(t *testing.T) {
 	sseBody := `data: {"code":100004,"data":{"message":"讲稿超过 8000 字"}}
 

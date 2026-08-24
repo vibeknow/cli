@@ -3,6 +3,7 @@ package credits
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -25,11 +26,19 @@ var balanceCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println(i18n.T("credits.available", b.TotalBalance))
-		if b.TotalFrozen > 0 {
-			fmt.Println(i18n.T("credits.frozen", b.TotalFrozen))
-		}
-		return nil
+		// The text form is localized prose, so it was unparseable by
+		// definition — a caller checking "do I have enough credits before
+		// spending several minutes on a render" had nothing to read.
+		return cmdutil.Emit(cmd, map[string]any{
+			"balance":   b.TotalBalance,
+			"frozen":    b.TotalFrozen,
+			"available": b.TotalBalance,
+		}, "credits.balance", func(w io.Writer) {
+			fmt.Fprintln(w, i18n.T("credits.available", b.TotalBalance))
+			if b.TotalFrozen > 0 {
+				fmt.Fprintln(w, i18n.T("credits.frozen", b.TotalFrozen))
+			}
+		})
 	},
 }
 

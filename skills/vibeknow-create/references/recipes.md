@@ -112,10 +112,10 @@ done
 ## Download with Custom Path
 
 ```bash
-vibeknow video download t_xxx --session-id s_yyy --output ./renders/final.mp4
+vibeknow video download t_xxx --session-id s_yyy --dest ./renders/final.mp4
 
 # Overwrite existing file
-vibeknow video download t_xxx --session-id s_yyy --output ./renders/final.mp4 --overwrite
+vibeknow video download t_xxx --session-id s_yyy --dest ./renders/final.mp4 --overwrite
 ```
 
 If download is interrupted, re-run the same command — HTTP Range resume is automatic.

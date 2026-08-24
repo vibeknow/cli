@@ -2,9 +2,11 @@ package profile
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/i18n"
 )
@@ -49,8 +51,16 @@ var addCmd = &cobra.Command{
 		if err := config.AddProfile(p); err != nil {
 			return err
 		}
-		fmt.Println(i18n.T("msg.profile.added", p.Name))
-		return nil
+		return cmdutil.Emit(cmd, map[string]any{
+			"name":            p.Name,
+			"endpoints":       endpoints,
+			"credential_ref":  p.CredentialRef,
+			"default_project": p.DefaultProject,
+			"trust":           p.Trust,
+			"is_production":   p.IsProduction,
+		}, "profile.added", func(w io.Writer) {
+			fmt.Fprintln(w, i18n.T("msg.profile.added", p.Name))
+		})
 	},
 }
 

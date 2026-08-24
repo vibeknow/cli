@@ -17,6 +17,7 @@ import (
 
 	"github.com/vibeknow/cli/client/account"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/endpoints"
@@ -38,12 +39,14 @@ func init() {
 	loginCmd.Flags().Bool("with-token", false, "read PAT from stdin")
 	loginCmd.Flags().Bool("no-wait", false, "print device code and exit (Agent use)")
 	loginCmd.Flags().String("device-code", "", "resume polling for a device code (Agent use)")
+	loginCmd.Flags().Bool("headless", false, "blocking device-code login with no TTY/Enter-key requirement; prints the device-code JSON envelope to stdout, then polls until authorized (host-automation use, e.g. WorkBuddy CLI connectors that spawn `auth`, scrape stdout for a URL, and let the process keep running)")
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
 	withToken, _ := cmd.Flags().GetBool("with-token")
 	noWait, _ := cmd.Flags().GetBool("no-wait")
 	deviceCode, _ := cmd.Flags().GetString("device-code")
+	headless, _ := cmd.Flags().GetBool("headless")
 
 	// Mutual exclusion check.
 	flagCount := 0
@@ -56,8 +59,11 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	if deviceCode != "" {
 		flagCount++
 	}
+	if headless {
+		flagCount++
+	}
 	if flagCount > 1 {
-		return fmt.Errorf("--with-token, --no-wait, and --device-code are mutually exclusive")
+		return fmt.Errorf("--with-token, --no-wait, --device-code, and --headless are mutually exclusive")
 	}
 
 	switch {
@@ -67,6 +73,8 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return loginNoWait(cmd)
 	case deviceCode != "":
 		return loginDeviceCode(cmd, deviceCode)
+	case headless:
+		return loginHeadless(cmd)
 	default:
 		return loginInteractive(cmd)
 	}
@@ -191,7 +199,7 @@ func loginWithToken(cmd *cobra.Command) error {
 		name = u.Email
 	}
 	fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.signed_in_pat", name))
-	return nil
+	return emitLoginResult(cmd, p, u, "pat")
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +218,11 @@ func loginNoWait(cmd *cobra.Command) error {
 		return fmt.Errorf("device code request failed: %w", err)
 	}
 
-	output := map[string]interface{}{
+	return writeDeviceCodeEnvelope(cmd, dcResp)
+}
+
+func writeDeviceCodeEnvelope(cmd *cobra.Command, dcResp *account.DeviceCodeResponse) error {
+	output := map[string]any{
 		"device_code":      dcResp.DeviceCode,
 		"user_code":        dcResp.UserCode,
 		"verification_uri": dcResp.VerificationURI,
@@ -220,6 +232,42 @@ func loginNoWait(cmd *cobra.Command) error {
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(output)
+}
+
+// ---------------------------------------------------------------------------
+// Mode 5: --headless
+// ---------------------------------------------------------------------------
+
+// loginHeadless is loginNoWait and loginDeviceCode fused into one blocking
+// call: it requires no TTY, waits for no Enter keypress, and never tries to
+// open a browser itself (a spawning host is expected to do that after
+// scraping the verification_uri/user_code JSON fields from stdout — this is
+// the shape WorkBuddy's `cli.json` "authDeviceFlow" auth model wants: a
+// single `auth` command that prints the verification URL to stdout and then
+// keeps running, polling the token endpoint on its own, rather than being
+// killed once the URL is found).
+func loginHeadless(cmd *cobra.Command) error {
+	p, accountURL, err := resolveAccountURL()
+	if err != nil {
+		return err
+	}
+
+	unauthClient := account.NewUnauthenticated(accountURL)
+	dcResp, err := unauthClient.DeviceCode(context.Background())
+	if err != nil {
+		return fmt.Errorf("device code request failed: %w", err)
+	}
+
+	if err := writeDeviceCodeEnvelope(cmd, dcResp); err != nil {
+		return err
+	}
+
+	tokenResp, err := pollDeviceToken(cmd, unauthClient, dcResp.DeviceCode, dcResp.Interval, dcResp.ExpiresIn)
+	if err != nil {
+		return err
+	}
+
+	return finishLogin(cmd, p, accountURL, tokenResp, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -419,5 +467,20 @@ func finishLogin(cmd *cobra.Command, profile config.Profile, accountURL string, 
 		}
 		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.welcome", name))
 	}
-	return nil
+	return emitLoginResult(cmd, profile, u, "oauth")
+}
+
+// emitLoginResult writes the signed-in identity to stdout for structured
+// callers. The text form stays exactly as it was — a localized greeting on
+// stderr and an empty stdout — because scripts already rely on that; only
+// json/ndjson gain a payload, which is what a caller chaining `auth login`
+// into `create` actually needs.
+func emitLoginResult(cmd *cobra.Command, profile config.Profile, u *account.User, tokenType string) error {
+	return cmdutil.Emit(cmd, map[string]any{
+		"uid":        u.UID,
+		"nickname":   u.Nickname,
+		"email":      u.Email,
+		"profile":    profile.Name,
+		"token_type": tokenType,
+	}, "auth.login", nil)
 }

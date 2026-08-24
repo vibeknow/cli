@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/update"
 )
@@ -23,12 +25,20 @@ new version is found it prints the recommended 'npm update -g' command.`,
 		if !ok {
 			return clerr.Network(i18n.T("update.check_fail"))
 		}
-		if info == nil {
-			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("update.up_to_date", version))
-			return nil
+		payload := map[string]any{
+			"current":          version,
+			"update_available": info != nil,
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), info.Message())
-		return nil
+		if info != nil {
+			payload["latest"] = info.Latest
+		}
+		return cmdutil.Emit(cmd, payload, "update.check", func(w io.Writer) {
+			if info == nil {
+				fmt.Fprintln(w, i18n.T("update.up_to_date", version))
+				return
+			}
+			fmt.Fprintln(w, info.Message())
+		})
 	},
 }
 

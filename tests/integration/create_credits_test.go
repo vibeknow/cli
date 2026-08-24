@@ -43,7 +43,7 @@ func TestCreate_ConcurrentLimitOnInit_Exits4(t *testing.T) {
 	configHome := buildProfile(t, map[string]string{"figlens": srv.URL})
 
 	stdout, stderr, code := runVideoCmd(t, bin, configHome,
-		"create", "--from", "doc_concurrentlimit12345", "--output", "ndjson",
+		"create", "--from", "doc_concurrentlimit12345", "--kb-id", "kb_test", "--output", "ndjson",
 	)
 
 	if code != 4 {

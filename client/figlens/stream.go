@@ -22,6 +22,12 @@ type StreamParams struct {
 	BGMEnabled  bool   `json:"bgm_enabled,omitempty"`
 	Aspect      string `json:"aspect,omitempty"`
 	VideoKind   string `json:"video_kind,omitempty"`
+	// ScriptLock mirrors InitTaskParams.ScriptLock and must be repeated
+	// here: the pipeline entry reads it off the stream request, not off the
+	// task, to decide whether to skip script writing. Omitting it makes the
+	// backend fall through to the standard write-a-script line — silently,
+	// with the user's own script demoted to reference material.
+	ScriptLock bool `json:"script_lock,omitempty"`
 	// PageCount is image-mode-only: the exact page count for generated
 	// images (image-generation cost scales with it). 0 lets the
 	// storyboard decide.

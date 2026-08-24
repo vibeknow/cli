@@ -55,7 +55,7 @@ func TestCreateNDJSON_TaskSucceededIncludesVideoURLAndDuration(t *testing.T) {
 
 	configHome := buildProfile(t, map[string]string{"figlens": figlens.URL})
 	stdout, stderr, code := runVideoCmd(t, build(t), configHome,
-		"create", "--from", "doc_smoke12345", "--output", "ndjson")
+		"create", "--from", "doc_smoke12345", "--kb-id", "kb_test", "--output", "ndjson")
 
 	if code != 0 {
 		t.Fatalf("exit=%d stderr=%s", code, stderr)
@@ -103,7 +103,7 @@ func TestCreateNDJSON_TaskFailedRetryableExitsFour(t *testing.T) {
 
 	configHome := buildProfile(t, map[string]string{"figlens": figlens.URL})
 	stdout, stderr, code := runVideoCmd(t, build(t), configHome,
-		"create", "--from", "doc_smoke12345", "--output", "ndjson")
+		"create", "--from", "doc_smoke12345", "--kb-id", "kb_test", "--output", "ndjson")
 
 	if code != 4 {
 		t.Fatalf("exit=%d want 4 (retryable). stderr=%s", code, stderr)
@@ -192,7 +192,7 @@ func TestCreateNDJSON_CurrentBackendNestedFormat(t *testing.T) {
 
 	configHome := buildProfile(t, map[string]string{"figlens": figlens.URL})
 	stdout, stderr, code := runVideoCmd(t, build(t), configHome,
-		"create", "--from", "doc_smoke12345", "--output", "ndjson")
+		"create", "--from", "doc_smoke12345", "--kb-id", "kb_test", "--output", "ndjson")
 
 	if code != 0 {
 		t.Fatalf("exit=%d stderr=%s", code, stderr)

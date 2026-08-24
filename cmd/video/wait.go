@@ -2,7 +2,6 @@ package video
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
@@ -20,21 +20,15 @@ var waitCmd = &cobra.Command{
 	Use:   "wait [task_id]",
 	Short: "stream progress for a video task, block until done",
 	Args:  cobra.MaximumNArgs(1),
-	Example: `  vk video wait --session-id sess_xxx
+	Example: `  vk video wait
+  vk video wait 123
   vk video wait 123 --session-id sess_xxx --output ndjson`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if flagWaitSessionID == "" {
-			return clerr.Validation("--session-id is required")
+		taskID, sessionID, err := resolveTarget(args, flagWaitSessionID)
+		if err != nil {
+			return err
 		}
-
-		var taskID int64
-		if len(args) == 1 {
-			parsed, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return clerr.Validationf("task_id must be an integer: %v", err)
-			}
-			taskID = parsed
-		}
+		flagWaitSessionID = sessionID
 
 		c, err := newFiglensClient()
 		if err != nil {
@@ -52,13 +46,15 @@ var waitCmd = &cobra.Command{
 			emitEvent = w.Event
 		}
 
-		var taskFailed, taskSucceeded bool
+		var taskFailed, taskSucceeded, sawAnyEvent bool
 		var successSessionID string
 
 		var failedCode string
 		var failedRetryable bool
 
 		emit := func(ev figlens.StreamEvent) {
+			sawAnyEvent = true
+
 			if emitEvent != nil {
 				_ = emitEvent(ev.NDJSONFields())
 			} else {
@@ -113,10 +109,32 @@ var waitCmd = &cobra.Command{
 			case failedRetryable:
 				code = 4
 			}
+			// wait is the reattach path, so it is often the only place a
+			// terminal state is ever observed — a `--async` run's outcome
+			// would otherwise never reach the ledger.
+			noteJob(taskID, flagWaitSessionID, func(r *jobs.Record) {
+				r.Status = jobs.StatusFailed
+				r.Error = failedCode
+			})
 			return clerr.Newf("task failed").WithCode(code)
 		}
 		if !taskSucceeded {
-			return nil
+			// The stream closed without a terminal event. Exiting 0 here
+			// would report success for a task whose state is unknown —
+			// the worst failure mode for an agent caller, which cannot
+			// tell "done" from "never ran". Exit 6 (task state unknown),
+			// the same code a mid-run disconnect uses.
+			if !sawAnyEvent {
+				// Nothing to replay at all. The usual cause is a task that
+				// was never dispatched, so say so instead of leaving the
+				// caller to guess from an empty stream.
+				return clerr.New("no events for this task: it has not started generating, or the --session-id does not match it").
+					WithCode(6).
+					WithHint("verify the pair with `vk video list`; a task stuck with no progress was never dispatched and must be recreated with `vk create`")
+			}
+			return clerr.New("stream ended before the task reached a terminal state; its final state is unknown").
+				WithCode(6).
+				WithHint("re-run `vk video wait` to reattach, or check `vk video status`")
 		}
 
 		w, err := c.GetWorkBySession(ctx, successSessionID)
@@ -129,10 +147,16 @@ var waitCmd = &cobra.Command{
 			Work:      w,
 			ShareBase: cmdutil.ShareBaseURL(),
 		})
+		noteJob(taskID, successSessionID, func(r *jobs.Record) {
+			r.Status = jobs.StatusSucceeded
+			r.WorkID = s.WorkID
+			r.Title = s.Title
+			r.ShareURL = s.Preview.ShareURL
+		})
 		return snapshot.Render(stdout, stderr, s, format)
 	},
 }
 
 func init() {
-	waitCmd.Flags().StringVar(&flagWaitSessionID, "session-id", "", "session ID (required)")
+	waitCmd.Flags().StringVar(&flagWaitSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
 }

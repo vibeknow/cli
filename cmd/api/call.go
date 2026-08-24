@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
 )
@@ -81,9 +81,20 @@ var callCmd = &cobra.Command{
 			return err
 		}
 		defer resp.Body.Close()
+		// The raw body always goes to stdout, including for error responses:
+		// the backend's own error envelope is the most useful thing this
+		// command can hand back.
 		_, _ = io.Copy(os.Stdout, resp.Body)
 		if resp.StatusCode >= 400 {
-			return fmt.Errorf("\nHTTP %d", resp.StatusCode)
+			// Match the exit-code contract the rest of the CLI follows so a
+			// caller can branch on `api call` the same way it branches on
+			// every other command. 401/403 exiting 1 made an expired login
+			// indistinguishable from a bad path.
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+				return clerr.Authf("HTTP %d", resp.StatusCode).
+					WithHint("run `vibeknow auth login`, or check that --service matches the endpoint's service")
+			}
+			return clerr.Newf("HTTP %d", resp.StatusCode)
 		}
 		return nil
 	},
@@ -97,7 +108,11 @@ type resolverTokenProvider struct {
 func (r resolverTokenProvider) Token(ctx context.Context) (string, error) {
 	tok, _, err := r.res.Resolve()
 	if err != nil {
-		return "", nil // empty token → AuthMiddleware skips
+		// Propagate: AuthMiddleware turns this into an exit-3 error carrying
+		// the resolver's own message. Returning ("", nil) here used to send
+		// the request unauthenticated and report the resulting 401 as if the
+		// endpoint had rejected it.
+		return "", err
 	}
 	return tok, nil
 }

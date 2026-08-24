@@ -2,10 +2,12 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/internal/cmdutil"
 	intconfig "github.com/vibeknow/cli/internal/config"
 )
 
@@ -22,9 +24,13 @@ var listCmd = &cobra.Command{
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Printf("%s=%s\n", k, kv[k])
-		}
-		return nil
+		return cmdutil.Emit(cmd, map[string]any{
+			"config": kv,
+			"keys":   keys,
+		}, "config.list", func(w io.Writer) {
+			for _, k := range keys {
+				fmt.Fprintf(w, "%s=%s\n", k, kv[k])
+			}
+		})
 	},
 }

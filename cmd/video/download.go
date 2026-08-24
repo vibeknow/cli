@@ -11,12 +11,13 @@ import (
 
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/validate"
 )
 
 var (
 	flagDownloadSessionID string
-	flagDownloadOutput    string
+	flagDownloadDest      string
 	flagDownloadOverwrite bool
 )
 
@@ -24,19 +25,28 @@ var downloadCmd = &cobra.Command{
 	Use:   "download [task_id]",
 	Short: "download the rendered MP4 for a task (export must already be complete)",
 	Args:  cobra.MaximumNArgs(1),
+	Long: `download fetches the exported MP4 for a task to a local file.
+
+The destination is --dest. Until 0.8 this command used --output for the
+file path, which shadowed the global --output format flag and made
+` + "`vk video download --output json`" + ` write a file literally named "json".
+--output now means format here as it does everywhere else.`,
 	Example: `  vk video download --session-id sess_xxx
-  vk video download 123 --session-id sess_xxx --output out.mp4 --overwrite`,
+  vk video download 123 --session-id sess_xxx --dest out.mp4 --overwrite
+  vk video download 123 --session-id sess_xxx --dest out.mp4 --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if flagDownloadSessionID == "" {
-			return clerr.Validation("--session-id is required")
+		_, sessionID, err := resolveTarget(args, flagDownloadSessionID)
+		if err != nil {
+			return err
 		}
+		flagDownloadSessionID = sessionID
 
 		c, err := newFiglensClient()
 		if err != nil {
 			return err
 		}
 
-		ctx := context.Background()
+		ctx := cmd.Context()
 		w, err := c.GetWorkBySession(ctx, flagDownloadSessionID)
 		if err != nil {
 			return err
@@ -51,14 +61,14 @@ var downloadCmd = &cobra.Command{
 			return err
 		}
 
-		rawOut := flagDownloadOutput
+		rawOut := flagDownloadDest
 		if rawOut == "" {
 			rawOut = flagDownloadSessionID + ".mp4"
 		}
 		outPath, err := validate.SafeOutputPath(rawOut)
 		if err != nil {
 			return clerr.Validation(err.Error()).
-				WithHint("--output must be a relative path inside the current directory")
+				WithHint("--dest must be a relative path inside the current directory")
 		}
 
 		if !flagDownloadOverwrite {
@@ -67,16 +77,34 @@ var downloadCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "downloading to %q...\n", rawOut)
-		if err := downloadFile(signedURL, outPath); err != nil {
+		format, _ := cmd.Flags().GetString("output")
+		stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+		fmt.Fprintf(stderr, "downloading to %q...\n", rawOut)
+		if err := downloadFile(ctx, signedURL, outPath); err != nil {
 			return err
 		}
-		fmt.Printf("output=%s\n", rawOut)
-		return nil
+		payload := map[string]any{
+			"session_id": flagDownloadSessionID,
+			"dest":       rawOut,
+			"video_path": w.VideoPath,
+		}
+		switch format {
+		case "json":
+			return output.NewJSON(stdout).Object(payload)
+		case "ndjson":
+			payload["type"] = "download.completed"
+			return output.NewNDJSON(stdout).Event(payload)
+		default:
+			// Kept as `output=` rather than `dest=` so shell scripts that
+			// already grep this line keep working across the flag rename.
+			fmt.Fprintf(stdout, "output=%s\n", rawOut)
+			return nil
+		}
 	},
 }
 
-func downloadFile(url, dest string) (retErr error) {
+func downloadFile(ctx context.Context, url, dest string) (retErr error) {
 	f, err := os.CreateTemp("", "vibeknow-download-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
@@ -90,7 +118,15 @@ func downloadFile(url, dest string) (retErr error) {
 		}
 	}()
 
-	resp, err := http.Get(url) //nolint:noctx
+	// Context-bound so Ctrl-C interrupts a large download instead of
+	// leaving the process pinned to an unbounded http.Get. No wall-clock
+	// deadline: an MP4 can legitimately take minutes on a slow link, and a
+	// guessed timeout would abort valid transfers.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("http get: %w", err)
 	}
@@ -114,7 +150,7 @@ func downloadFile(url, dest string) (retErr error) {
 }
 
 func init() {
-	downloadCmd.Flags().StringVar(&flagDownloadSessionID, "session-id", "", "session ID (required)")
-	downloadCmd.Flags().StringVar(&flagDownloadOutput, "output", "", "output file path (default: <session_id>.mp4)")
+	downloadCmd.Flags().StringVar(&flagDownloadSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
+	downloadCmd.Flags().StringVar(&flagDownloadDest, "dest", "", "destination file path (default: <session_id>.mp4)")
 	downloadCmd.Flags().BoolVar(&flagDownloadOverwrite, "overwrite", false, "overwrite existing output file")
 }

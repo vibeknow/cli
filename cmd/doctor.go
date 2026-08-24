@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -30,24 +31,68 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "diagnose local setup and endpoint reachability",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println(i18n.T("doctor.header"))
 		checks := []check{
 			{"config directory writable", checkConfigDir},
 			{"profiles.yaml parseable", checkProfiles},
 			{"keychain backend reachable", checkKeychain},
 			{"locale detection", checkLocale},
 		}
-		failed := 0
+		results := make([]checkResult, 0, len(checks)+4)
 		for _, c := range checks {
+			r := checkResult{Name: c.name, Status: statusOK}
 			if err := c.fn(); err != nil {
-				fmt.Println(i18n.T("doctor.fail", c.name, err.Error()))
+				r.Status, r.Detail = statusFail, err.Error()
+			}
+			results = append(results, r)
+		}
+		results = append(results, checkEndpoints()...)
+
+		failed := 0
+		for _, r := range results {
+			if r.Status == statusFail {
 				failed++
-			} else {
-				fmt.Println(i18n.T("doctor.ok", c.name))
 			}
 		}
 
-		failed += checkEndpoints()
+		// Rendered before the error return so `--output json` still gets the
+		// full report on a failing run — the failures are exactly what the
+		// caller needs, and returning early would leave stdout empty.
+		items := make([]map[string]any, 0, len(results))
+		for _, r := range results {
+			item := map[string]any{"name": r.Name, "status": r.Status}
+			if r.Detail != "" {
+				item["detail"] = r.Detail
+			}
+			if r.URL != "" {
+				item["url"] = r.URL
+			}
+			items = append(items, item)
+		}
+		if err := cmdutil.Emit(cmd, map[string]any{
+			"ok":     failed == 0,
+			"failed": failed,
+			"checks": items,
+		}, "doctor.report", func(w io.Writer) {
+			fmt.Fprintln(w, i18n.T("doctor.header"))
+			for _, r := range results {
+				switch r.Status {
+				case statusOK:
+					name := r.Name
+					if r.Detail != "" {
+						name = r.Name + "  " + r.Detail
+					}
+					fmt.Fprintln(w, i18n.T("doctor.ok", name))
+				case statusWarn:
+					fmt.Fprintln(w, i18n.T("doctor.warn", r.Name, r.Detail))
+				case statusSkip:
+					fmt.Fprintf(w, "[skip] %s\n", r.Name)
+				default:
+					fmt.Fprintln(w, i18n.T("doctor.fail", r.Name, r.Detail))
+				}
+			}
+		}); err != nil {
+			return err
+		}
 
 		if failed > 0 {
 			return fmt.Errorf("%d check(s) failed", failed)
@@ -55,6 +100,24 @@ var doctorCmd = &cobra.Command{
 		return nil
 	},
 }
+
+// checkResult is one line of the report, in a shape both the text and the
+// JSON renderer can consume. Collecting first and rendering once is what
+// lets `vk doctor --output json` exist at all — the old code printed as it
+// went, so there was nothing left to serialize.
+type checkResult struct {
+	Name   string
+	Status string
+	Detail string
+	URL    string
+}
+
+const (
+	statusOK   = "ok"
+	statusWarn = "warn"
+	statusFail = "fail"
+	statusSkip = "skip"
+)
 
 func init() { rootCmd.AddCommand(doctorCmd) }
 
@@ -111,11 +174,10 @@ func checkLocale() error {
 // concurrently. Each backend is expected to expose /healthz (with /health as
 // a fallback) returning HTTP 200 + {"status":"healthy"} when fully up, or
 // HTTP 503 + {"status":"unhealthy"} when degraded.
-func checkEndpoints() int {
+func checkEndpoints() []checkResult {
 	f, err := config.LoadProfiles()
 	if err != nil || f.Current == "" {
-		fmt.Println("[skip] endpoints: no active profile")
-		return 0
+		return []checkResult{{Name: "endpoints: no active profile", Status: statusSkip}}
 	}
 	var prof *config.Profile
 	for i := range f.Profiles {
@@ -124,7 +186,7 @@ func checkEndpoints() int {
 		}
 	}
 	if prof == nil {
-		return 0
+		return nil
 	}
 	services := []string{"account", "vectoria", "figlens", "vibeknow"}
 	type result struct {
@@ -149,24 +211,24 @@ func checkEndpoints() int {
 	}
 	wg.Wait()
 
-	failed := 0
+	out := make([]checkResult, 0, len(results))
 	for _, r := range results {
-		name := fmt.Sprintf("%s endpoint %s", r.svc, r.url)
+		cr := checkResult{
+			Name:   fmt.Sprintf("%s endpoint %s", r.svc, r.url),
+			Detail: r.detail,
+			URL:    r.url,
+		}
 		switch r.status {
 		case probeOK:
-			msg := name
-			if r.detail != "" {
-				msg = name + "  " + r.detail
-			}
-			fmt.Println(i18n.T("doctor.ok", msg))
+			cr.Status = statusOK
 		case probeDegraded:
-			fmt.Println(i18n.T("doctor.warn", name, r.detail))
-		case probeFail:
-			fmt.Println(i18n.T("doctor.fail", name, r.detail))
-			failed++
+			cr.Status = statusWarn
+		default:
+			cr.Status = statusFail
 		}
+		out = append(out, cr)
 	}
-	return failed
+	return out
 }
 
 type probeStatus int

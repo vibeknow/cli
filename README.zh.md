@@ -156,17 +156,39 @@ vibeknow auth logout
 # 从 URL 生成视频
 vibeknow create --from https://example.com/article
 
-# 先列出可用的 voice ID，再通过 --voice 传入
+# 先列出音色，两列都可以传给 --voice（# 或 SPEECH_VOICE_ID）
 vibeknow voice list
-vibeknow create --from report.pdf --voice <上面列出的 voice-id>
+vibeknow create --from report.pdf --voice 1
+
+# 复用已上传的文档（doc_id 必须配上它的 --kb-id）
+vibeknow create --from <doc_id> --kb-id <kb_id>
 
 # 自定义 prompt
 vibeknow create --from data.csv --prompt "制作一个两分钟的讲解视频"
 
-# 异步模式 —— 立即获取 task ID，稍后查看
+# 异步模式 —— 提交、确认任务已起跑，然后断开
 vibeknow create --from doc.pdf --async
-vibeknow video wait <task_id> --session-id <session_id>
+vibeknow video wait          # 自动接上最近一次的任务
 ```
+
+`--async` 在后端确认任务已起跑后返回（秒级），而不是等视频渲染完（分钟级）；
+CLI 断开后渲染继续在服务端进行。参数不合法、积分不足这类当场被拒的情况，
+`--async` 会自己报错并以非 0 退出，所以只要打印出了 `task_id`，任务就是真的跑起来了。
+
+### 找回一个任务
+
+每次生成都由 `(task_id, session_id)` 这一对标识，`create` 会把它记在本地，
+所以你不必自己保存：
+
+```bash
+vk jobs list                  # 本机发起过的所有任务，最新在前
+vk jobs list --active         # 只看还没跑完的
+vk video wait                 # 接上最近一次
+vk video wait 42              # 或指定 task，session 由本机记录补齐
+vk jobs prune --terminal      # 清掉已完成的记录
+```
+
+显式传 `--session-id` 依然可用，且优先级高于本地记录。
 
 ### 文档管理
 
@@ -188,10 +210,10 @@ vibeknow doc get --kb-id <kb_id> --doc-id <doc_id>
 vibeknow video status <task_id>
 
 # 流式进度（阻塞直到完成）
-vibeknow video wait <task_id> --session-id <session_id>
+vibeknow video wait <task_id>
 
-# 下载已渲染的视频
-vibeknow video download <task_id> --session-id <session_id>
+# 下载已渲染的视频（文件路径用 --dest，--output 统一表示输出格式）
+vibeknow video download <task_id> --dest ./final.mp4
 ```
 
 ### 生成可分享的视频
@@ -213,7 +235,7 @@ $ vk video export 42 --session-id sess_xxx --yes
 exporting: 72% — rendering frames
 export complete
 
-$ vk video download 42 --session-id sess_xxx
+$ vk video download 42 --session-id sess_xxx --dest sess_xxx.mp4
 output=sess_xxx.mp4
 ```
 
@@ -222,9 +244,18 @@ output=sess_xxx.mp4
 ### 选择视频模式
 
 ```bash
-vk create --from deck.pdf  --mode replica   # PPT/PDF 逐页还原
-vk create --from talk.docx --mode script    # 讲稿模式（用文档原文做旁白）
+vk create --from deck.pdf  --mode replica   # PPT 讲解（逐页还原）
+vk create --from post.md   --mode image --pages 8   # 图解视频（讲稿逐页 AI 生图）
+vk create --from notes.md  --mode handdraw  # 手绘动画
 vk create --from <src>     --aspect vertical --bgm
+```
+
+`--script-lock`（原稿锁定）直接用文档原文当讲稿、跳过写稿，且可叠加在任意模式上
+（它取代了原来的 `--mode script`，旧写法仍可用但会告警）：
+
+```bash
+vk create --from talk.docx --script-lock                 # 用原文做旁白
+vk create --from talk.docx --mode image --script-lock    # 用原文做旁白 + 逐页生图
 ```
 
 ### 选择生成引擎（可选）

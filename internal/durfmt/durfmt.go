@@ -27,3 +27,22 @@ func ParseAge(s string) (time.Duration, error) {
 	}
 	return time.ParseDuration(s)
 }
+
+// Short renders an elapsed duration as a single coarse unit — "3m", "2h",
+// "5d". Used for age columns, where the reader wants "recent or not", not
+// "2h13m47.9s".
+func Short(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours())/24)
+	}
+}

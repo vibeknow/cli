@@ -48,6 +48,7 @@ func TestLoginNoWaitJSONShape(t *testing.T) {
 		t.Fatalf("use profile: %v", err)
 	}
 
+	resetLoginFlags(t)
 	root := &cobra.Command{Use: "vibeknow"}
 	root.AddCommand(loginCmd)
 
