@@ -19,6 +19,9 @@ var (
 )
 
 var pruneCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "prune",
 	Short: "drop recorded runs from the local ledger",
 	Long: `prune removes entries from the local ledger. It never touches the

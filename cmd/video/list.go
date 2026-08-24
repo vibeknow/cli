@@ -21,6 +21,9 @@ var (
 )
 
 var listCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "list",
 	Short: "list your video works",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -126,4 +129,6 @@ func mapStatus(s int, exporting bool) string {
 func init() {
 	listCmd.Flags().IntVar(&flagListPage, "page", 1, "page number")
 	listCmd.Flags().IntVar(&flagListSize, "size", 10, "page size")
+	// `jobs list` spells the row cap --limit; accept it here too.
+	cmdutil.AliasFlags(listCmd, map[string]string{"limit": "size"})
 }

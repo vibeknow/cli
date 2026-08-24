@@ -102,6 +102,8 @@ func init() {
 		"create.err.voice_lookup_failed":   "could not load the voice list to resolve --voice",
 		"create.voice_resolved":            "voice: #%s %s (%s)",
 		"create.async.no_confirmation":     "warning: the backend accepted the request but reported no progress within %ds; the task may not have started — verify with `vk video wait` before relying on it",
+		"create.err.no_events":             "the generation stream closed without producing a single event; the task's state is unknown and it may still be running",
+		"create.err.no_terminal_event":     "the generation stream ended before the task reached a terminal state; its state is unknown and it may still be running",
 		"create.err.async_with_export":     "--async and --export cannot be combined: export can only start once the preview is finished, which --async does not wait for. Run `vk create --async`, then `vk video wait <task_id> --session-id <sid>` and `vk video export <task_id> --session-id <sid>` when it succeeds",
 
 		// kb
@@ -283,6 +285,8 @@ func init() {
 		"create.err.voice_lookup_failed":   "无法加载音色列表以解析 --voice",
 		"create.voice_resolved":            "音色：#%s %s（%s）",
 		"create.async.no_confirmation":     "警告：后端已接受请求，但 %d 秒内没有任何进度事件，任务可能未真正开始——请先用 `vk video wait` 确认再依赖它",
+		"create.err.no_events":             "生成流没有产生任何事件就关闭了；任务状态未知，可能仍在运行",
+		"create.err.no_terminal_event":     "生成流在任务到达终态前就结束了；任务状态未知，可能仍在运行",
 		"create.err.async_with_export":     "--async 与 --export 不能同时使用：导出必须等预览生成完成才能开始，而 --async 不会等待。请先 `vk create --async`，再用 `vk video wait <task_id> --session-id <sid>`，成功后执行 `vk video export <task_id> --session-id <sid>`",
 
 		// kb

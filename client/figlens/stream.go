@@ -215,6 +215,23 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 				continue
 			}
 			if !stage.IsKnownNode(log.StepID) {
+				// A node this build has never heard of. Dropping it made the
+				// CLI go completely silent for the duration of that node —
+				// and the backend has already renamed its graph once (see the
+				// package comment on internal/stage), so this is a question of
+				// when, not if.
+				//
+				// Forward it as free-form progress instead, the same shape the
+				// v=2 agent path uses. The raw step_id is deliberately not
+				// included: unrecognized wire names are exactly the ones that
+				// may carry an internal model codename, which is why
+				// nodeDisplayName exists. The backend's message is already
+				// user-facing for every known node, so it is safe to show.
+				onEvent(StreamEvent{
+					Type:    "node.progress",
+					Status:  log.Status,
+					Message: log.Message,
+				})
 				continue
 			}
 			displayName := stage.DisplayName(log.StepID)

@@ -13,6 +13,9 @@ import (
 )
 
 var logoutCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "logout",
 	Short: "clear stored credential for the current profile",
 	RunE: func(cmd *cobra.Command, args []string) error {

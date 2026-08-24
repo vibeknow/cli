@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
 )
@@ -25,6 +25,9 @@ var callFlags struct {
 }
 
 var callCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "call",
 	Short: "call a raw backend endpoint",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,7 +105,9 @@ var callCmd = &cobra.Command{
 
 // resolverTokenProvider adapts credential.Resolver to httpclient.TokenProvider.
 type resolverTokenProvider struct {
-	res interface{ Resolve() (string, string, error) }
+	res interface {
+		Resolve() (string, string, error)
+	}
 }
 
 func (r resolverTokenProvider) Token(ctx context.Context) (string, error) {

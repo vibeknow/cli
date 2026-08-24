@@ -20,6 +20,9 @@ var (
 )
 
 var listCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "list",
 	Short: "list recorded runs, newest first",
 	Example: `  vk jobs list
@@ -113,4 +116,7 @@ func truncate(s string, n int) string {
 func init() {
 	listCmd.Flags().IntVar(&flagListLimit, "limit", 20, "maximum rows to show (0 for all)")
 	listCmd.Flags().BoolVar(&flagListActive, "active", false, "only runs that have not reached a terminal state")
+	// `kb list` and `video list` spell the row cap --size; accept that here
+	// too rather than making the caller remember which list is which.
+	cmdutil.AliasFlags(listCmd, map[string]string{"size": "limit"})
 }

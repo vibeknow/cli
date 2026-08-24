@@ -12,6 +12,9 @@ import (
 )
 
 var listCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "list",
 	Short: "list all config keys",
 	RunE: func(cmd *cobra.Command, args []string) error {

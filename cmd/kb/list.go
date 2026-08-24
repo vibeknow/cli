@@ -12,6 +12,7 @@ import (
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
+	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/durfmt"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
@@ -76,6 +77,9 @@ func filterKBs(items []kbItem, pattern string, olderThan time.Duration, now time
 }
 
 var listCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "list",
 	Short: i18n.T("kb.list.short"),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -148,5 +152,7 @@ func init() {
 	listCmd.Flags().IntVar(&flagListSize, "size", 50, "page size (backend caps at 100)")
 	listCmd.Flags().StringVar(&flagListPattern, "pattern", "", "glob pattern matched against kb name (filepath.Match syntax)")
 	listCmd.Flags().StringVar(&flagListOlderThan, "older-than", "", "filter to kbs older than this duration (e.g., 7d, 24h, 1h30m)")
+	// `jobs list` spells the row cap --limit; accept it here too.
+	cmdutil.AliasFlags(listCmd, map[string]string{"limit": "size"})
 	Cmd.AddCommand(listCmd)
 }

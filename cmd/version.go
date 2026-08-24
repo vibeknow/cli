@@ -11,6 +11,9 @@ import (
 )
 
 var versionCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "version",
 	Short: "print CLI version",
 	RunE: func(cmd *cobra.Command, args []string) error {

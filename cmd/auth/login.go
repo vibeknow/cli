@@ -27,6 +27,9 @@ import (
 )
 
 var loginCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "login",
 	Short: "authenticate with VibeKnow",
 	Long: `Authenticate with VibeKnow using the device code flow (default),

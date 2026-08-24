@@ -13,6 +13,9 @@ import (
 )
 
 var updateCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "update",
 	Short: "check for a newer vibeknow-cli release",
 	Long: `Contact the npm registry and report whether a newer vibeknow-cli

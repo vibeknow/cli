@@ -43,8 +43,24 @@ Commands:
 `--session-id` is optional on all four: when omitted it is resolved from
 the local run ledger (see below). An explicit value always wins.
 
-Exit codes: `0` success, `2` user error, `5` business failure, `6`
-interrupted, `7` partial success (preview ready, export failed).
+Exit codes: `0` success, `2` user error, `3` auth, `4` retryable, `5`
+business failure, `6` interrupted / state unknown, `7` partial success
+(preview ready, export failed).
+
+The contract holds on **every** command, not just `vk create`:
+
+- Anything wrong with the command line — unknown command, unknown or
+  misspelled flag, missing required flag, stray positional argument, a
+  bad enum value — exits **2**. An unknown flag close to a real one
+  names the real one in the hint.
+- An expired or missing credential exits **3** on every command that
+  talks to a backend. Re-authenticate and retry.
+- `rate_limited`, `internal_error` and `concurrent_work_limit` exit
+  **4**: the same command is worth retrying after a wait.
+- `insufficient_credits` exits **5**: retrying cannot help.
+
+Nothing exits 0 with output the caller cannot act on. A malformed
+command never prints help to stdout and calls it success.
 
 **Which commands adopt a failure as their exit code.** A command that
 *blocks until a terminal state* takes its exit code from that state:

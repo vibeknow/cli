@@ -28,6 +28,9 @@ type check struct {
 }
 
 var doctorCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "doctor",
 	Short: "diagnose local setup and endpoint reachability",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -244,14 +247,14 @@ const (
 // that haven't standardised on the /healthz path still report correctly.
 //
 //   - probeOK:       HTTP 200 (the service is reachable and self-reports up;
-//                    body status string varies across services — "healthy",
-//                    "ok", "up" — so we treat any 2xx as success rather than
-//                    coupling to a specific keyword)
+//     body status string varies across services — "healthy",
+//     "ok", "up" — so we treat any 2xx as success rather than
+//     coupling to a specific keyword)
 //   - probeDegraded: HTTP 503 + body status="unhealthy" but pillars.databases
-//                    is healthy (non-critical subsystem like email is down,
-//                    primary request path is still usable)
+//     is healthy (non-critical subsystem like email is down,
+//     primary request path is still usable)
 //   - probeFail:     transport error, unexpected HTTP, DB pillar unhealthy,
-//                    or 503 with no parseable pillars info
+//     or 503 with no parseable pillars info
 func probeHealth(baseURL string) (probeStatus, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

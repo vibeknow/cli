@@ -35,6 +35,9 @@ func validatePruneFilters(pattern, age string) error {
 }
 
 var pruneCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "prune",
 	Short: i18n.T("kb.prune.short"),
 	RunE: func(cmd *cobra.Command, args []string) error {

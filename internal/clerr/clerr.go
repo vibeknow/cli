@@ -75,8 +75,19 @@ func (e *Error) WithCause(c error) *Error { e.Cause = c; return e }
 func (e *Error) WithType(t string) *Error  { e.Type = t; return e }
 func (e *Error) WithDetail(d any) *Error   { e.Detail = d; return e }
 
+// Classifier, when set, derives an exit code from an error that is not a
+// *Error — in practice a structured backend error carrying a stable code.
+// It returns 0 when it has no opinion.
+//
+// This is a registration hook rather than a direct call because clerr is the
+// leaf package the whole CLI imports; depending on the packages that own the
+// error codes would make a cycle. cmd registers the real implementation, the
+// same way it registers PendingNotice.
+var Classifier func(error) int
+
 // ExitCodeFor returns the exit code for err. Unwraps via errors.As so wrapped
-// *Error values are honored; non-*Error errors exit 1.
+// *Error values are honored; anything the Classifier does not recognize
+// exits 1.
 func ExitCodeFor(err error) int {
 	if err == nil {
 		return ExitOK
@@ -87,6 +98,11 @@ func ExitCodeFor(err error) int {
 			return ExitAPI
 		}
 		return e.Code
+	}
+	if Classifier != nil {
+		if code := Classifier(err); code != 0 {
+			return code
+		}
 	}
 	return ExitAPI
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/output"
 )
 

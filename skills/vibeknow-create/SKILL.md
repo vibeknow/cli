@@ -126,9 +126,9 @@ vibeknow video download t_xxx --session-id s_yyy --dest ./my-video.mp4 --overwri
 |------|---------|--------------|
 | 0 | Success | Extract `video_url` from output |
 | 1 | General error | Read stderr |
-| 2 | Invalid arguments | Fix command syntax |
-| 3 | Auth error | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
-| 4 | Task failed, **retryable** | Re-submit the same `create` command |
+| 2 | Invalid arguments | Fix and retry. Covers unknown/misspelled flags, unknown subcommands, missing required flags, stray positional args, and bad enum values. stderr names the valid values, and suggests the closest flag when you typo one. Never re-send the same command unchanged. |
+| 3 | Auth error (missing/expired/replaced credential) — fires on **every** command, not just `create` | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
+| 4 | Retryable: rate limited, server error, or concurrency cap | Wait, then re-send the same command |
 | 5 | Task failed, **not retryable** | Report error to user, do not retry |
 | 6 | Stream interrupted, **task status unknown** | `vibeknow video wait <task_id>` to reconnect. Do NOT re-submit. |
 | 7 | Partial success: preview is ready, the MP4 render failed | Report the preview `share_url`; retry only the export |

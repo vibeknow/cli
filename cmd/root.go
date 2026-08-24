@@ -133,7 +133,7 @@ func setupUpdateNotice() {
 func Execute() error {
 	setupUpdateNotice()
 	rootCmd.SilenceErrors = true
-	err := rootCmd.Execute()
+	err := asUsageError(rootCmd.Execute())
 	if err != nil {
 		format := "text"
 		if flagOutput == "json" {

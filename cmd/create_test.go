@@ -318,7 +318,7 @@ func TestResolveImageIndexes(t *testing.T) {
 		{" 2 , 4 ", []int{2, 4}, false},
 		{"3,3,3", []int{3}, false}, // duplicates collapse
 		{"1,,2", []int{1, 2}, false},
-		{"0", nil, true},  // image_index is 1-based on the backend
+		{"0", nil, true}, // image_index is 1-based on the backend
 		{"-1", nil, true},
 		{"a,b", nil, true},
 	}

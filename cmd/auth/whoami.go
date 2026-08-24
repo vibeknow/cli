@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/account"
-	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/httpclient"
@@ -17,6 +17,9 @@ import (
 )
 
 var whoamiCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "whoami",
 	Short: "print the current authenticated user",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -48,4 +51,3 @@ var whoamiCmd = &cobra.Command{
 		})
 	},
 }
-

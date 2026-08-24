@@ -39,6 +39,11 @@ func Confirm(opts ConfirmOptions) (bool, error) {
 		opts.IsTTY = func() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
 	}
 	if !opts.IsTTY() {
+		// Proceeding is the right call — an agent or CI job cannot answer a
+		// prompt, and blocking forever is the worse failure. But doing it in
+		// total silence meant a billed action could happen with no gate and
+		// no trace, so say what was assumed and how to make it explicit.
+		fmt.Fprintf(opts.Err, "%s — no TTY, proceeding without confirmation (pass --yes to make this explicit)\n", opts.Prompt)
 		return true, nil
 	}
 	fmt.Fprintf(opts.Err, "%s [y/N] ", opts.Prompt)

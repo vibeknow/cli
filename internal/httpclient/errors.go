@@ -103,6 +103,38 @@ const (
 //
 // Codes not listed return false: the safer default is to not promise a
 // retry will help when we cannot prove it.
+// ExitCodeForCode maps a stable CLI error code to the process exit code the
+// documented contract promises for it. Returns 0 when the code carries no
+// specific meaning, so the caller keeps its own default.
+//
+// Without this, only `vk create` translated backend codes into exit codes and
+// every other command exited 1 for everything. An expired token — by far the
+// most common recoverable failure, and the one the docs tell agents to handle
+// by re-authenticating on exit 3 — was indistinguishable from a bug.
+//
+// Deliberately conservative: codes whose right response is genuinely ambiguous
+// (permission_denied, not_found, conflict, business_error) are left at the
+// generic exit 1 rather than guessing. permission_denied in particular must
+// not become 3, or an agent would re-authenticate in a loop over a resource it
+// will never be allowed to touch.
+func ExitCodeForCode(code string) int {
+	switch {
+	case code == "auth_required",
+		code == CodeSessionReplaced,
+		code == CodeAccountDisabled,
+		code == CodeAccountPendingDeletion,
+		code == "session_expired":
+		return 3 // credential missing / invalid / expired → re-authenticate
+	case IsRetryableCode(code):
+		return 4 // rate_limited, internal_error, concurrent_work_limit
+	case code == "insufficient_credits":
+		return 5 // business failure; retrying the same command cannot help
+	case IsUserFixableCode(code), code == "invalid_args":
+		return 2 // the caller's input is wrong and can be corrected
+	}
+	return 0
+}
+
 func IsRetryableCode(code string) bool {
 	switch code {
 	case "rate_limited", "internal_error", "concurrent_work_limit":

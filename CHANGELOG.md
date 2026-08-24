@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Fixed — the exit-code contract now holds on every command
+
+Found by driving all 37 commands through a stub backend across output
+formats, error paths and backend failure modes.
+
+- **A malformed command line exits 2, not 1.** Unknown commands, unknown
+  or misspelled flags, missing required flags, stray positional
+  arguments — the mistakes a caller makes most often, and the most
+  trivially correctable — all reported as generic failures. A caller
+  branching on the exit code could not tell "your arguments are wrong"
+  from "the backend broke".
+- **An unknown flag now names the closest real one.** `--kbid` →
+  "did you mean --kb-id?".
+- **`vk <group> <typo>` exited 0 and printed help to stdout.** Cobra
+  short-circuits a non-runnable command to help without validating args,
+  so a typo'd subcommand looked like success and put help text where a
+  caller expected data. Group commands validate first now; a bare
+  `vk video` still prints help.
+- **Commands that take no positional arguments no longer ignore them.**
+  `vk version extra` silently discarded `extra` and exited 0.
+- **An expired credential exits 3 on every command.** Only `vk create`
+  translated backend codes into exit codes; everything else exited 1, so
+  the documented "exit 3 → re-authenticate" instruction never fired for
+  `credits balance`, `video list`, `kb list` and the rest. The same
+  central mapping gives `rate_limited` / `internal_error` /
+  `concurrent_work_limit` exit 4 and `insufficient_credits` exit 5
+  everywhere.
+- **`vk create` exited 0 with empty stdout when the stream closed
+  without a terminal event.** The reattach path (`video wait`) was fixed
+  earlier in this release; the primary path still reported success for a
+  run whose state was unknown and which may well still have been
+  running. It exits 6 now, records the run as unresolved, and prints the
+  `video wait` command that reattaches.
+- **Progress from an unrecognized pipeline node was dropped.** The CLI
+  skipped node events whose `step_id` this build does not know, so it
+  went silent for the whole of that node — on an operation that runs for
+  minutes, against a backend that has already renamed its graph once.
+  They are forwarded as free-form progress instead, without the raw wire
+  name (which may carry an internal codename).
+
+### Changed — fewer ways to get it wrong
+
+- `--size` and `--limit` are accepted interchangeably on the three list
+  commands, and `--no-wait` works wherever `--async` does. `--help`
+  still shows one name per concept.
+- `create --async --output json` now carries `next_actions`, like every
+  other JSON payload. It was the one command that handed back two bare
+  ids and left the caller to infer the follow-up.
+- A confirmation auto-accepted because there is no TTY now says so on
+  stderr. Proceeding is still right — an agent cannot answer a prompt —
+  but some of these prompts gate billed operations, and doing it in
+  silence left no trace that a gate had been skipped.
+
 ### Added — run ledger (`vk jobs`)
 
 - Every run is addressed by a `(task_id, session_id)` pair, and the CLI

@@ -18,8 +18,8 @@ import (
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
 	"github.com/vibeknow/cli/client/vibeknow"
-	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/clerr"
+	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
@@ -66,6 +66,9 @@ const asyncDetachTimeout = 60 * time.Second
 var docIDRe = regexp.MustCompile(`^(doc_[a-zA-Z0-9]{8,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 
 var createCmd = &cobra.Command{
+	// Takes no positional arguments. Without this cobra accepts and
+	// silently discards them, so a stray argument looks like success.
+	Args:  cobra.NoArgs,
 	Use:   "create",
 	Short: "turn a document, URL, or file into a video",
 	Long: `create resolves --from to a document, then generates a video via the figlens pipeline.
@@ -77,7 +80,8 @@ var createCmd = &cobra.Command{
   - a local file path — uploaded to vectoria`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if flagCreateFrom == "" {
-			return fmt.Errorf("--from is required")
+			return clerr.Validation("--from is required").
+				WithHint("pass a local file, an http(s) URL, or a doc_id together with --kb-id")
 		}
 
 		// --export runs after the preview snapshot, which --async never
@@ -348,6 +352,7 @@ var createCmd = &cobra.Command{
 
 		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
+		var sawAnyEvent bool
 
 		streamCtx := ctx
 		var detach context.CancelFunc
@@ -382,6 +387,8 @@ var createCmd = &cobra.Command{
 			SelectedImageIndexes: imageIndexes,
 			Engine:               engine,
 		}, func(ev figlens.StreamEvent) {
+			sawAnyEvent = true
+
 			// --async: any event at all proves the backend dispatched the
 			// run, which is all this mode promised to wait for. Terminal
 			// events still fall through to the handlers below first, so an
@@ -502,18 +509,26 @@ var createCmd = &cobra.Command{
 					r.Status = jobs.StatusRunning
 				})
 			}
+			// next_actions rides along for the same reason every other JSON
+			// payload carries it: it is how a caller decides what to run next
+			// without having to have memorised the workflow. --async was the
+			// one command that handed back two bare ids and left the caller
+			// to infer the follow-up.
+			asyncPayload := map[string]any{
+				"task_id":    task.TaskID,
+				"session_id": task.SessionID,
+				"status":     jobs.StatusRunning,
+				"next_actions": []map[string]string{{
+					"command": fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID),
+					"purpose": "Wait for the generation pipeline to finish",
+				}},
+			}
 			switch format {
 			case "json":
-				return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
-					"task_id":    task.TaskID,
-					"session_id": task.SessionID,
-				})
+				return output.NewJSON(cmd.OutOrStdout()).Object(asyncPayload)
 			case "ndjson":
-				return output.NewNDJSON(cmd.OutOrStdout()).Event(map[string]any{
-					"event":      "task.submitted",
-					"task_id":    task.TaskID,
-					"session_id": task.SessionID,
-				})
+				asyncPayload["event"] = "task.submitted"
+				return output.NewNDJSON(cmd.OutOrStdout()).Event(asyncPayload)
 			default:
 				fmt.Printf("task_id=%d\nsession_id=%s\n", task.TaskID, task.SessionID)
 				fmt.Fprintln(os.Stderr, i18n.T("create.async.hint", task.TaskID, task.SessionID))
@@ -522,7 +537,23 @@ var createCmd = &cobra.Command{
 		}
 
 		if successSessionID == "" {
-			return nil
+			// The stream closed without a terminal event. Returning nil here
+			// exited 0 with an empty stdout — no share_url, no error, nothing
+			// for the caller to distinguish "finished" from "never ran". That
+			// is the same silent success `vk video wait` used to report; the
+			// run may well still be going server-side, so exit 6 (state
+			// unknown) and point at the ledger entry that can reattach to it.
+			updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+				r.Status = jobs.StatusUnknown
+			})
+			if !sawAnyEvent {
+				return clerr.New(i18n.T("create.err.no_events")).
+					WithCode(6).
+					WithHintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
+			}
+			return clerr.New(i18n.T("create.err.no_terminal_event")).
+				WithCode(6).
+				WithHintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
 		}
 
 		stdout := cmd.OutOrStdout()
@@ -633,6 +664,8 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateKBID, "kb-id", "", i18n.T("create.flag.kb_id"))
 	createCmd.Flags().IntVar(&flagCreatePages, "pages", 0, i18n.T("create.flag.pages"))
 	createCmd.Flags().StringVar(&flagCreateImages, "images", "", i18n.T("create.flag.images"))
+	// `auth login` spells "do not block" --no-wait. Same intent here.
+	cmdutil.AliasFlags(createCmd, map[string]string{"no-wait": "async"})
 }
 
 // uploadFile uploads a local file to vectoria and returns kb_id + doc_id.
@@ -962,4 +995,3 @@ func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
 	}
 	return nil
 }
-

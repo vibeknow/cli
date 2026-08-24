@@ -211,4 +211,6 @@ func init() {
 	exportCmd.Flags().BoolVarP(&flagExportYes, "yes", "y", false, "skip confirmation prompt")
 	exportCmd.Flags().DurationVar(&flagExportTimeout, "timeout", exportpoll.DefaultTimeout(), "sync-mode deadline")
 	exportCmd.Flags().DurationVar(&flagExportPollInterval, "poll-interval", 0, "fixed poll interval (overrides exponential backoff)")
+	// `auth login` spells "do not block" --no-wait. Same intent here.
+	cmdutil.AliasFlags(exportCmd, map[string]string{"no-wait": "async"})
 }
