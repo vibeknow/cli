@@ -8,6 +8,15 @@
 | `--profile string` | Override active profile for this command |
 | `--verbose` | Emit request/response summaries (credentials redacted) |
 
+## Environment
+
+| Variable | Effect |
+|----------|--------|
+| `VIBEKNOW_OUTPUT` | Default `--output` value; an explicit flag wins |
+| `VIBEKNOW_EVENTS` | `1`/`on` forces `vk_event=` progress lines onto stderr in any format; `0`/`off` suppresses them. Unset means on for `--output json` only. |
+| `VIBEKNOW_ASSUME_YES` | Pre-authorises paid actions, same as `--yes`. Only set it when the user has agreed to the spend in advance. |
+| `VIBEKNOW_EXPORT_TIMEOUT` | Local deadline for synchronous export polling (default 15m). Bounds the **local wait only** — it does not cancel the backend render. |
+
 ---
 
 ## create
@@ -28,6 +37,8 @@ vibeknow create [flags]
 | `--from string` | doc_id, URL, or local file path **(required)** |
 | `--voice string` | Voice template ID (use `vibeknow voice list` to browse) |
 | `--async` | Print task_id/session_id and exit without waiting |
+| `--preview-dir string` | Write cover/MP4 artifacts here and announce each as a `resource_ready` event |
+| `--confirm string` | `action_id` from a previously blocked `--export`, once the user has agreed to the spend |
 
 **Sync mode (default):**
 - TTY: colored progress bar showing current stage, elapsed time, ETA. Prints video URL on completion.
@@ -63,8 +74,42 @@ vibeknow video wait <task_id> [flags]
 | Flag | Description |
 |------|-------------|
 | `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
+| `--preview-dir string` | Write the cover still here and announce it as a `resource_ready` event |
 
 Behavior is identical to sync-mode `create` once the task is already submitted. Useful after `create --async` or to recover from exit code 6 (stream interrupted).
+
+Exiting 0 from `wait` always means the task genuinely reached a terminal
+state. A stream that closes without one exits 6 and carries the
+`resend_safe` verdict — see [errors.md](errors.md#exit-6-errordetail).
+
+## video export
+
+Render the MP4 for a work. Takes several minutes and **costs credits**.
+
+```
+vibeknow video export [task_id] [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--session-id string` | Session ID (default: resolved from the local run ledger, then from the account's most recent run) |
+| `--async` | Submit and return; do not wait |
+| `--yes`, `-y` | Skip the confirmation gate — only when the user has already authorised this spend |
+| `--confirm string` | `action_id` from a previously blocked run |
+| `--preview-dir string` | Write the rendered MP4 here and announce it as a `resource_ready` event |
+| `--timeout duration` | Local deadline for the sync wait. Does **not** cancel the backend render. |
+| `--poll-interval duration` | Fixed poll interval (overrides exponential backoff) |
+
+**The confirmation gate.** With a terminal attached you get a `[y/N]`
+prompt. Without one — an agent, CI — the command does not decide for you:
+it exits **8** and writes the decision to stdout as `pending_actions`. Show
+the user what it costs, then run the action's `resume_command`. See
+[errors.md](errors.md#exit-8-blocked-on-a-decision).
+
+**Exit codes.** `0` the MP4 exists; `7` the preview is fine but the render
+failed; `6` the local wait was interrupted or timed out (the backend keeps
+going — reattach with `vibeknow video export-status`); `8` blocked on the
+spend decision.
 
 ## video download
 

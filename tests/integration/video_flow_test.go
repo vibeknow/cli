@@ -68,12 +68,21 @@ func buildVideoProfile(t *testing.T, figlensURL string) string {
 // polling don't get stuck on the default 5min timeout.
 func runVideoCmd(t *testing.T, bin, configHome string, args ...string) (string, string, int) {
 	t.Helper()
+	return runCmdEnv(t, bin, configHome, nil, args...)
+}
+
+// runCmdEnv is runVideoCmd with extra environment entries appended, for the
+// handful of behaviours that are only reachable through an env var
+// (VIBEKNOW_EVENTS, VIBEKNOW_ASSUME_YES).
+func runCmdEnv(t *testing.T, bin, configHome string, extraEnv []string, args ...string) (string, string, int) {
+	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(),
 		"VIBEKNOW_TOKEN=fake-token",
 		"VIBEKNOW_CONFIG_HOME="+configHome,
 		"VIBEKNOW_EXPORT_TIMEOUT=10s",
 	)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdoutBuf, stderrBuf strings.Builder
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf

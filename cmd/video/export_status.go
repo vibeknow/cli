@@ -26,7 +26,7 @@ var exportStatusCmd = &cobra.Command{
 		// The positional argument here is an export_task_id, not a task_id,
 		// so it is no help in finding the session — only the flag or the
 		// most recent recorded run can supply it.
-		_, sessionID, err := resolveTarget(nil, flagExportStatusSessionID)
+		_, sessionID, err := resolveTarget(cmd.Context(), nil, flagExportStatusSessionID)
 		if err != nil {
 			return err
 		}

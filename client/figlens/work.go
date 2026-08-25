@@ -3,6 +3,7 @@ package figlens
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // WorkStatus values mirror the figlens backend's WorkStatus enum.
@@ -63,6 +64,22 @@ func (c *Client) ListWorks(ctx context.Context, page, size int) ([]WorkListItem,
 		return nil, 0, fmt.Errorf("list works: %w", err)
 	}
 	return resp.List, resp.Total, nil
+}
+
+// AssetURL resolves a work-row asset reference into something fetchable.
+//
+// The work row is inconsistent about this: cover_url is already an address,
+// while video_path is an object key that has to be signed first. Callers
+// that just want the bytes should not have to know which field is which.
+func (c *Client) AssetURL(ctx context.Context, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return ref, nil
+	}
+	return c.SignedURL(ctx, ref)
 }
 
 func (c *Client) GetVideoURL(ctx context.Context, workID int64) (string, error) {

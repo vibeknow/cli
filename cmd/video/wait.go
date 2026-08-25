@@ -9,12 +9,16 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
-var flagWaitSessionID string
+var (
+	flagWaitSessionID  string
+	flagWaitPreviewDir string
+)
 
 var waitCmd = &cobra.Command{
 	Use:   "wait [task_id]",
@@ -24,7 +28,7 @@ var waitCmd = &cobra.Command{
   vk video wait 123
   vk video wait 123 --session-id sess_xxx --output ndjson`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		taskID, sessionID, err := resolveTarget(args, flagWaitSessionID)
+		taskID, sessionID, err := resolveTarget(cmd.Context(), args, flagWaitSessionID)
 		if err != nil {
 			return err
 		}
@@ -39,6 +43,11 @@ var waitCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		stdout := cmd.OutOrStdout()
 		stderr := cmd.ErrOrStderr()
+
+		ch, err := cmdutil.NewRunChannel(cmd, flagWaitPreviewDir)
+		if err != nil {
+			return clerr.Validation(err.Error())
+		}
 
 		var emitEvent func(map[string]any) error
 		if format == "ndjson" {
@@ -55,9 +64,12 @@ var waitCmd = &cobra.Command{
 		emit := func(ev figlens.StreamEvent) {
 			sawAnyEvent = true
 
-			if emitEvent != nil {
+			switch {
+			case emitEvent != nil:
 				_ = emitEvent(ev.NDJSONFields())
-			} else {
+			case ch.Structured():
+				ch.Emit(ev.NDJSONFields())
+			default:
 				switch ev.Type {
 				case "node.started":
 					fmt.Fprintf(stderr, "[%s] started\n", ev.Node)
@@ -124,17 +136,24 @@ var waitCmd = &cobra.Command{
 			// the worst failure mode for an agent caller, which cannot
 			// tell "done" from "never ran". Exit 6 (task state unknown),
 			// the same code a mid-run disconnect uses.
-			if !sawAnyEvent {
-				// Nothing to replay at all. The usual cause is a task that
-				// was never dispatched, so say so instead of leaving the
-				// caller to guess from an empty stream.
-				return clerr.New("no events for this task: it has not started generating, or the --session-id does not match it").
-					WithCode(6).
-					WithHint("verify the pair with `vk video list`; a task stuck with no progress was never dispatched and must be recreated with `vk create`")
+			//
+			// Which of those it was is a question the backend can answer,
+			// so ask it rather than handing the caller a guess: the reply
+			// decides between reattaching and starting over, and getting
+			// that wrong costs either the run or a second render.
+			probe := cmdutil.ProbeRun(ctx, c, taskID, flagWaitSessionID)
+			reattach := "vk video status --session-id " + flagWaitSessionID
+			if probe.Delivery == cmdutil.DeliverySubmitted {
+				reattach = "vk video wait --session-id " + flagWaitSessionID
 			}
-			return clerr.New("stream ended before the task reached a terminal state; its final state is unknown").
-				WithCode(6).
-				WithHint("re-run `vk video wait` to reattach, or check `vk video status`")
+			if !sawAnyEvent {
+				return cmdutil.UnknownStateError(
+					"no events for this task: it has not started generating, or the --session-id does not match it",
+					probe, reattach)
+			}
+			return cmdutil.UnknownStateError(
+				"stream ended before the task reached a terminal state; its final state is unknown",
+				probe, reattach)
 		}
 
 		w, err := c.GetWorkBySession(ctx, successSessionID)
@@ -153,10 +172,12 @@ var waitCmd = &cobra.Command{
 			r.Title = s.Title
 			r.ShareURL = s.Preview.ShareURL
 		})
+		cmdutil.DeliverWorkArtifacts(ctx, ch.Previews, c, w)
 		return snapshot.Render(stdout, stderr, s, format)
 	},
 }
 
 func init() {
 	waitCmd.Flags().StringVar(&flagWaitSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
+	waitCmd.Flags().StringVar(&flagWaitPreviewDir, "preview-dir", "", i18n.T("create.flag.preview_dir"))
 }

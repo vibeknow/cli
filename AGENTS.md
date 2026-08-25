@@ -45,7 +45,7 @@ the local run ledger (see below). An explicit value always wins.
 
 Exit codes: `0` success, `2` user error, `3` auth, `4` retryable, `5`
 business failure, `6` interrupted / state unknown, `7` partial success
-(preview ready, export failed).
+(preview ready, export failed), `8` blocked on a user decision.
 
 The contract holds on **every** command, not just `vk create`:
 
@@ -58,9 +58,68 @@ The contract holds on **every** command, not just `vk create`:
 - `rate_limited`, `internal_error` and `concurrent_work_limit` exit
   **4**: the same command is worth retrying after a wait.
 - `insufficient_credits` exits **5**: retrying cannot help.
+- A paid action reached with no terminal attached and no prior authority
+  exits **8**: the decision was handed back, not made.
 
 Nothing exits 0 with output the caller cannot act on. A malformed
 command never prints help to stdout and calls it success.
+
+**Exit 6 says whether a resend is safe.** "State unknown" is true and
+useless on its own: the caller's real question is whether re-running
+recovers a lost run or pays for a second one. Before returning 6 the CLI
+reads the work row and puts the verdict in `error.detail`:
+
+| `delivery` | `resend_safe` | Basis |
+|------------|---------------|-------|
+| `submitted` | false | the backend has a work row for this session |
+| `not_submitted` | true | the backend returns not_found — the work row is created at init, so its absence means nothing was billed |
+| `indeterminate` | false | the probe itself failed; unknown is not permission |
+
+`indeterminate` deliberately reports `resend_safe: false`. Waiting when a
+run was already lost costs a delay; resending when it was not costs the
+user's money.
+
+## Spend decisions (`exit 8`)
+
+A confirmation prompt assumes someone is there to answer it. When an agent
+runs the CLI nobody is, and both available answers are bad: block forever,
+or spend the user's credits and mention it afterwards. The CLI used to do
+the second.
+
+`cmdutil.Gate` resolves a paid action in this order:
+
+1. `--yes` / `VIBEKNOW_ASSUME_YES` — the caller states it has authority.
+2. `--confirm <action_id>` — authority obtained through this gate.
+3. A terminal — ask, the way a person expects to be asked.
+4. Otherwise — write the decision to **stdout** and exit **8**.
+
+The blocked payload carries `pending_actions[]` with an opaque `action_id`,
+the `payload` being agreed to, `options[].effect` (`resume` / `none`), and
+a `resume_command` spelled out in full.
+
+`action_id` is an HMAC over the action type and the decision-relevant
+payload, keyed by a per-installation secret in `<config-dir>/action.key`.
+Because the payload is hashed and not merely displayed, a token stops
+verifying when the terms change — consent is to a specific price for a
+specific run, and a token that survived a price change would be consent to
+a number the user never saw.
+
+This is **not** a security boundary; anything running as the user can read
+the key. It is an evidence boundary: the token cannot be produced by
+reasoning about the conversation, so a model that has one went through the
+code path that disclosed the cost. The failure being prevented is confident
+invention, not a determined bypass.
+
+Exit 8 rather than 0 (which is what Flova, the design this borrows from,
+returns here) because our contract puts the outcome in the exit code
+precisely so a small model does not have to parse anything. `vk video
+export` exiting 0 states that the MP4 exists; at this boundary it does not.
+Not 2 either — the command line is fine, and sending an agent to look for
+an argument mistake it did not make wastes a turn.
+
+Scoped to the two paid paths (`vk video export`, `vk create --export`).
+`kb delete` keeps the plain prompt: it is destructive but not billed, and
+`kb prune`, the bulk path, is already dry-run by default.
 
 **Which commands adopt a failure as their exit code.** A command that
 *blocks until a terminal state* takes its exit code from that state:
@@ -87,6 +146,19 @@ The ledger is local and advisory — the backend owns run state. A missing
 entry means "not recorded here", never "does not exist", and every video
 subcommand still accepts an explicit `--session-id`. Ledger writes are
 best-effort: a failure warns on stderr and never fails the run.
+
+Because it is per-machine, "not recorded here" is a weak answer: an agent
+that moved hosts, a rebuilt container, or a colleague picking the work up
+all have a run reachable through the account and no local file mentioning
+it. So `resolveTarget` falls back to the backend's most recent work when
+the ledger has nothing, and says so on stderr — the caller must be able to
+tell which run it got.
+
+The fallback only covers the no-arguments case. A `task_id` cannot be
+resolved remotely: the backend's work list is keyed by `work_id` and
+`session_id` and carries no `task_id`, so `vk video status 12345` with an
+empty ledger exits 2 pointing at `vk video list`, rather than pretending to
+look something up it cannot.
 
 ## Async submission
 
@@ -135,6 +207,58 @@ every command honours it — including `doc upload`, `credits balance`,
 - stdout carries data, stderr carries everything else (progress,
   warnings, hints). `vk doc upload x.pdf --output json | jq -r .doc_id`
   works.
+
+### Structured progress on stderr
+
+`--output json` used to be silent until the end, and `--output ndjson` put
+the progress stream on stdout where it displaced the final answer — a
+consumer had to read the whole stream and work out for itself which line
+was terminal. Choosing between watching a run and parsing its result was
+not a choice worth making.
+
+Long-running commands now write progress to **stderr** as
+`vk_event={"schema_version":"1","ts":…,"type":…}` lines while stdout keeps
+carrying exactly one document. The prefix is what makes it possible for the
+machine lines to share a stream with human text: a consumer picks them out
+by string match instead of attempting a JSON parse of every line.
+
+- On by default when `--output json`; `VIBEKNOW_EVENTS=1` / `=0` overrides.
+- Off in `text` (stderr is a person's progress display) and in `ndjson`
+  (the stdout stream is released; duplicating it would double every event).
+- The payload is `StreamEvent.NDJSONFields()` — the same shape as the
+  stdout stream, so a consumer needs one parser, not two.
+- When the channel is on, the command skips the human prose it would
+  otherwise write for the same event. stderr never carries both renderings
+  of one fact.
+
+## Preview delivery (`--preview-dir`)
+
+`share_url` is a hosted page. An agent driving the CLI from a terminal
+cannot open one, so the single output of a video tool worth looking at was
+the one output an agent could not pass on.
+
+`--preview-dir <dir>` on `create`, `video wait` and `video export` writes
+the run's artifacts there and announces each as a `resource_ready` event on
+the structured channel:
+
+```
+vk_event={"type":"resource_ready","asset_kind":"cover_image",
+          "session_id":"s_x","local_path":"/abs/path/s_x-cover_image.jpg","bytes":48210}
+```
+
+- `asset_kind` is `cover_image` or `video_playback`.
+- `local_path` is absolute and the file is fully written before the event
+  fires — download goes to a temp file in the same directory and is renamed
+  last, so a reader never sees a partial one.
+- The source URL is **never** in the event. Those are signed; an agent that
+  relays one has published a credential.
+- Dedupe is by content hash against what is already at the destination, not
+  by URL — the backend re-signs unchanged assets, so keying on the address
+  would re-deliver the same still on every call. Because the comparison is
+  against the file on disk, it survives across processes: re-running into
+  the same directory is silent.
+- Failures emit `resource_preview_warning` and never fail the run. The
+  video rendered; a missing thumbnail is not evidence about that.
 
 ## Video kinds
 

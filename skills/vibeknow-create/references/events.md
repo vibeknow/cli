@@ -4,6 +4,62 @@ Schema version: `"1"`.
 
 Produced by: `vibeknow create --output ndjson` and (for already-submitted tasks) `vibeknow video wait --output ndjson`.
 
+## Two channels, one shape
+
+The same events reach a consumer two ways:
+
+| Channel | When | Where |
+|---------|------|-------|
+| NDJSON stream | `--output ndjson` | **stdout**, one bare JSON object per line |
+| Structured progress | `--output json` (or `VIBEKNOW_EVENTS=1`) | **stderr**, each line prefixed `vk_event=` |
+
+The payload after the prefix is byte-identical in shape to an NDJSON line —
+same `schema_version`, `ts`, `type` and event-specific fields — so one
+parser serves both. The prefix exists because stderr also carries human
+text; a consumer picks the machine lines out by string match rather than
+attempting to JSON-parse every line it sees.
+
+The point of the stderr channel is that `--output json` no longer costs you
+visibility: stdout carries exactly one document (the final snapshot) while
+stderr carries the run as it happens. With `--output ndjson` the stream
+stays on stdout as before and nothing is duplicated onto stderr.
+
+Two event types appear **only** on the stderr channel, and only when
+`--preview-dir` is set:
+
+### resource_ready
+
+A local artifact is written and complete.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `asset_kind` | string | `cover_image` or `video_playback` |
+| `session_id` | string | The run this belongs to |
+| `local_path` | string | **Absolute** path to a fully written file |
+| `bytes` | number | File size |
+
+Give each new `local_path` to the user exactly once. The event never
+carries the remote URL: those are signed, and relaying one publishes a
+credential.
+
+Content is deduplicated against what is already at the destination, so
+re-running a command into the same directory does not re-announce
+unchanged bytes. A changed artifact does emit a new event.
+
+### resource_preview_warning
+
+An artifact did not arrive. **The run did not fail.**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `asset_kind` | string | Which artifact |
+| `session_id` | string | The run |
+| `code` | string | `download_failed` or `resolve_failed` |
+| `message` | string | Detail |
+
+Do not report this as a failed render. If the user specifically needed that
+artifact, say it is unavailable and continue.
+
 This document describes the events the CLI **actually emits today**. The earlier draft of this file documented several events (`task.submitted`, `task.queued`, `stage.*`, `task.cancelled`) that the backend has never produced — they were aspirational and have been removed. A future schema version may reintroduce them once the backend starts emitting them; consumers should ignore unknown event types.
 
 ## Common Fields

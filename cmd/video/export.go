@@ -26,6 +26,8 @@ var (
 	flagExportSessionID    string
 	flagExportAsync        bool
 	flagExportYes          bool
+	flagExportConfirm      string
+	flagExportPreviewDir   string
 	flagExportTimeout      time.Duration
 	flagExportPollInterval time.Duration
 )
@@ -41,7 +43,7 @@ var exportCmd = &cobra.Command{
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
-	taskID, sessionID, err := resolveTarget(args, flagExportSessionID)
+	taskID, sessionID, err := resolveTarget(cmd.Context(), args, flagExportSessionID)
 	if err != nil {
 		return err
 	}
@@ -52,10 +54,22 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}
 	format, _ := cmd.Flags().GetString("output")
 
-	// Confirmation gate (paid operation).
-	ok, err := cmdutil.Confirm(cmdutil.ConfirmOptions{
-		Prompt: i18n.T("export.confirm_prompt"),
-		Yes:    flagExportYes,
+	ch, err := cmdutil.NewRunChannel(cmd, flagExportPreviewDir)
+	if err != nil {
+		return clerr.Validation(err.Error())
+	}
+
+	// Confirmation gate (paid operation). Without a terminal this hands the
+	// decision back rather than making it — see cmdutil.Gate.
+	ok, err := cmdutil.Gate(cmd, cmdutil.GateOptions{
+		Type:    cmdutil.ExportActionType,
+		Payload: cmdutil.ExportActionPayload(flagExportSessionID),
+		Prompt:  i18n.T("export.confirm_prompt"),
+		Yes:     flagExportYes,
+		Token:   flagExportConfirm,
+		ResumeCommand: func(token string) string {
+			return fmt.Sprintf("vk video export %d --session-id %s --confirm %s", taskID, flagExportSessionID, token)
+		},
 	})
 	if err != nil {
 		return err
@@ -102,7 +116,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 			return
 		}
 		lastProgress, lastMsg = ev.Progress, ev.ProgressMsg
-		emitPollEvent(cmd, emitNDJSON, progressTTY, exportTaskID, ev)
+		emitPollEvent(cmd, ch, emitNDJSON, progressTTY, exportTaskID, ev)
 	})
 	if errors.Is(pollErr, context.Canceled) {
 		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("export.sigint_detach", exportTaskID, flagExportSessionID))
@@ -144,11 +158,23 @@ func runExport(cmd *cobra.Command, args []string) error {
 	noteJob(taskID, flagExportSessionID, func(r *jobs.Record) {
 		r.VideoPath = s.Export.VideoPath
 	})
+	if ch.Previews != nil {
+		// Re-read rather than reusing the row emitSnapshot fetched: that one
+		// was read to decide the exit code and may predate the backend
+		// stamping video_path, which is the whole thing worth delivering here.
+		if w, err := c.GetWorkBySession(ctx, flagExportSessionID); err == nil {
+			cmdutil.DeliverWorkArtifacts(ctx, ch.Previews, c, w)
+		}
+	}
 	return nil
 }
 
-func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID int64, ev exportpoll.Event) {
-	if emitNDJSON != nil {
+func emitPollEvent(cmd *cobra.Command, ch *cmdutil.RunChannel, emitNDJSON func(map[string]any) error, progressTTY bool, exportTaskID int64, ev exportpoll.Event) {
+	// A render takes minutes. Leaving a json caller with nothing on stderr
+	// for that whole time is the same silence the structured channel exists
+	// to remove — an export is exactly the kind of wait where "is this still
+	// going?" needs an answer that is not a guess.
+	if emitNDJSON != nil || ch.Structured() {
 		out := map[string]any{
 			"type":           eventType(ev.Status),
 			"export_task_id": exportTaskID,
@@ -157,7 +183,11 @@ func emitPollEvent(cmd *cobra.Command, emitNDJSON func(map[string]any) error, pr
 		if ev.ProgressMsg != "" {
 			out["progress_msg"] = ev.ProgressMsg
 		}
-		_ = emitNDJSON(out)
+		if emitNDJSON != nil {
+			_ = emitNDJSON(out)
+		} else {
+			ch.Emit(out)
+		}
 		return
 	}
 	stderr := cmd.ErrOrStderr()
@@ -209,6 +239,8 @@ func init() {
 	exportCmd.Flags().StringVar(&flagExportSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
 	exportCmd.Flags().BoolVar(&flagExportAsync, "async", false, "submit and return; do not wait")
 	exportCmd.Flags().BoolVarP(&flagExportYes, "yes", "y", false, "skip confirmation prompt")
+	exportCmd.Flags().StringVar(&flagExportConfirm, "confirm", "", "action_id from a previously blocked run, once the user has agreed to the spend")
+	exportCmd.Flags().StringVar(&flagExportPreviewDir, "preview-dir", "", i18n.T("create.flag.preview_dir"))
 	exportCmd.Flags().DurationVar(&flagExportTimeout, "timeout", exportpoll.DefaultTimeout(), "sync-mode deadline")
 	exportCmd.Flags().DurationVar(&flagExportPollInterval, "poll-interval", 0, "fixed poll interval (overrides exponential backoff)")
 	// `auth login` spells "do not block" --no-wait. Same intent here.

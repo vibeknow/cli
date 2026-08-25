@@ -1,6 +1,7 @@
 package video
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -45,7 +46,14 @@ func noteJob(taskID int64, sessionID string, mutate func(*jobs.Record)) {
 //
 // An explicit --session-id is always authoritative. The ledger only fills
 // gaps, so a stale entry can never override what the caller passed.
-func resolveTarget(args []string, sessionFlag string) (int64, string, error) {
+//
+// When the ledger cannot fill the gap either, the backend gets the last
+// word. The ledger is per-machine: an agent that moved hosts, a container
+// that was rebuilt, a colleague picking the work up — all of them have a
+// run they can reach through the account and no local file that mentions
+// it. "This machine has no note of it" is not "it does not exist", and the
+// command should not act as if it were.
+func resolveTarget(ctx context.Context, args []string, sessionFlag string) (int64, string, error) {
 	var taskID int64
 	if len(args) == 1 {
 		parsed, err := strconv.ParseInt(args[0], 10, 64)
@@ -70,21 +78,48 @@ func resolveTarget(args []string, sessionFlag string) (int64, string, error) {
 	}
 	if err != nil {
 		// A broken ledger must not become a broken command: fall through to
-		// the same "pass --session-id" instruction the empty case gives.
+		// the backend, then to the same "pass --session-id" instruction.
 		fmt.Fprintf(os.Stderr, "warning: could not read the local run ledger: %v\n", err)
 		found = false
 	}
-	if !found || rec.SessionID == "" {
-		if taskID != 0 {
-			return 0, "", clerr.Validationf("no session_id recorded for task %d", taskID).
-				WithHint("pass --session-id explicitly, or run `vk jobs list` to see what this machine has recorded")
+	if found && rec.SessionID != "" {
+		if taskID == 0 {
+			taskID = rec.TaskID
 		}
-		return 0, "", clerr.Validation("no task_id given and no recorded run to fall back on").
-			WithHint("pass a task_id and --session-id, or run `vk create` first — `vk jobs list` shows what is recorded")
+		fmt.Fprintf(os.Stderr, "using recorded run: task_id=%d session_id=%s\n", taskID, rec.SessionID)
+		return taskID, rec.SessionID, nil
 	}
-	if taskID == 0 {
-		taskID = rec.TaskID
+
+	if taskID != 0 {
+		// A task_id cannot be resolved remotely: the backend's work list is
+		// keyed by work_id and session_id and carries no task_id, so there
+		// is nothing to match against. Say what can actually be done rather
+		// than pretending to look.
+		return 0, "", clerr.Validationf("no session_id recorded for task %d", taskID).
+			WithHint("pass --session-id explicitly, or run `vk video list` to find the session — the backend list is keyed by session, not task")
 	}
-	fmt.Fprintf(os.Stderr, "using recorded run: task_id=%d session_id=%s\n", taskID, rec.SessionID)
-	return taskID, rec.SessionID, nil
+
+	if sess, ok := latestRemoteSession(ctx); ok {
+		fmt.Fprintf(os.Stderr, "no local record; using the most recent run on this account: session_id=%s\n", sess)
+		return 0, sess, nil
+	}
+
+	return 0, "", clerr.Validation("no task_id given, and neither the local ledger nor this account has a run to fall back on").
+		WithHint("pass a task_id and --session-id, or run `vk create` first — `vk jobs list` shows local records and `vk video list` shows the account's")
+}
+
+// latestRemoteSession returns the newest work's session_id from the
+// backend. Failure is silent by design: this is the fallback path, and the
+// caller's next move on a miss is the same instruction it would have got
+// anyway.
+func latestRemoteSession(ctx context.Context) (string, bool) {
+	c, err := newFiglensClient()
+	if err != nil {
+		return "", false
+	}
+	works, _, err := c.ListWorks(ctx, 1, 1)
+	if err != nil || len(works) == 0 || works[0].SessionID == "" {
+		return "", false
+	}
+	return works[0].SessionID, true
 }

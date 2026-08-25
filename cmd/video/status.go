@@ -19,7 +19,7 @@ var statusCmd = &cobra.Command{
   vk video status 123
   vk video status 123 --session-id sess_xxx --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		taskID, sessionID, err := resolveTarget(args, flagStatusSessionID)
+		taskID, sessionID, err := resolveTarget(cmd.Context(), args, flagStatusSessionID)
 		if err != nil {
 			return err
 		}

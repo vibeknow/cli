@@ -2,6 +2,103 @@
 
 ## Unreleased
 
+### Added — progress and result from one invocation
+
+`--output json` was silent until the end; `--output ndjson` put the
+progress stream on stdout, where it displaced the final answer and left a
+consumer to work out which of N lines was terminal. Watching a run and
+parsing its result was a choice nobody should have had to make.
+
+Long-running commands now write progress to **stderr** as
+`vk_event={...}` lines while stdout keeps carrying exactly one document.
+The payload is the same shape as the NDJSON stream, so one parser serves
+both. On by default with `--output json`; `VIBEKNOW_EVENTS=1` / `=0`
+overrides in either direction. Text mode keeps its prose — stderr there is
+a person's progress display — and ndjson keeps its stdout stream unchanged.
+
+### Added — `--preview-dir`: artifacts an agent can actually hand over
+
+`share_url` is a hosted page. A caller driving the CLI from a terminal
+cannot open one, so the single output of a video tool worth looking at was
+the one output it could not pass on.
+
+`--preview-dir <dir>` on `create`, `video wait` and `video export` writes
+the run's artifacts there and announces each as a `resource_ready` event
+carrying an absolute `local_path` to a fully written file. Downloads land
+in a temp file and are renamed last, so a reader never sees a partial one.
+
+Deduplicated by content hash against what is already on disk, not by URL —
+the backend re-signs unchanged assets, so keying on the address would
+re-deliver the same still on every poll. Because the comparison is against
+the file, it survives across processes. A failed fetch emits
+`resource_preview_warning` and never fails the run.
+
+The source URL is deliberately absent from every event: those are signed,
+and an agent that relays one has published a credential.
+
+### Changed — a paid render is no longer confirmed on the user's behalf
+
+`vk video export` and `vk create --export` with no terminal attached used
+to proceed, spending a credit, with a note on stderr nobody was reading. A
+confirmation prompt assumes someone is there to answer it; when an agent
+runs the CLI nobody is, and both available answers were bad.
+
+The decision is now a value rather than an interaction. Without a TTY and
+without prior authority the command exits **8** and writes to stdout:
+
+```json
+{ "status": "blocked",
+  "pending_actions": [{ "action_id": "act_…", "blocking": true,
+    "payload": { "credits": 1, … },
+    "options": [{ "id": "confirm", "effect": "resume" }, { "id": "cancel", "effect": "none" }],
+    "resume_command": "vk video export 42 --session-id s_x --confirm act_…" }] }
+```
+
+The caller relays the question and the token; `--confirm <action_id>`
+proceeds. The token is an HMAC over the action and its decision-relevant
+payload under a per-installation key, so it cannot be derived by reasoning
+and stops verifying if the terms change — consent is to a specific price
+for a specific run.
+
+This is not a security boundary and does not pretend to be one; anything
+running as the user can read the key. It is an evidence boundary against
+confident invention.
+
+**Breaking for unattended callers that relied on the old auto-confirm.**
+`--yes` and `VIBEKNOW_ASSUME_YES=1` still bypass the gate and are the right
+answer when the user authorised the spend in advance; every script in this
+repo's own tests already used them.
+
+Scoped to the two paid paths. `kb delete` keeps the plain prompt — it is
+destructive but not billed — and `kb prune` is already dry-run by default.
+
+### Changed — exit 6 says whether a resend is safe
+
+"State unknown" is true and useless on its own. The caller's real question
+is whether re-running recovers a lost run or pays for a second render, and
+the CLI's own silence proves nothing: an empty stream looks the same
+whether the task was never dispatched, the session id was wrong, or the
+connection dropped.
+
+Before returning 6, `create` and `video wait` now read the work row and put
+the verdict in `error.detail`: `delivery` is `submitted` /
+`not_submitted` / `indeterminate`, with a `resend_safe` boolean, the
+backend's own status, and a `next_actions` command. `indeterminate`
+reports `resend_safe: false` — waiting when a run was lost costs a delay,
+resending when it was not costs the user's money.
+
+### Changed — the run ledger falls back to the account
+
+The ledger is per-machine, so "not recorded here" was a weak answer for an
+agent that moved hosts, a rebuilt container, or a colleague picking the
+work up. When the ledger has nothing, the video commands now resolve the
+account's most recent run and say so on stderr.
+
+Only for the no-arguments case: the backend's work list is keyed by
+`work_id` and `session_id` and carries no `task_id`, so `vk video status
+12345` against an empty ledger still exits 2 — pointing at `vk video list`
+rather than pretending to look up something it cannot.
+
 ### Fixed — the exit-code contract now holds on every command
 
 Found by driving all 37 commands through a stub backend across output

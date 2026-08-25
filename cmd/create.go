@@ -46,6 +46,8 @@ var (
 	flagCreateImages  string
 
 	flagCreateScriptLock bool
+	flagCreatePreviewDir string
+	flagCreateConfirm    string
 )
 
 // asyncDetachTimeout bounds how long `--async` waits for the backend's first
@@ -132,6 +134,14 @@ var createCmd = &cobra.Command{
 			if engine == figlens.EngineAgent {
 				return clerr.Validation(i18n.T("create.err.images_needs_pipeline"))
 			}
+		}
+
+		// Built before anything is uploaded or billed: a --preview-dir that
+		// cannot be created is a mistake worth catching while it is still
+		// free, not after a render the caller then cannot be shown.
+		ch, err := cmdutil.NewRunChannel(cmd, flagCreatePreviewDir)
+		if err != nil {
+			return clerr.Validation(err.Error())
 		}
 
 		ctx := context.Background()
@@ -350,6 +360,22 @@ var createCmd = &cobra.Command{
 		format, _ := cmd.Flags().GetString("output")
 		isNDJSONCreate := format == "ndjson"
 
+		// routeEvent sends one stream event to whichever structured channel
+		// is active and reports whether it did. When it returns false the
+		// caller writes the human line instead, so stderr never carries both
+		// renderings of the same fact.
+		routeEvent := func(ev figlens.StreamEvent) bool {
+			if isNDJSONCreate {
+				_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
+				return true
+			}
+			if ch.Structured() {
+				ch.Emit(ev.NDJSONFields())
+				return true
+			}
+			return false
+		}
+
 		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
 		var sawAnyEvent bool
@@ -403,9 +429,7 @@ var createCmd = &cobra.Command{
 
 			switch ev.Type {
 			case "node.started", "node.succeeded", "node.warning", "node.failed":
-				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
-				} else {
+				if !routeEvent(ev) {
 					switch ev.Type {
 					case "node.started":
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
@@ -418,9 +442,7 @@ var createCmd = &cobra.Command{
 					}
 				}
 			case "node.progress":
-				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
-				} else {
+				if !routeEvent(ev) {
 					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
 					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
 				}
@@ -429,9 +451,7 @@ var createCmd = &cobra.Command{
 				if successSessionID == "" {
 					successSessionID = task.SessionID
 				}
-				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
-				} else {
+				if !routeEvent(ev) {
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
 				}
 			case "task.failed":
@@ -452,9 +472,7 @@ var createCmd = &cobra.Command{
 						r.Error = failCode
 					}
 				})
-				if isNDJSONCreate {
-					_ = output.NewNDJSON(cmd.OutOrStdout()).Event(ev.NDJSONFields())
-				} else {
+				if !routeEvent(ev) {
 					switch {
 					case ev.Code == "insufficient_credits":
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
@@ -546,14 +564,17 @@ var createCmd = &cobra.Command{
 			updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
 				r.Status = jobs.StatusUnknown
 			})
+			// Ask the backend before answering. "The CLI saw nothing" and
+			// "nothing happened" are different facts, and only one of them
+			// makes it safe to run `vk create` again — which is the very
+			// next thing a caller is tempted to do here, at the price of a
+			// second render.
+			probe := cmdutil.ProbeRun(ctx, fc, task.TaskID, task.SessionID)
+			reattach := fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
 			if !sawAnyEvent {
-				return clerr.New(i18n.T("create.err.no_events")).
-					WithCode(6).
-					WithHintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
+				return cmdutil.UnknownStateError(i18n.T("create.err.no_events"), probe, reattach)
 			}
-			return clerr.New(i18n.T("create.err.no_terminal_event")).
-				WithCode(6).
-				WithHintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
+			return cmdutil.UnknownStateError(i18n.T("create.err.no_terminal_event"), probe, reattach)
 		}
 
 		stdout := cmd.OutOrStdout()
@@ -577,6 +598,12 @@ var createCmd = &cobra.Command{
 			r.ShareURL = s.Preview.ShareURL
 		})
 
+		// The share_url is a hosted page, which a caller running in a
+		// terminal cannot show anyone. With --preview-dir the cover still
+		// lands on disk here, so there is something to actually look at
+		// before deciding whether the MP4 is worth paying to render.
+		cmdutil.DeliverWorkArtifacts(ctx, ch.Previews, fc, w)
+
 		if err := snapshot.Render(stdout, stderr, s, format); err != nil {
 			return err
 		}
@@ -585,9 +612,18 @@ var createCmd = &cobra.Command{
 			return nil
 		}
 
-		ok, err := cmdutil.Confirm(cmdutil.ConfirmOptions{
-			Prompt: i18n.T("export.confirm_prompt"),
-			Yes:    flagCreateYes,
+		// The same spend boundary `vk video export` guards, minted over the
+		// same payload — so a caller blocked here can resume with either
+		// command and the token still verifies.
+		ok, err := cmdutil.Gate(cmd, cmdutil.GateOptions{
+			Type:    cmdutil.ExportActionType,
+			Payload: cmdutil.ExportActionPayload(successSessionID),
+			Prompt:  i18n.T("export.confirm_prompt"),
+			Yes:     flagCreateYes,
+			Token:   flagCreateConfirm,
+			ResumeCommand: func(token string) string {
+				return fmt.Sprintf("vk video export %d --session-id %s --confirm %s", task.TaskID, successSessionID, token)
+			},
 		})
 		if err != nil {
 			return err
@@ -639,6 +675,7 @@ var createCmd = &cobra.Command{
 		updateJob(task.TaskID, successSessionID, func(r *jobs.Record) {
 			r.VideoPath = finalSnap.Export.VideoPath
 		})
+		cmdutil.DeliverWorkArtifacts(ctx, ch.Previews, fc, w2)
 		if err := snapshot.Render(stdout, stderr, finalSnap, format); err != nil {
 			return err
 		}
@@ -664,6 +701,8 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateKBID, "kb-id", "", i18n.T("create.flag.kb_id"))
 	createCmd.Flags().IntVar(&flagCreatePages, "pages", 0, i18n.T("create.flag.pages"))
 	createCmd.Flags().StringVar(&flagCreateImages, "images", "", i18n.T("create.flag.images"))
+	createCmd.Flags().StringVar(&flagCreatePreviewDir, "preview-dir", "", i18n.T("create.flag.preview_dir"))
+	createCmd.Flags().StringVar(&flagCreateConfirm, "confirm", "", "action_id from a previously blocked --export, once the user has agreed to the spend")
 	// `auth login` spells "do not block" --no-wait. Same intent here.
 	cmdutil.AliasFlags(createCmd, map[string]string{"no-wait": "async"})
 }

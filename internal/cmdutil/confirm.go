@@ -22,6 +22,11 @@ type ConfirmOptions struct {
 	IsTTY  func() bool // defaults to stderr-is-terminal
 }
 
+// defaultIsTTY reports whether a person is watching. stderr rather than
+// stdin, because stdout is routinely redirected by callers who are still
+// sitting at the terminal.
+func defaultIsTTY() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
+
 func Confirm(opts ConfirmOptions) (bool, error) {
 	if opts.Yes {
 		return true, nil
@@ -36,7 +41,7 @@ func Confirm(opts ConfirmOptions) (bool, error) {
 		opts.Err = os.Stderr
 	}
 	if opts.IsTTY == nil {
-		opts.IsTTY = func() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
+		opts.IsTTY = defaultIsTTY
 	}
 	if !opts.IsTTY() {
 		// Proceeding is the right call — an agent or CI job cannot answer a

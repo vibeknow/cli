@@ -35,7 +35,8 @@ file path, which shadowed the global --output format flag and made
   vk video download 123 --session-id sess_xxx --dest out.mp4 --overwrite
   vk video download 123 --session-id sess_xxx --dest out.mp4 --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, sessionID, err := resolveTarget(args, flagDownloadSessionID)
+		ctx := cmd.Context()
+		_, sessionID, err := resolveTarget(ctx, args, flagDownloadSessionID)
 		if err != nil {
 			return err
 		}
@@ -46,7 +47,6 @@ file path, which shadowed the global --output format flag and made
 			return err
 		}
 
-		ctx := cmd.Context()
 		w, err := c.GetWorkBySession(ctx, flagDownloadSessionID)
 		if err != nil {
 			return err
