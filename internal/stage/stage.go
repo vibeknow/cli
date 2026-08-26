@@ -1,34 +1,45 @@
 // Package stage maps figlens pipeline node names to logical CLI stages.
-// See spec §5.3: pipeline nodes → 6 stages (parse/outline/tts/render/publish/suggest).
-// The backend's pipeline rework renamed the middle of the graph
-// (script_writing/video_director/storyboard_plan/scene_filling replaced
-// text_speech/content_analyze/design/scene_generate); both generations stay
-// mapped so the CLI shows progress against old and new deployments alike.
+//
+// The backend does not emit stages — it emits `log.step_id` values, which
+// are graph node names, and only for nodes registered in its i18n table
+// (go-figlens internal/pipeline/node/base.go, nodeEventI18nKeys). Nodes
+// outside that table — prepare, knowledge_detail, theme_select,
+// avatar_submit, suggest, video_finish, and the whole handdraw_* line —
+// never produce a process event, so they must not appear here: a mapping
+// for a node that never arrives is documentation telling lies.
+//
+// Four stages can actually light up on the v=3 pipeline:
+// outline → tts → render → publish. The v=2 agent engine emits no
+// step_ids at all (free-form progress only). Two step_ids arrive outside
+// this table by design and are handled upstream in client/figlens:
+// the "" (empty) step_id used by the run-started event and by stalled-run
+// pending heartbeats, and any future node this build has never heard of —
+// both are forwarded as free-form progress rather than dropped.
 package stage
 
 var nodeToStage = map[string]string{
-	"prepare":          "parse",
-	"knowledge_detail": "parse",
-	"text_speech":      "outline",
-	"content_analyze":  "outline",
-	"script_writing":   "outline",
-	"video_director":   "outline",
-	"theme_select":     "outline",
-	"storyboard_plan":  "outline",
-	"design":           "outline",
-	"tts_generate":     "tts",
-	"scene_generate":   "render",
-	"scene_filling":    "render",
-	"bg_images":        "render",
-	"cover":            "render",
-	"bgm":              "render",
-	"video_package":    "publish",
-	"video_finish":     "publish",
-	"suggest":          "suggest",
-	"doc_dissect":      "outline",
-	"doc_replica_plan": "outline",
+	// Standard line (灵活创作 / 原稿锁定).
+	"big_director":    "outline", // pre-script planning, the longest LLM node (1–2 min)
+	"script_writing":  "outline",
+	"storyboard_plan": "outline",
+	"tts_generate":    "tts",
+	"scene_filling":   "render",
+	"bg_images":       "render",
+	"cover":           "render",
+	"bgm":             "render",
+	"video_package":   "publish",
+
+	// Replica line (PPT 讲解). doc_replica_plan registers empty lifecycle
+	// text and emits its own staged progress messages from inside the node;
+	// doc_replica_shoot events are likewise hand-emitted. Both still carry
+	// their step_id, so they map here.
+	"doc_dissect":       "outline",
+	"doc_replica_plan":  "outline",
 	"doc_replica_shoot": "render",
-	"image2_style_select": "outline",
+
+	// Image line (图解视频). The image2_* prefix is the backend's wire
+	// naming; DisplayName sanitizes it before any user-facing output.
+	"image2_theme_select": "outline",
 	"image2_storyboard":   "outline",
 	"image2_gen":          "render",
 }
@@ -38,21 +49,21 @@ var nodeToStage = map[string]string{
 // The image-mode step_ids carry an internal model codename on the wire;
 // display sanitized names so it never reaches user output.
 var nodeDisplayName = map[string]string{
-	"image2_style_select": "style_select",
+	"image2_theme_select": "style_select",
 	"image2_storyboard":   "image_storyboard",
 	"image2_gen":          "image_gen",
 }
 
-var orderedStages = []string{"parse", "outline", "tts", "render", "publish", "suggest"}
+var orderedStages = []string{"outline", "tts", "render", "publish"}
 
+// orderedNodes lists the emitting nodes of the standard line in graph
+// order. Mode-specific nodes (doc_*, image2_*) branch off this spine and
+// are not part of the canonical ordering.
 var orderedNodes = []string{
-	"prepare", "knowledge_detail",
-	"text_speech", "content_analyze", "script_writing", "video_director",
-	"theme_select", "storyboard_plan", "design",
+	"big_director", "script_writing", "storyboard_plan",
 	"tts_generate",
-	"scene_generate", "scene_filling", "bg_images", "cover", "bgm",
-	"video_package", "video_finish",
-	"suggest",
+	"scene_filling", "bg_images", "cover", "bgm",
+	"video_package",
 }
 
 func FromNode(node string) (string, bool) {

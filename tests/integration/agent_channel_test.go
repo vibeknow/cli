@@ -35,8 +35,8 @@ func channelStub(t *testing.T, coverBody string) *httptest.Server {
 			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"aim_result\",\"answer_done\":{\"text\":\"p\"}}}\n\ndata: [DONE]\n\n")
 		case "/v1/agent3forVideo/stream":
 			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"process\",\"log\":{\"step_id\":\"prepare\",\"status\":\"start\",\"message\":\"go\"}}}\n\n")
-			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"process\",\"log\":{\"step_id\":\"prepare\",\"status\":\"success\",\"message\":\"done\"}}}\n\n")
+			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"process\",\"log\":{\"step_id\":\"script_writing\",\"status\":\"start\",\"message\":\"go\"}}}\n\n")
+			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"process\",\"log\":{\"step_id\":\"script_writing\",\"status\":\"success\",\"message\":\"done\"}}}\n\n")
 			fmt.Fprint(w, "data: {\"code\":200,\"data\":{\"type\":\"aim_result\",\"session_id\":\"s_chan\"}}\n\ndata: [DONE]\n\n")
 		case "/v1/works/detailBySession":
 			w.Header().Set("Content-Type", "application/json")

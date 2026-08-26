@@ -46,6 +46,12 @@ type InitTaskParams struct {
 	// the draft clips to the task, and snapshots them onto the new work.
 	// Only honored on the pipeline standard line; rejected for replica.
 	SelectedImageIndexes []int `json:"selected_image_indexes,omitempty"`
+	// PageCount is image-mode-only and must match what the stream request
+	// will send: init runs the image2 feasibility preflight (word count ≥
+	// pages × 50, mandatory-image count ≤ pages) against this value,
+	// defaulting to 4 when omitted — so omitting it here while streaming a
+	// real page count preflights a different request than the one that runs.
+	PageCount int `json:"page_count,omitempty"`
 }
 
 type initTaskWire struct {

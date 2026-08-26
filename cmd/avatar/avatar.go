@@ -1,10 +1,10 @@
-package video
+package avatar
 
 import "github.com/spf13/cobra"
 
 var Cmd = &cobra.Command{
-	Use: "video",
-	// NoArgs turns `vk video <typo>` into cobra's "unknown command" error
+	Use: "avatar",
+	// NoArgs turns `vk avatar <typo>` into cobra's "unknown command" error
 	// (exit 2). Without it a group command with no Run falls back to
 	// printing its help on stdout and exiting 0 — a malformed command
 	// reported as success, with help text where a caller expected data.
@@ -14,16 +14,9 @@ var Cmd = &cobra.Command{
 	// is how `vk <group> <typo>` used to exit 0. With this, NoArgs runs
 	// first and a bare `vk <group>` still prints help.
 	RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
-	Short: "manage video tasks and exports",
+	Short: "list talking-head avatars for `vk create --avatar`",
 }
 
 func init() {
-	Cmd.AddCommand(statusCmd)
-	Cmd.AddCommand(waitCmd)
-	Cmd.AddCommand(downloadCmd)
 	Cmd.AddCommand(listCmd)
-	Cmd.AddCommand(urlCmd)
-	Cmd.AddCommand(exportCmd)
-	Cmd.AddCommand(exportStatusCmd)
-	Cmd.AddCommand(avatarRetryCmd)
 }

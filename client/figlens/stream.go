@@ -32,6 +32,28 @@ type StreamParams struct {
 	// images (image-generation cost scales with it). 0 lets the
 	// storyboard decide.
 	PageCount int `json:"page_count,omitempty"`
+	// Theme is a style catalog ID from `vk theme list` (or a ua_<assetId>
+	// custom-theme token). Empty lets the pipeline auto-select. Suite
+	// membership must match VideoKind — the backend hard-rejects an
+	// image-suite theme outside image mode rather than degrading silently.
+	Theme string `json:"theme,omitempty"`
+	// Language is the output locale for script + TTS (zh-CN, en-US, es-ES,
+	// fr-FR, pt-BR, ja-JP, ko-KR). Only the v=3 pipeline reads it; empty
+	// (or any unrecognized value) falls back to the deployment default.
+	Language string `json:"language,omitempty"`
+	// Avatar selects a talking-head presenter: "sys_<id>" (public preset,
+	// see `vk avatar list`) or "ua_<id>" (own activated asset). The wire
+	// keys are camelCase — the one part of this request that is — because
+	// the backend binds them that way. Validated hard at the stream entry
+	// (unknown/unactivated refs are a 400, never a silent skip).
+	Avatar string `json:"avatar,omitempty"`
+	// AvatarPosition is a corner preset: top-left / top-right /
+	// bottom-left / bottom-right. Empty falls back server-side to the
+	// user's saved preference, then the asset default, then top-left.
+	AvatarPosition string `json:"avatarPosition,omitempty"`
+	// AvatarHeightPx is the circle-window diameter at a 1080p base,
+	// 120–480. 0 falls back like AvatarPosition (default 240).
+	AvatarHeightPx float64 `json:"avatarHeightPx,omitempty"`
 	// SelectedImageIndexes mirrors InitTaskParams; sending it on the stream
 	// too covers the second-generation path where no init call happens.
 	SelectedImageIndexes []int  `json:"selected_image_indexes,omitempty"`
@@ -56,6 +78,10 @@ type StreamEvent struct {
 	// because the backend's terminal SSE error event carries no retryable
 	// flag of its own.
 	Retryable bool
+	// Metrics carries the node's real output numbers on node.succeeded
+	// (e.g. chapters, script_chars, duration_sec). Nil for most events;
+	// forwarded to structured output only.
+	Metrics map[string]any
 }
 
 type ssePayload struct {
@@ -68,15 +94,20 @@ type sseData struct {
 	Log       json.RawMessage `json:"log,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	Message   string          `json:"message,omitempty"`
+	// Msg carries the stream-done sentinel: the backend wraps "[DONE]"
+	// inside the ordinary {code,data} envelope (data.msg == "[DONE]"),
+	// it is not a bare SSE data line. EOF remains the fallback terminator
+	// for deployments that close the connection without one.
+	Msg string `json:"msg,omitempty"`
 	// Current backend (assistant_event rework) nests terminal payloads:
 	// aim_result fields under answer_done, failure details under error.
 	AnswerDone *sseAnswerDone `json:"answer_done,omitempty"`
 	Err        *sseError      `json:"error,omitempty"`
 	// Legacy flat aim_result fields (pre-rework deployments). The two
 	// engines disagree on where the playable URL lives — see resolveVideoURL.
-	HtmlPath string          `json:"html_path,omitempty"`  // v=3 pipeline
-	Text     string          `json:"text,omitempty"`       // v=2 agent (also free text on v=3, ignored there)
-	DataMap  json.RawMessage `json:"data,omitempty"`       // v=3 metadata bag, contains duration_ms etc.
+	HtmlPath string          `json:"html_path,omitempty"` // v=3 pipeline
+	Text     string          `json:"text,omitempty"`      // v=2 agent (also free text on v=3, ignored there)
+	DataMap  json.RawMessage `json:"data,omitempty"`      // v=3 metadata bag, contains duration_ms etc.
 }
 
 // sseAnswerDone mirrors the backend's AssistantAnswerDone: html_path holds
@@ -105,6 +136,10 @@ type processLog struct {
 	StepID  string `json:"step_id"`
 	Status  string `json:"status"`
 	Message string `json:"message"`
+	// Metrics carries real node outputs on success events (chapters,
+	// script_chars, cover_count, duration_sec, bg_count — the key set is
+	// per-node and open-ended). Forwarded verbatim to structured consumers.
+	Metrics map[string]any `json:"metrics,omitempty"`
 }
 
 // mapSSECode maps an SSE envelope code to a CLI error code label, delegating
@@ -199,6 +234,10 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 			continue
 		}
 
+		if d.Msg == "[DONE]" {
+			return nil
+		}
+
 		switch d.Type {
 		case "process":
 			var log processLog
@@ -206,7 +245,11 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 				continue
 			}
 			if log.StepID == "" {
-				// v=2 agent path: free-form progress, no node graph.
+				// Free-form progress with no node attribution. Three
+				// producers share this shape: the v=2 agent path (which has
+				// no node graph at all), the v=3 run-started event ("开始
+				// 处理…", status=start), and the v=3 stalled-run heartbeat
+				// (status=pending).
 				onEvent(StreamEvent{
 					Type:    "node.progress",
 					Status:  log.Status,
@@ -247,6 +290,7 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 				onEvent(StreamEvent{
 					Type: "node.succeeded", Stage: stageName,
 					Node: displayName, Message: log.Message,
+					Metrics: log.Metrics,
 				})
 			case "warning":
 				// Non-fatal degradation (e.g. image mode falls back to a
@@ -277,6 +321,22 @@ func (c *Client) StreamChat(ctx context.Context, params StreamParams, onEvent fu
 				}
 			}
 			onEvent(ev)
+
+		case "paused":
+			// The run was paused (web editor's pause button, or a
+			// multi-instance handover). Not terminal and not a failure:
+			// the work sits in status=4 until resumed. The payload is a
+			// process-log shape whose message says the plan was cancelled.
+			msg := d.Message
+			var log processLog
+			if len(d.Log) > 0 && json.Unmarshal(d.Log, &log) == nil && log.Message != "" {
+				msg = log.Message
+			}
+			onEvent(StreamEvent{Type: "task.paused", Message: msg})
+
+		case "keepalive":
+			// Real data-frame heartbeat (comment-frame heartbeats don't
+			// survive some gateways). Carries nothing; deliberately ignored.
 
 		case "error", "ERROR":
 			msg := d.Message

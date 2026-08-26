@@ -345,3 +345,84 @@ func TestResolveImageIndexes(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveLanguage(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{in: "", want: ""},
+		{in: "zh-CN", want: "zh-CN"},
+		{in: "ja-JP", want: "ja-JP"},
+		{in: "ko-KR", want: "ko-KR"},
+		// The backend allowlist compares canonical spellings; the CLI
+		// normalizes case so a shell-lowercased locale still lands.
+		{in: "en-us", want: "en-US"},
+		{in: " pt-br ", want: "pt-BR"},
+		// Unknowns must fail loudly: the backend would silently fall back
+		// to the deployment default, discarding an explicit choice.
+		{in: "de-DE", wantErr: true},
+		{in: "english", wantErr: true},
+	}
+	for _, tt := range tests {
+		got, err := resolveLanguage(tt.in)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("resolveLanguage(%q): expected error", tt.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("resolveLanguage(%q): %v", tt.in, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("resolveLanguage(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestResolveAvatar(t *testing.T) {
+	tests := []struct {
+		desc     string
+		ref, pos string
+		px       float64
+		wantErr  bool
+	}{
+		{desc: "empty is fine", ref: ""},
+		{desc: "public preset", ref: "sys_7"},
+		{desc: "own asset", ref: "ua_12"},
+		{desc: "corner + size", ref: "sys_7", pos: "bottom-right", px: 300},
+		{desc: "min size", ref: "sys_7", px: 120},
+		{desc: "max size", ref: "sys_7", px: 480},
+
+		// The backend 400s all of these at the stream entry; rejecting
+		// locally saves the init round-trip and any upload.
+		{desc: "bare id has no namespace", ref: "7", wantErr: true},
+		{desc: "unknown prefix", ref: "avatar_7", wantErr: true},
+		{desc: "bad position", ref: "sys_7", pos: "center", wantErr: true},
+		{desc: "size below range", ref: "sys_7", px: 100, wantErr: true},
+		{desc: "size above range", ref: "sys_7", px: 500, wantErr: true},
+
+		// position/size without an avatar would be silently meaningless.
+		{desc: "position without avatar", pos: "top-left", wantErr: true},
+		{desc: "size without avatar", px: 240, wantErr: true},
+	}
+	for _, tt := range tests {
+		got, err := resolveAvatar(tt.ref, tt.pos, tt.px)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("%s: expected error", tt.desc)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", tt.desc, err)
+			continue
+		}
+		if got != strings.TrimSpace(tt.ref) {
+			t.Errorf("%s: ref = %q, want %q", tt.desc, got, tt.ref)
+		}
+	}
+}

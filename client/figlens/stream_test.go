@@ -12,9 +12,9 @@ import (
 )
 
 func TestStreamChat_ProcessEvents(t *testing.T) {
-	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"prepare","status":"start","message":"Starting parse"}}}
+	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"start","message":"撰写讲稿中"}}}
 
-data: {"code":200,"data":{"type":"process","log":{"step_id":"prepare","status":"success","message":"Parse done"}}}
+data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"success","message":"讲稿完成"}}}
 
 data: {"code":200,"data":{"type":"aim_result","session_id":"s_abc"}}
 
@@ -44,10 +44,10 @@ data: [DONE]
 	if len(events) < 3 {
 		t.Fatalf("expected >= 3 events, got %d", len(events))
 	}
-	if events[0].Type != "node.started" || events[0].Node != "prepare" {
+	if events[0].Type != "node.started" || events[0].Node != "script_writing" || events[0].Stage != "outline" {
 		t.Fatalf("event[0] = %+v", events[0])
 	}
-	if events[1].Type != "node.succeeded" || events[1].Node != "prepare" {
+	if events[1].Type != "node.succeeded" || events[1].Node != "script_writing" || events[1].Stage != "outline" {
 		t.Fatalf("event[1] = %+v", events[1])
 	}
 	if events[2].Type != "task.succeeded" || events[2].SessionID != "s_abc" {
@@ -571,5 +571,293 @@ func TestStreamChat_SendsImage2Params(t *testing.T) {
 	idx, _ := gotBody["selected_image_indexes"].([]any)
 	if len(idx) != 2 || idx[0] != float64(1) || idx[1] != float64(3) {
 		t.Fatalf("selected_image_indexes = %v, want [1 3]", gotBody["selected_image_indexes"])
+	}
+}
+
+// The backend wraps its stream-done sentinel inside the ordinary envelope
+// (data.msg == "[DONE]"), not as a bare `data: [DONE]` line; both shapes
+// must terminate the stream without surfacing an event.
+func TestStreamChat_EnvelopedDoneSentinel(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"msg_type":"assistant","msg":"[DONE]","session_id":"s_d"}}
+
+data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"start","message":"after done — must never arrive"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_d", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected no events after enveloped [DONE], got %v", events)
+	}
+}
+
+// Data-frame keepalives ({"type":"keepalive"}) exist to defeat gateway idle
+// timeouts that only count data: frames; they carry nothing and must be
+// silently dropped.
+func TestStreamChat_KeepaliveFrameIgnored(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"keepalive"}}
+
+data: {"code":200,"data":{"type":"aim_result","session_id":"s_k"}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_k", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "task.succeeded" {
+		t.Fatalf("expected only task.succeeded, got %v", events)
+	}
+}
+
+// A `paused` event (web pause button, multi-instance handover) is a known
+// non-terminal state: forwarded as task.paused, never as a failure.
+func TestStreamChat_PausedEvent(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"paused","session_id":"s_p","log":{"step_id":"","status":"paused","message":"任务已取消"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s_p", Query: ""}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "task.paused" {
+		t.Fatalf("expected task.paused, got %v", events)
+	}
+	if events[0].Message != "任务已取消" {
+		t.Fatalf("task.paused lost its message: %+v", events[0])
+	}
+}
+
+// image2_theme_select is the real wire step_id for the image-mode style
+// stage (the CLI shipped a wrong guess, image2_style_select, for a while);
+// it must map to a stage and get a sanitized display name.
+func TestStreamChat_Image2ThemeSelectMapsToOutline(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"image2_theme_select","status":"start","message":"挑选风格中"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "node.started" {
+		t.Fatalf("expected node.started, got %v", events)
+	}
+	if events[0].Stage != "outline" || events[0].Node != "style_select" {
+		t.Fatalf("stage/display mapping wrong: %+v", events[0])
+	}
+}
+
+// Nodes the backend added after this build (or that we deliberately keep
+// unmapped, like the never-registered prepare) degrade to free-form
+// progress with the backend's own user-facing message — never dropped.
+func TestStreamChat_UnmappedNodeDegradesToProgress(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"some_future_node","status":"start","message":"新节点进行中"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "node.progress" {
+		t.Fatalf("expected node.progress fallback, got %v", events)
+	}
+	if events[0].Message != "新节点进行中" || events[0].Node != "" {
+		t.Fatalf("fallback must keep message and drop the raw step_id: %+v", events[0])
+	}
+}
+
+// theme and language are v3 stream body fields; both must reach the wire
+// verbatim and stay off it when empty.
+func TestStreamChat_SendsThemeAndLanguage(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s", Query: "q",
+		Theme: "ink-wash", Language: "ja-JP",
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotBody["theme"] != "ink-wash" {
+		t.Fatalf("theme = %v, want ink-wash", gotBody["theme"])
+	}
+	if gotBody["language"] != "ja-JP" {
+		t.Fatalf("language = %v, want ja-JP", gotBody["language"])
+	}
+}
+
+func TestStreamChat_OmitsEmptyThemeAndLanguage(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s", Query: "q",
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	for _, k := range []string{"theme", "language"} {
+		if _, present := gotBody[k]; present {
+			t.Fatalf("empty %s leaked onto the wire: %v", k, gotBody)
+		}
+	}
+}
+
+// Node success events may carry real output metrics (chapters,
+// script_chars, …); they must survive into the event and its NDJSON
+// projection, and stay absent when the backend sends none.
+func TestStreamChat_NodeMetricsForwarded(t *testing.T) {
+	sseBody := `data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"success","message":"讲稿完成","metrics":{"script_chars":1234}}}}
+
+data: {"code":200,"data":{"type":"process","log":{"step_id":"tts_generate","status":"start","message":"配音中"}}}
+
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	var events []figlens.StreamEvent
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s", Query: "q"}, func(ev figlens.StreamEvent) {
+		events = append(events, ev)
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %v", events)
+	}
+	if events[0].Metrics["script_chars"] != float64(1234) {
+		t.Fatalf("metrics lost: %+v", events[0])
+	}
+	fields := events[0].NDJSONFields()
+	m, _ := fields["metrics"].(map[string]any)
+	if m["script_chars"] != float64(1234) {
+		t.Fatalf("NDJSON projection lost metrics: %v", fields)
+	}
+	if _, present := events[1].NDJSONFields()["metrics"]; present {
+		t.Fatalf("metrics key must be absent when the backend sent none: %v", events[1].NDJSONFields())
+	}
+}
+
+// The avatar trio binds camelCase on the wire — the only camelCase keys in
+// this request. snake_case here would be silently ignored by the backend
+// (no presenter, no error), which is exactly the failure this test pins.
+func TestStreamChat_SendsAvatarFieldsCamelCase(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{
+		TaskID: 1, SessionID: "s", Query: "q",
+		Avatar: "sys_7", AvatarPosition: "bottom-right", AvatarHeightPx: 300,
+	}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if gotBody["avatar"] != "sys_7" {
+		t.Fatalf("avatar = %v, want sys_7", gotBody["avatar"])
+	}
+	if gotBody["avatarPosition"] != "bottom-right" {
+		t.Fatalf("avatarPosition = %v (snake_case would be silently dropped)", gotBody["avatarPosition"])
+	}
+	if gotBody["avatarHeightPx"] != float64(300) {
+		t.Fatalf("avatarHeightPx = %v, want 300", gotBody["avatarHeightPx"])
+	}
+	for _, k := range []string{"avatar_position", "avatar_height_px"} {
+		if _, present := gotBody[k]; present {
+			t.Fatalf("unexpected snake_case key %s on the wire", k)
+		}
+	}
+}
+
+func TestStreamChat_OmitsEmptyAvatarFields(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	err := c.StreamChat(context.Background(), figlens.StreamParams{TaskID: 1, SessionID: "s", Query: "q"}, func(figlens.StreamEvent) {})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	for _, k := range []string{"avatar", "avatarPosition", "avatarHeightPx"} {
+		if _, present := gotBody[k]; present {
+			t.Fatalf("empty %s leaked onto the wire: %v", k, gotBody)
+		}
 	}
 }

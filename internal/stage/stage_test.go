@@ -6,105 +6,31 @@ import (
 	"github.com/vibeknow/cli/internal/stage"
 )
 
+// The mapping mirrors go-figlens's nodeEventI18nKeys registry: exactly the
+// step_ids the backend actually emits, nothing else. A node in this table
+// that the backend never sends is a lie; a node the backend sends that is
+// missing here silently loses its stage attribution.
 func TestNodeToStage(t *testing.T) {
 	tests := []struct {
 		node string
 		want string
 	}{
-		{"prepare", "parse"},
-		{"knowledge_detail", "parse"},
-		{"text_speech", "outline"},
-		{"content_analyze", "outline"},
-		{"theme_select", "outline"},
-		{"design", "outline"},
+		// standard line
+		{"big_director", "outline"},
+		{"script_writing", "outline"},
+		{"storyboard_plan", "outline"},
 		{"tts_generate", "tts"},
-		{"scene_generate", "render"},
+		{"scene_filling", "render"},
 		{"bg_images", "render"},
 		{"cover", "render"},
 		{"bgm", "render"},
 		{"video_package", "publish"},
-		{"video_finish", "publish"},
-		{"suggest", "suggest"},
+		// replica line
+		{"doc_dissect", "outline"},
 		{"doc_replica_plan", "outline"},
 		{"doc_replica_shoot", "render"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.node, func(t *testing.T) {
-			got, ok := stage.FromNode(tt.node)
-			if !ok {
-				t.Fatalf("node %q not found in mapping", tt.node)
-			}
-			if got != tt.want {
-				t.Fatalf("FromNode(%q) = %q, want %q", tt.node, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestNodeToStage_Unknown(t *testing.T) {
-	_, ok := stage.FromNode("nonexistent_node")
-	if ok {
-		t.Fatal("expected unknown node to return ok=false")
-	}
-}
-
-func TestAllNodes(t *testing.T) {
-	nodes := stage.AllNodes()
-	if len(nodes) != 18 {
-		t.Fatalf("expected 18 nodes, got %d", len(nodes))
-	}
-}
-
-func TestStageOrder(t *testing.T) {
-	stages := stage.OrderedStages()
-	expected := []string{"parse", "outline", "tts", "render", "publish", "suggest"}
-	if len(stages) != len(expected) {
-		t.Fatalf("expected %d stages, got %d", len(expected), len(stages))
-	}
-	for i, s := range stages {
-		if s != expected[i] {
-			t.Fatalf("stage[%d] = %q, want %q", i, s, expected[i])
-		}
-	}
-}
-
-// Nodes introduced by the go-figlens pipeline rework (script_writing /
-// video_director / storyboard_plan / scene_filling replaced the old
-// text_speech / content_analyze / design / scene_generate naming; the old
-// IDs stay mapped for older deployments).
-func TestNodeToStage_ReworkedPipelineNodes(t *testing.T) {
-	tests := []struct {
-		node string
-		want string
-	}{
-		{"script_writing", "outline"},
-		{"video_director", "outline"},
-		{"storyboard_plan", "outline"},
-		{"scene_filling", "render"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.node, func(t *testing.T) {
-			got, ok := stage.FromNode(tt.node)
-			if !ok {
-				t.Fatalf("node %q not found in mapping", tt.node)
-			}
-			if got != tt.want {
-				t.Fatalf("FromNode(%q) = %q, want %q", tt.node, got, tt.want)
-			}
-		})
-	}
-}
-
-// Wire step_ids from the image-mode (讲稿生图) line and the replica
-// doc_dissect split. The image2_* prefix is the backend's wire naming;
-// DisplayName sanitizes it before any user-facing output.
-func TestNodeToStage_ImageModeAndDissectNodes(t *testing.T) {
-	tests := []struct {
-		node string
-		want string
-	}{
-		{"doc_dissect", "outline"},
-		{"image2_style_select", "outline"},
+		// image line
+		{"image2_theme_select", "outline"},
 		{"image2_storyboard", "outline"},
 		{"image2_gen", "render"},
 	}
@@ -121,19 +47,73 @@ func TestNodeToStage_ImageModeAndDissectNodes(t *testing.T) {
 	}
 }
 
-// DisplayName must sanitize wire step_ids that carry internal codenames
-// and pass everything else through unchanged.
-func TestDisplayName_SanitizesCodenames(t *testing.T) {
-	tests := map[string]string{
-		"image2_style_select": "style_select",
-		"image2_storyboard":   "image_storyboard",
-		"image2_gen":          "image_gen",
-		"prepare":             "prepare",     // identity fallback
-		"future_node":         "future_node", // unknown passes through
+// Step_ids the backend never emits must stay out of the table. Each entry
+// names why it is absent so a future re-add is a deliberate decision:
+//   - prepare/knowledge_detail/theme_select/avatar_submit/suggest/video_finish:
+//     graph nodes with no i18n registration — no process events on the wire.
+//   - text_speech/content_analyze/video_director/design/scene_generate:
+//     pre-rework names, gone from the backend graph entirely.
+//   - image2_style_select: never existed on the wire (the real step_id is
+//     image2_theme_select).
+//   - handdraw_*: the hand-draw line has no i18n registration at all; the
+//     backend is silent for its whole middle section.
+func TestNodeToStage_UnmappedNodes(t *testing.T) {
+	for _, node := range []string{
+		"prepare", "knowledge_detail", "theme_select", "avatar_submit",
+		"suggest", "video_finish",
+		"text_speech", "content_analyze", "video_director", "design", "scene_generate",
+		"image2_style_select",
+		"handdraw_material_reconstruct", "handdraw_theme_select",
+		"handdraw_storyboard", "handdraw_gen", "handdraw_vectorize",
+		"nonexistent_node", "",
+	} {
+		if _, ok := stage.FromNode(node); ok {
+			t.Errorf("FromNode(%q) unexpectedly mapped; must fall through to free-form progress", node)
+		}
 	}
-	for node, want := range tests {
-		if got := stage.DisplayName(node); got != want {
-			t.Fatalf("DisplayName(%q) = %q, want %q", node, got, want)
+}
+
+func TestStageOrder(t *testing.T) {
+	stages := stage.OrderedStages()
+	// parse and suggest are gone: the backend never emits events for the
+	// nodes that used to feed them, so a six-stage bar showed two segments
+	// that could not light up.
+	expected := []string{"outline", "tts", "render", "publish"}
+	if len(stages) != len(expected) {
+		t.Fatalf("expected %d stages, got %d: %v", len(expected), len(stages), stages)
+	}
+	for i, s := range stages {
+		if s != expected[i] {
+			t.Fatalf("stage[%d] = %q, want %q", i, s, expected[i])
+		}
+	}
+}
+
+func TestAllNodes(t *testing.T) {
+	nodes := stage.AllNodes()
+	if len(nodes) != 9 {
+		t.Fatalf("expected 9 standard-line nodes, got %d: %v", len(nodes), nodes)
+	}
+	for _, n := range nodes {
+		if !stage.IsKnownNode(n) {
+			t.Errorf("ordered node %q missing from nodeToStage", n)
+		}
+	}
+}
+
+// The image-mode wire names carry an internal model codename; DisplayName
+// must sanitize them and pass everything else through untouched.
+func TestDisplayName(t *testing.T) {
+	tests := []struct{ node, want string }{
+		{"image2_theme_select", "style_select"},
+		{"image2_storyboard", "image_storyboard"},
+		{"image2_gen", "image_gen"},
+		{"script_writing", "script_writing"},
+		{"doc_replica_shoot", "doc_replica_shoot"},
+	}
+	for _, tt := range tests {
+		if got := stage.DisplayName(tt.node); got != tt.want {
+			t.Errorf("DisplayName(%q) = %q, want %q", tt.node, got, tt.want)
 		}
 	}
 }

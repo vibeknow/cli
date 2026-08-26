@@ -44,6 +44,12 @@ var (
 	flagCreateKBID    string
 	flagCreatePages   int
 	flagCreateImages  string
+	flagCreateTheme   string
+	flagCreateLang    string
+
+	flagCreateAvatar    string
+	flagCreateAvatarPos string
+	flagCreateAvatarPx  float64
 
 	flagCreateScriptLock bool
 	flagCreatePreviewDir string
@@ -55,6 +61,12 @@ var (
 // request has been delivered) but is reported, since the run was never
 // observed to start.
 const asyncDetachTimeout = 60 * time.Second
+
+// streamStallNotice is how long the progress stream may stay silent before
+// the human path prints a "still generating" reassurance. Long enough that
+// ordinary node gaps never trigger it; short enough that the hand-drawn
+// line's silent middle section (minutes) reassures more than once.
+const streamStallNotice = 60 * time.Second
 
 // docIDRe matches a vectoria document identifier supplied via `--from`.
 // Two forms are accepted:
@@ -81,6 +93,15 @@ var createCmd = &cobra.Command{
   - a URL (http:// or https://) — uploaded to vectoria
   - a local file path — uploaded to vectoria`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Expanded first, so everything below — validation included — sees
+		// one flag set and cannot tell a preset value from a typed one.
+		// Reported immediately rather than with the rest of the run channel,
+		// because a preset that supplied an invalid combination has to be
+		// visible in the error that rejects it.
+		if err := applyCreatePreset(cmd); err != nil {
+			return err
+		}
+
 		if flagCreateFrom == "" {
 			return clerr.Validation("--from is required").
 				WithHint("pass a local file, an http(s) URL, or a doc_id together with --kb-id")
@@ -115,8 +136,40 @@ var createCmd = &cobra.Command{
 		if flagCreatePages != 0 && videoKind != figlens.VideoKindImage2 {
 			return clerr.Validation(i18n.T("create.err.pages_needs_image"))
 		}
-		if flagCreatePages < 0 {
+		// 1..20 is the backend's accepted range (Image2MaxPageCount);
+		// rejecting locally saves an init round-trip that would 400 anyway.
+		if flagCreatePages < 0 || flagCreatePages > 20 {
 			return clerr.Validation(i18n.T("create.err.pages_invalid", flagCreatePages))
+		}
+		// theme and language are read by the v=3 pipeline entry only; the
+		// agent handler ignores both, which would silently drop the user's
+		// explicit choice — reject the combination like the mode combos.
+		if engine == figlens.EngineAgent && flagCreateTheme != "" {
+			return clerr.Validation(i18n.T("create.err.theme_needs_pipeline"))
+		}
+		language, err := resolveLanguage(flagCreateLang)
+		if err != nil {
+			return err
+		}
+		if engine == figlens.EngineAgent && language != "" {
+			return clerr.Validation(i18n.T("create.err.language_needs_pipeline"))
+		}
+		avatarRef, err := resolveAvatar(flagCreateAvatar, flagCreateAvatarPos, flagCreateAvatarPx)
+		if err != nil {
+			return err
+		}
+		if avatarRef != "" {
+			// Both rejections guard against a silent no-op, not a backend
+			// error: the agent engine stores the avatar config but has no
+			// compositing wired up yet, and the hand-drawn graph has no
+			// avatar node at all — either way the backend accepts the
+			// request and renders without the presenter the user asked for.
+			if engine == figlens.EngineAgent {
+				return clerr.Validation(i18n.T("create.err.avatar_needs_pipeline"))
+			}
+			if videoKind == figlens.VideoKindHandDraw {
+				return clerr.Validation(i18n.T("create.err.avatar_not_handdraw"))
+			}
 		}
 		imageIndexes, err := resolveImageIndexes(flagCreateImages)
 		if err != nil {
@@ -247,6 +300,16 @@ var createCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr)
 			}
 			if err != nil {
+				// Prompt optimisation is a nice-to-have and degrades to the
+				// default query — but not when the reason is authentication.
+				// Every later call needs the same credential, so degrading
+				// here only buys a confusing "using default" line before the
+				// run dies at init anyway. Surface it now, while the message
+				// is still the first thing the user reads.
+				var ce *clerr.Error
+				if errors.As(err, &ce) && ce.Type == clerr.TypeAuth {
+					return err
+				}
 				fmt.Fprintln(os.Stderr, i18n.T("create.prompt_fallback", err))
 				query = i18n.T("create.default_query")
 			} else {
@@ -261,7 +324,7 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, ScriptLock: scriptLock, SelectedImageIndexes: imageIndexes}
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, ScriptLock: scriptLock, SelectedImageIndexes: imageIndexes, PageCount: flagCreatePages}
 		if (videoKind != "" || scriptLock || len(imageIndexes) > 0) && kbID != "" && docID != "" {
 			// Modes with init-time preflights (script_lock quality check,
 			// replica PPT check, doc-support check) and mandatory-image
@@ -378,7 +441,25 @@ var createCmd = &cobra.Command{
 
 		var failExitCode int // 0 = not failed; 5 = business; 2 = script_invalid (user-fixable input)
 		var successSessionID string
-		var sawAnyEvent bool
+		var sawAnyEvent, taskPaused bool
+
+		// Human progress path only: reassure on long silent stretches. The
+		// hand-drawn line's whole middle section emits no process events by
+		// design (nothing between script and TTS for minutes), and every
+		// mode can go quiet inside a heavy node. Structured consumers get
+		// the documented contract ("silence is normal") instead of
+		// synthetic events.
+		var stall *cmdutil.StallNotifier
+		if !isNDJSONCreate && !ch.Structured() {
+			stallKey := "create.still_running"
+			if videoKind == figlens.VideoKindHandDraw {
+				stallKey = "create.still_running_handdraw"
+			}
+			stall = cmdutil.StartStallNotifier(streamStallNotice, func(elapsed time.Duration) {
+				fmt.Fprintln(os.Stderr, i18n.T(stallKey, elapsed))
+			})
+			defer stall.Stop()
+		}
 
 		streamCtx := ctx
 		var detach context.CancelFunc
@@ -411,9 +492,17 @@ var createCmd = &cobra.Command{
 			ScriptLock:           scriptLock,
 			PageCount:            flagCreatePages,
 			SelectedImageIndexes: imageIndexes,
+			Theme:                strings.TrimSpace(flagCreateTheme),
+			Language:             language,
+			Avatar:               avatarRef,
+			AvatarPosition:       strings.TrimSpace(flagCreateAvatarPos),
+			AvatarHeightPx:       flagCreateAvatarPx,
 			Engine:               engine,
 		}, func(ev figlens.StreamEvent) {
 			sawAnyEvent = true
+			if stall != nil {
+				stall.Touch()
+			}
 
 			// --async: any event at all proves the backend dispatched the
 			// run, which is all this mode promised to wait for. Terminal
@@ -453,6 +542,11 @@ var createCmd = &cobra.Command{
 				}
 				if !routeEvent(ev) {
 					fmt.Fprintln(os.Stderr, i18n.T("create.task_succeeded"))
+				}
+			case "task.paused":
+				taskPaused = true
+				if !routeEvent(ev) {
+					fmt.Fprintln(os.Stderr, i18n.T("create.task_paused"))
 				}
 			case "task.failed":
 				switch {
@@ -552,6 +646,18 @@ var createCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr, i18n.T("create.async.hint", task.TaskID, task.SessionID))
 				return nil
 			}
+		}
+
+		if taskPaused && successSessionID == "" {
+			// Paused is a known non-terminal state, not an unknown one: no
+			// probe needed, and re-running create would double-spend. Exit 6
+			// (did not reach a terminal state) with the resume path spelled
+			// out — resuming is a web-editor action today.
+			updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
+				r.Status = jobs.StatusPaused
+			})
+			return clerr.Newf("%s", i18n.T("create.err.task_paused",
+				fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID))).WithCode(6)
 		}
 
 		if successSessionID == "" {
@@ -701,6 +807,11 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateKBID, "kb-id", "", i18n.T("create.flag.kb_id"))
 	createCmd.Flags().IntVar(&flagCreatePages, "pages", 0, i18n.T("create.flag.pages"))
 	createCmd.Flags().StringVar(&flagCreateImages, "images", "", i18n.T("create.flag.images"))
+	createCmd.Flags().StringVar(&flagCreateTheme, "theme", "", i18n.T("create.flag.theme"))
+	createCmd.Flags().StringVar(&flagCreateLang, "language", "", i18n.T("create.flag.language"))
+	createCmd.Flags().StringVar(&flagCreateAvatar, "avatar", "", i18n.T("create.flag.avatar"))
+	createCmd.Flags().StringVar(&flagCreateAvatarPos, "avatar-position", "", i18n.T("create.flag.avatar_position"))
+	createCmd.Flags().Float64Var(&flagCreateAvatarPx, "avatar-size", 0, i18n.T("create.flag.avatar_size"))
 	createCmd.Flags().StringVar(&flagCreatePreviewDir, "preview-dir", "", i18n.T("create.flag.preview_dir"))
 	createCmd.Flags().StringVar(&flagCreateConfirm, "confirm", "", "action_id from a previously blocked --export, once the user has agreed to the spend")
 	// `auth login` spells "do not block" --no-wait. Same intent here.
@@ -894,11 +1005,13 @@ func resolveVoiceID(ctx context.Context, flag string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	templates, err := vibeknow.New(url, tp).ListVoiceTemplates(ctx)
+	catalog, err := vibeknow.New(url, tp).ListPipelineVoices(ctx)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", i18n.T("create.err.voice_lookup_failed"), err)
 	}
-	return mapVoiceRef(ref, templates)
+	// Flatten includes cloned voices, so `--voice <#>` works for the
+	// user's own clones too, not just public templates.
+	return mapVoiceRef(ref, catalog.Flatten())
 }
 
 // voiceRefNeedsLookup reports whether a --voice value is a `vk voice list`
@@ -998,6 +1111,59 @@ func resolveAspect(flag string) (string, error) {
 	default:
 		return "", clerr.Validation(i18n.T("create.err.aspect_invalid", flag))
 	}
+}
+
+// createLanguages is the locale set the backend's language allowlist
+// accepts for v=3 generation. Anything else silently falls back to the
+// deployment default server-side, so the CLI rejects unknowns up front
+// instead of letting an explicit choice quietly not happen.
+var createLanguages = []string{"zh-CN", "en-US", "es-ES", "fr-FR", "pt-BR", "ja-JP", "ko-KR"}
+
+// resolveLanguage normalizes --language case-insensitively to the backend's
+// canonical locale spelling. Empty passes through (deployment default).
+func resolveLanguage(flag string) (string, error) {
+	flag = strings.TrimSpace(flag)
+	if flag == "" {
+		return "", nil
+	}
+	for _, l := range createLanguages {
+		if strings.EqualFold(flag, l) {
+			return l, nil
+		}
+	}
+	return "", clerr.Validation(i18n.T("create.err.language_invalid", flag, strings.Join(createLanguages, ", ")))
+}
+
+// resolveAvatar validates the --avatar flag trio locally, before any
+// upload or init call is spent. Reference shape, position enum, and the
+// 120–480 size range are all hard 400s at the backend's stream entry, so
+// there is nothing speculative about rejecting them here — and position/
+// size without an avatar would be silently meaningless.
+//
+// Free-drag center coordinates (avatarX/avatarY) are deliberately not
+// exposed: they exist for the web editor's drag gesture; corner presets
+// plus a size are the whole sensible CLI surface. Empty position/size
+// fall back server-side (saved preference → asset default → top-left/240).
+func resolveAvatar(ref, position string, heightPx float64) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		if strings.TrimSpace(position) != "" || heightPx != 0 {
+			return "", clerr.Validation(i18n.T("create.err.avatar_opts_need_avatar"))
+		}
+		return "", nil
+	}
+	if !strings.HasPrefix(ref, figlens.AvatarRefSystemPrefix) && !strings.HasPrefix(ref, figlens.AvatarRefUserPrefix) {
+		return "", clerr.Validation(i18n.T("create.err.avatar_ref_invalid", ref))
+	}
+	switch strings.TrimSpace(position) {
+	case "", "top-left", "top-right", "bottom-left", "bottom-right":
+	default:
+		return "", clerr.Validation(i18n.T("create.err.avatar_position_invalid", position))
+	}
+	if heightPx != 0 && (heightPx < figlens.AvatarMinHeightPx || heightPx > figlens.AvatarMaxHeightPx) {
+		return "", clerr.Validation(i18n.T("create.err.avatar_size_invalid", heightPx))
+	}
+	return ref, nil
 }
 
 // resolveEngine maps the --engine flag to a figlens.Engine value.

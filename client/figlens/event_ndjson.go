@@ -11,12 +11,18 @@ package figlens
 func (e StreamEvent) NDJSONFields() map[string]any {
 	switch e.Type {
 	case "node.started", "node.succeeded", "node.failed", "node.warning":
-		return map[string]any{
+		out := map[string]any{
 			"type":    e.Type,
 			"stage":   e.Stage,
 			"node":    e.Node,
 			"message": e.Message,
 		}
+		// Real node outputs (chapters, script_chars, duration_sec, …);
+		// only success events carry them, and only some nodes produce them.
+		if len(e.Metrics) > 0 {
+			out["metrics"] = e.Metrics
+		}
+		return out
 	case "node.progress":
 		return map[string]any{
 			"type":    e.Type,
@@ -41,6 +47,11 @@ func (e StreamEvent) NDJSONFields() map[string]any {
 			"code":      e.Code,
 			"message":   e.Message,
 			"retryable": e.Retryable,
+		}
+	case "task.paused":
+		return map[string]any{
+			"type":    e.Type,
+			"message": e.Message,
 		}
 	}
 	// Unknown event types are passed through with just the type so

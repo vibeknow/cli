@@ -14,21 +14,32 @@ type staticToken string
 
 func (s staticToken) Token(ctx context.Context) (string, error) { return string(s), nil }
 
-func TestListVoiceTemplates(t *testing.T) {
+func TestListPipelineVoices(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/voice-templates" {
+		if r.URL.Path != "/v1/pipeline-voices" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("page") != "1" {
-			t.Fatalf("missing page param")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"code": 0,
 			"data": map[string]any{
-				"list": []map[string]any{
-					{"id": 1, "name": "Alice", "category": "female", "tags": []string{"清新"}, "speech_voice_id": "sv_1"},
-					{"id": 2, "name": "Bob", "category": "male", "tags": []string{"浑厚"}, "speech_voice_id": "sv_2"},
+				"languages": []map[string]any{
+					{
+						"language": "zh-CN",
+						"voices": []map[string]any{
+							{"id": 1, "name": "Alice", "category": "female", "language": "zh-CN", "tags": []string{"清新"}, "speech_voice_id": "sv_1"},
+						},
+					},
+					{
+						"language": "en-US",
+						"voices": []map[string]any{
+							{"id": 2, "name": "Bob", "category": "male", "language": "en-US", "tags": []string{}, "speech_voice_id": "sv_2"},
+						},
+					},
+				},
+				// Cloned voices carry no language/category by design.
+				"cloned": []map[string]any{
+					{"id": 9, "name": "我的声音", "category": "", "tags": []string{}, "speech_voice_id": "sv_mine"},
 				},
 			},
 		})
@@ -36,14 +47,21 @@ func TestListVoiceTemplates(t *testing.T) {
 	defer srv.Close()
 
 	c := vibeknow.New(srv.URL, staticToken("tok"))
-	voices, err := c.ListVoiceTemplates(context.Background())
+	catalog, err := c.ListPipelineVoices(context.Background())
 	if err != nil {
-		t.Fatalf("ListVoiceTemplates: %v", err)
+		t.Fatalf("ListPipelineVoices: %v", err)
 	}
-	if len(voices) != 2 {
-		t.Fatalf("expected 2 voices, got %d", len(voices))
+	if len(catalog.Languages) != 2 || catalog.Languages[0].Language != "zh-CN" {
+		t.Fatalf("languages = %+v", catalog.Languages)
 	}
-	if voices[0].ID != 1 || voices[0].Name != "Alice" {
-		t.Fatalf("voice[0] = %+v", voices[0])
+	if len(catalog.Cloned) != 1 || catalog.Cloned[0].SpeechVoiceID != "sv_mine" {
+		t.Fatalf("cloned = %+v", catalog.Cloned)
+	}
+
+	// Flatten must keep catalog order and put cloned voices last, so a
+	// numeric --voice ref resolves across both populations.
+	flat := catalog.Flatten()
+	if len(flat) != 3 || flat[0].ID != 1 || flat[1].ID != 2 || flat[2].ID != 9 {
+		t.Fatalf("Flatten() = %+v", flat)
 	}
 }

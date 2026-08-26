@@ -86,9 +86,9 @@ func TestGetWorkBySession(t *testing.T) {
 		}
 		figlensResp(w, map[string]any{
 			"id": 456, "session_id": "s_abc", "title": "Test Video",
-			"html_path": "works/foo/index.html",
-			"video_path": "/videos/test.mp4",
-			"cover_url": "https://cover.jpg",
+			"html_path":   "works/foo/index.html",
+			"video_path":  "/videos/test.mp4",
+			"cover_url":   "https://cover.jpg",
 			"share_token": "tok_xyz", "exporting": 1,
 			"duration": 120,
 			"engine":   "suite",
@@ -344,5 +344,76 @@ func TestInitTask_SendsSelectedImageIndexes(t *testing.T) {
 	idx, _ := gotBody["selected_image_indexes"].([]any)
 	if len(idx) != 2 || idx[0] != float64(2) {
 		t.Fatalf("selected_image_indexes = %v", gotBody["selected_image_indexes"])
+	}
+}
+
+// page_count must reach the init body so the image2 feasibility preflight
+// (word count ≥ pages × 50, mandatory images ≤ pages) runs against the
+// same page count the stream request will use — omitted, the backend
+// preflights its default of 4 instead.
+func TestInitTask_SendsPageCount(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"task_id":1,"session_id":"s","work_id":2,"v":3}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EnginePipeline, VideoKind: figlens.VideoKindImage2,
+		KnowledgeID: "kb_1", DocID: "doc_1", PageCount: 8,
+	})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	if gotBody["page_count"] != float64(8) {
+		t.Fatalf("page_count = %v, want 8", gotBody["page_count"])
+	}
+}
+
+// Zero page_count must stay off the wire (backend treats absent as auto).
+func TestInitTask_OmitsZeroPageCount(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":{"task_id":1,"session_id":"s","work_id":2,"v":3}}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	_, err := c.InitTask(context.Background(), figlens.InitTaskParams{
+		Engine: figlens.EnginePipeline, KnowledgeID: "kb_1", DocID: "doc_1",
+	})
+	if err != nil {
+		t.Fatalf("InitTask: %v", err)
+	}
+	if _, present := gotBody["page_count"]; present {
+		t.Fatalf("zero page_count leaked onto the wire: %v", gotBody)
+	}
+}
+
+func TestListThemes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/themes" || r.URL.Query().Get("type") != "hand-draw-suite" {
+			t.Errorf("unexpected request: %s %s", r.URL.Path, r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":0,"data":[{"id":"ink","name":"水墨","desc":"","tags":["国风"],"preview":{"webp":"https://cdn/x.webp","poster":"https://cdn/x.jpg","webpV":"https://cdn/xv.webp","posterV":"https://cdn/xv.jpg"}}]}`)
+	}))
+	defer srv.Close()
+
+	c := figlens.New(srv.URL, staticToken("tok"))
+	themes, err := c.ListThemes(context.Background(), figlens.ThemeSuiteHandDraw)
+	if err != nil {
+		t.Fatalf("ListThemes: %v", err)
+	}
+	if len(themes) != 1 || themes[0].ID != "ink" || themes[0].Preview == nil {
+		t.Fatalf("themes = %+v", themes)
+	}
+	if themes[0].Preview.WebpV != "https://cdn/xv.webp" {
+		t.Fatalf("preview lost vertical assets: %+v", themes[0].Preview)
 	}
 }

@@ -41,6 +41,7 @@ const (
 	StatusSucceeded = "succeeded"
 	StatusFailed    = "failed"
 	StatusUnknown   = "unknown" // stream dropped before a terminal event
+	StatusPaused    = "paused"  // backend reported the run paused; resumable
 )
 
 // Record is one line of the ledger.

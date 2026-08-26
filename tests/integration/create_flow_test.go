@@ -48,8 +48,8 @@ func TestCreateFlow_FileToVideo(t *testing.T) {
 			w.WriteHeader(200)
 			flusher, _ := w.(http.Flusher)
 			events := []string{
-				`data: {"code":200,"data":{"type":"process","log":{"step_id":"prepare","status":"start","message":"go"}}}`,
-				`data: {"code":200,"data":{"type":"process","log":{"step_id":"prepare","status":"success","message":"ok"}}}`,
+				`data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"start","message":"go"}}}`,
+				`data: {"code":200,"data":{"type":"process","log":{"step_id":"script_writing","status":"success","message":"ok"}}}`,
 				`data: {"code":200,"data":{"type":"aim_result","session_id":"s_integ"}}`,
 				`data: [DONE]`,
 			}
