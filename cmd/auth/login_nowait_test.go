@@ -50,6 +50,10 @@ func TestLoginNoWaitJSONShape(t *testing.T) {
 
 	resetLoginFlags(t)
 	root := &cobra.Command{Use: "vibeknow"}
+	// Match production: cmd/root.go sets SilenceUsage, so a command that
+	// returns an error does not dump usage text onto stdout. Without it a
+	// test harness sees output the real CLI never produces.
+	root.SilenceUsage = true
 	root.AddCommand(loginCmd)
 
 	var stdout bytes.Buffer

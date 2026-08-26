@@ -16,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/vibeknow/cli/client/account"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/config"
@@ -210,7 +211,7 @@ func loginWithToken(cmd *cobra.Command) error {
 // ---------------------------------------------------------------------------
 
 func loginNoWait(cmd *cobra.Command) error {
-	_, accountURL, err := resolveAccountURL()
+	p, accountURL, err := resolveAccountURL()
 	if err != nil {
 		return err
 	}
@@ -218,19 +219,46 @@ func loginNoWait(cmd *cobra.Command) error {
 	unauthClient := account.NewUnauthenticated(accountURL)
 	dcResp, err := unauthClient.DeviceCode(context.Background())
 	if err != nil {
-		return fmt.Errorf("device code request failed: %w", err)
+		return clerr.Auth(fmt.Sprintf("device code request failed: %v", err))
 	}
 
-	return writeDeviceCodeEnvelope(cmd, dcResp)
+	parkDeviceCode(p, accountURL, dcResp)
+	return writeDeviceCodeEnvelope(cmd, dcResp, true)
 }
 
-func writeDeviceCodeEnvelope(cmd *cobra.Command, dcResp *account.DeviceCodeResponse) error {
+// parkDeviceCode records an in-flight authorization so a later `auth status`
+// can finish it if this process does not survive that long. Failure to park
+// is not fatal — the caller's own polling is still the primary path — so it
+// degrades silently rather than aborting a login that can still succeed.
+func parkDeviceCode(p config.Profile, accountURL string, dcResp *account.DeviceCodeResponse) {
+	_ = savePendingDevice(pendingDevice{
+		DeviceCode:      dcResp.DeviceCode,
+		UserCode:        dcResp.UserCode,
+		VerificationURI: dcResp.VerificationURI,
+		Interval:        dcResp.Interval,
+		ExpiresAt:       time.Now().Add(time.Duration(dcResp.ExpiresIn) * time.Second),
+		Profile:         p.Name,
+		AccountURL:      accountURL,
+	})
+}
+
+// writeDeviceCodeEnvelope prints the device authorization for a machine
+// caller. withDeviceCode controls whether the raw device_code is included:
+// it is a live credential (holding it is enough to claim the token once the
+// user authorizes), so it goes out only in the two-phase --no-wait flow,
+// where the caller genuinely needs it to resume with --device-code. In
+// --headless nobody outside this process needs it — the process polls, and
+// the on-disk record covers the resume path — so printing it into a host's
+// captured logs would be a leak that buys nothing.
+func writeDeviceCodeEnvelope(cmd *cobra.Command, dcResp *account.DeviceCodeResponse, withDeviceCode bool) error {
 	output := map[string]any{
-		"device_code":      dcResp.DeviceCode,
 		"user_code":        dcResp.UserCode,
 		"verification_uri": dcResp.VerificationURI,
 		"expires_in":       dcResp.ExpiresIn,
 		"hint":             i18n.T("auth.login.hint.visit_code", dcResp.VerificationURI, dcResp.UserCode),
+	}
+	if withDeviceCode {
+		output["device_code"] = dcResp.DeviceCode
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
@@ -258,10 +286,15 @@ func loginHeadless(cmd *cobra.Command) error {
 	unauthClient := account.NewUnauthenticated(accountURL)
 	dcResp, err := unauthClient.DeviceCode(context.Background())
 	if err != nil {
-		return fmt.Errorf("device code request failed: %w", err)
+		return clerr.Auth(fmt.Sprintf("device code request failed: %v", err))
 	}
 
-	if err := writeDeviceCodeEnvelope(cmd, dcResp); err != nil {
+	// Park the code before printing the URL, not after. The host may kill
+	// this process the moment it sees the URL, and a code that was printed
+	// but never parked is a login that cannot be resumed.
+	parkDeviceCode(p, accountURL, dcResp)
+
+	if err := writeDeviceCodeEnvelope(cmd, dcResp, false); err != nil {
 		return err
 	}
 
@@ -374,7 +407,8 @@ func pollDeviceToken(cmd *cobra.Command, client *account.Client, deviceCode stri
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("%s", i18n.T("auth.login.code_expired"))
+			clearPendingDevice()
+			return nil, clerr.Auth(i18n.T("auth.login.code_expired"))
 		}
 
 		remaining := time.Until(deadline).Truncate(time.Second)
@@ -394,10 +428,12 @@ func pollDeviceToken(cmd *cobra.Command, client *account.Client, deviceCode stri
 					continue
 				case account.PollExpired:
 					fmt.Fprintln(cmd.ErrOrStderr())
-					return nil, fmt.Errorf("%s", i18n.T("auth.login.code_expired"))
+					clearPendingDevice()
+					return nil, clerr.Auth(i18n.T("auth.login.code_expired"))
 				case account.PollDenied:
 					fmt.Fprintln(cmd.ErrOrStderr())
-					return nil, fmt.Errorf("%s", i18n.T("auth.login.denied"))
+					clearPendingDevice()
+					return nil, clerr.Auth(i18n.T("auth.login.denied"))
 				}
 			}
 			return nil, fmt.Errorf("poll device token: %w", err)
@@ -462,6 +498,9 @@ func finishLogin(cmd *cobra.Command, profile config.Profile, accountURL string, 
 	if err := storeToken(profile, st); err != nil {
 		return err
 	}
+	// The code has been spent; leaving it parked would make `auth status`
+	// keep reporting an authorization that is already complete.
+	clearPendingDevice()
 
 	if !quiet {
 		name := u.Nickname

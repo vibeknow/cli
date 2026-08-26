@@ -150,3 +150,35 @@ func TestStoredToken_Marshal(t *testing.T) {
 		t.Errorf("RefreshExpiresAt mismatch: got %v, want %v (diff %v)", parsed.RefreshExpiresAt, original.RefreshExpiresAt, diff)
 	}
 }
+
+// TestNewOAuthToken_MissingExpiryIsUnknownNotExpired guards the sharpest
+// failure this type can produce.
+//
+// The expiry fields are computed as now+expires_in. When a response omits an
+// expiry — a field renamed, an endpoint that never sent it, a non-rotating
+// refresh setup — that arithmetic yields now-30s, i.e. a timestamp already in
+// the past. Status() then reads Expired, and the very next command purges the
+// credential: one missing field in a backend response silently logs the user
+// out immediately after a successful login.
+//
+// Unknown has to stay unknown. Status() already treats a zero expiry as
+// "no information", which is the honest reading.
+func TestNewOAuthToken_MissingExpiryIsUnknownNotExpired(t *testing.T) {
+	cases := []struct {
+		name                      string
+		expiresIn, refreshExpires int
+	}{
+		{"no refresh expiry", 7200, 0},
+		{"no access expiry", 0, 2592000},
+		{"neither", 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tok := NewOAuthToken("at", "rt", tc.expiresIn, tc.refreshExpires)
+			if got := tok.Status(); got == StatusExpired {
+				t.Errorf("Status() = %q for a freshly issued token; a missing expiry must not read as expired "+
+					"(expires_at=%v refresh_expires_at=%v)", got, tok.ExpiresAt, tok.RefreshExpiresAt)
+			}
+		})
+	}
+}

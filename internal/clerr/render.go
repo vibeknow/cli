@@ -48,6 +48,12 @@ func Render(w io.Writer, err error) {
 // RenderAs writes err to w using the given format ("text" or "json"). identity
 // is included in the JSON envelope when non-empty.
 func RenderAs(w io.Writer, err error, format, identity string) {
+	// A silent error carries an exit code and nothing else; the command has
+	// already written its own complete output.
+	var silent *Error
+	if errors.As(err, &silent) && silent.Silent {
+		return
+	}
 	if format == "json" {
 		renderJSON(w, err, identity)
 		return

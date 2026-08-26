@@ -3,7 +3,6 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -36,11 +35,7 @@ func (c *Client) DoUpload(ctx context.Context, path, fieldName, fileName string,
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		var eo *errObject
-		if errors.As(err, &eo) {
-			return eo
-		}
-		return &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+		return classifyTransportError(err)
 	}
 	defer resp.Body.Close()
 

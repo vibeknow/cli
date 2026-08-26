@@ -81,16 +81,33 @@ func (t StoredToken) Marshal() []byte {
 // NewOAuthToken creates a StoredToken from an OAuth API response.
 // expiresIn and refreshExpiresIn are in seconds. A 30-second safety margin is
 // subtracted from each expiry time.
+//
+// A lifetime of exactly zero — which is what an absent JSON field decodes to
+// — means the response did not say when the token dies, and is recorded as an
+// unset expiry rather than a computed one. Computing it anyway produced
+// now-30s, a timestamp already in the past, so a freshly issued credential
+// read as expired and the next command purged it: one missing field in a
+// backend response logged the user out immediately after a successful login.
+// Status() already treats an unset expiry as "no information", which is
+// exactly what we have.
+//
+// A negative lifetime is left alone: that is a deadline in the past, which is
+// information, not the absence of it.
 func NewOAuthToken(accessToken, refreshToken string, expiresIn, refreshExpiresIn int) StoredToken {
 	now := time.Now().UTC()
-	return StoredToken{
-		Version:          "1",
-		AccessToken:      accessToken,
-		RefreshToken:     refreshToken,
-		TokenType:        "oauth",
-		ExpiresAt:        now.Add(time.Duration(expiresIn)*time.Second - safetyMargin),
-		RefreshExpiresAt: now.Add(time.Duration(refreshExpiresIn)*time.Second - safetyMargin),
+	t := StoredToken{
+		Version:      "1",
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "oauth",
 	}
+	if expiresIn != 0 {
+		t.ExpiresAt = now.Add(time.Duration(expiresIn)*time.Second - safetyMargin)
+	}
+	if refreshExpiresIn != 0 {
+		t.RefreshExpiresAt = now.Add(time.Duration(refreshExpiresIn)*time.Second - safetyMargin)
+	}
+	return t
 }
 
 // NewPATToken creates a StoredToken for a Personal Access Token.

@@ -25,12 +25,31 @@ const CodeSessionExpired = "session_expired"
 // responses and the CodeSessionExpired wrapper emitted by doRefresh after
 // it has already purged the keychain, so callers up-stack can recognize
 // the same condition regardless of which layer observed it first.
+//
+// CodeAuthRequired — a plain 401 — belongs here because both callers of
+// isSessionDead sit on the refresh path, where a 401 is the server saying
+// it will not accept this refresh token: expired, revoked, or signed with a
+// key that has since been rotated. Treating it as transient leaves a dead
+// credential in the keychain and turns every later command into the same
+// opaque failure, when the honest answer is "log in again".
 var sessionDeadCodes = map[string]struct{}{
+	httpclient.CodeAuthRequired:           {},
 	httpclient.CodeSessionReplaced:        {},
 	httpclient.CodeAccountDisabled:        {},
 	httpclient.CodeAccountPendingDeletion: {},
 	CodeSessionExpired:                    {},
 }
+
+// IsSessionDead reports whether err indicates the credential that produced it
+// is permanently invalid — the server will not accept it and no refresh can
+// revive it — as opposed to a transient network or server error.
+//
+// Exported for `auth status`, which has to tell the two apart: a rejected
+// credential means "disconnected, log in again", while an unreachable server
+// means "unknown, keep the last known state". Answering the second case the
+// way we answer the first would flap a healthy connection every time the
+// network hiccuped.
+func IsSessionDead(err error) bool { return isSessionDead(err) }
 
 // isSessionDead reports whether err indicates the stored credential is
 // permanently invalid (as opposed to a transient network or server error).
@@ -120,19 +139,42 @@ func (p *OAuthTokenProvider) ForceRefresh(ctx context.Context) (string, error) {
 	return p.doRefresh(ctx, st)
 }
 
-// loadToken reads the token from the keychain, falling back to the in-memory
-// cache if the keychain read fails.
+// loadToken reads the current token, reconciling the keychain against the
+// in-memory copy doRefresh keeps when it cannot write one back.
+//
+// Preferring the keychain whenever it merely *reads* was wrong. A refresh that
+// could not be persisted leaves the keychain holding a token the server has
+// already spent, and doRefresh's attempt to delete it fails for the same
+// reason the write did — a locked keychain refuses both. The stale copy then
+// won every subsequent read, so the next call in this process presented the
+// spent refresh token a second time. Under rotation that is not a retry: the
+// server reads a second presentation as a stolen credential and revokes the
+// whole session, signing the user out with nothing to connect it to.
+//
+// Expiry decides instead, which is the honest comparison and stays right in
+// both directions: our unwritten copy beats the stale one it superseded, and a
+// token another process has since written beats ours.
 func (p *OAuthTokenProvider) loadToken() (credential.StoredToken, error) {
 	st, err := p.keychainSrc.GetStored()
-	if err == nil {
-		return st, nil
-	}
+
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	var cached *credential.StoredToken
 	if p.cachedToken != nil {
-		return *p.cachedToken, nil
+		c := *p.cachedToken
+		cached = &c
 	}
-	return credential.StoredToken{}, err
+	p.mu.Unlock()
+
+	if err != nil {
+		if cached != nil {
+			return *cached, nil
+		}
+		return credential.StoredToken{}, err
+	}
+	if cached != nil && cached.ExpiresAt.After(st.ExpiresAt) {
+		return *cached, nil
+	}
+	return st, nil
 }
 
 // doRefresh performs the refresh using cross-process locking and double-check.
@@ -144,6 +186,7 @@ func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.Stored
 	lock := credential.NewRefreshLock(p.lockDir, p.keychainSrc.Entry)
 
 	tok, err := lock.DoWithDoubleCheck(
+		ctx,
 		func() bool {
 			// Double-check: re-read the keychain and see if another process
 			// already refreshed.
@@ -161,20 +204,51 @@ func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.Stored
 				return "", err
 			}
 
+			// A refresh response is allowed to return only a new access
+			// token: RFC 6749 §6 makes re-issuing the refresh token
+			// optional, and a server that does not rotate simply omits it.
+			// Storing the response verbatim then blanked the refresh token
+			// and dated the refresh expiry into the past, destroying a
+			// working session on its first refresh and forcing a fresh
+			// login every access-token lifetime. What the response does not
+			// mention, it does not change.
+			refreshToken := resp.RefreshToken
+			if refreshToken == "" {
+				refreshToken = st.RefreshToken
+			}
 			newST := credential.NewOAuthToken(
 				resp.AccessToken,
-				resp.RefreshToken,
+				refreshToken,
 				resp.ExpiresIn,
 				resp.RefreshExpiresIn,
 			)
+			if resp.RefreshExpiresIn == 0 {
+				newST.RefreshExpiresAt = st.RefreshExpiresAt
+			}
 
-			// Write to keychain.
 			if err := p.keychainSrc.Keychain.Set(p.keychainSrc.Entry, newST.Marshal()); err != nil {
-				// Keychain write failed — cache in memory and log warning.
+				// The new pair could not be persisted, so the keychain still
+				// holds the old one — and the server has just spent it.
+				//
+				// Leaving it there is the dangerous option. The next process
+				// would read it, present it, and a server that rotates reads a
+				// second presentation of a spent token as a stolen credential:
+				// it revokes the whole session and logs a security warning.
+				// The user would be signed out some minutes later for no
+				// reason they could connect to anything they did.
+				//
+				// So the stale copy is removed instead. It could not have
+				// worked again in any case; what changes is that the next
+				// process finds no credential and says "log in", rather than
+				// tripping an alarm on the way to the same place. The pair
+				// stays in memory so the command in flight still finishes.
 				log.Printf("warning: failed to write refreshed token to keychain: %v", err)
 				p.mu.Lock()
 				p.cachedToken = &newST
 				p.mu.Unlock()
+				if delErr := p.keychainSrc.Keychain.Delete(p.keychainSrc.Entry); delErr != nil {
+					log.Printf("warning: could not remove the superseded credential: %v", delErr)
+				}
 			}
 
 			return newST.AccessToken, nil

@@ -111,6 +111,10 @@ func TestLoginHeadless(t *testing.T) {
 
 	resetLoginFlags(t)
 	root := &cobra.Command{Use: "vibeknow"}
+	// Match production: cmd/root.go sets SilenceUsage, so a command that
+	// returns an error does not dump usage text onto stdout. Without it a
+	// test harness sees output the real CLI never produces.
+	root.SilenceUsage = true
 	root.AddCommand(loginCmd)
 
 	var stdout bytes.Buffer
@@ -128,13 +132,23 @@ func TestLoginHeadless(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
 	}
-	for _, field := range []string{"device_code", "user_code", "verification_uri", "expires_in", "hint"} {
+	for _, field := range []string{"user_code", "verification_uri", "expires_in", "hint"} {
 		if _, ok := got[field]; !ok {
 			t.Errorf("missing field %q in envelope: %+v", field, got)
 		}
 	}
 	if got["verification_uri"] != "https://example.test/activate" {
 		t.Errorf("verification_uri = %v, want https://example.test/activate", got["verification_uri"])
+	}
+	// The raw device_code is deliberately NOT printed here. Holding it is
+	// enough to claim the token once the user authorizes, and in --headless
+	// nobody outside this process needs it: this process polls, and the
+	// on-disk record covers the resume path. A connector host captures this
+	// stdout into its logs, so printing it would leak a live credential for
+	// no gain. (--no-wait still prints it — there the caller must resume
+	// with it via --device-code.)
+	if _, leaked := got["device_code"]; leaked {
+		t.Errorf("device_code leaked into --headless envelope: %+v", got)
 	}
 
 	// The command must not have returned until authorization actually

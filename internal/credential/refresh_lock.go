@@ -23,6 +23,12 @@ type RefreshLock struct {
 	group         singleflight.Group
 }
 
+// lockWaitTimeout caps the wait for the cross-process refresh lock when the
+// caller supplies no earlier deadline of its own. It is a backstop against a
+// lock file left held by a process that died, not a budget anyone should be
+// relying on — commands with a deadline pass one.
+const lockWaitTimeout = 30 * time.Second
+
 // NewRefreshLock returns a RefreshLock that stores its lock file under
 // lockDir, keyed by credentialRef.
 func NewRefreshLock(lockDir, credentialRef string) *RefreshLock {
@@ -50,8 +56,19 @@ func (r *RefreshLock) Do(fn func() (string, error)) (string, error) {
 // caller can re-read the credential store. Otherwise fn is executed under the
 // lock and its result is returned.
 //
-// The file lock acquisition times out after 30 s (checked every 500 ms).
+// Waiting for the file lock is bounded by ctx, or by lockWaitTimeout when ctx
+// carries no earlier deadline.
+//
+// ctx is honoured rather than ignored because the caller's deadline is the
+// real one. `auth status` allows itself five seconds because a connector host
+// polls it every three and abandons it at ten; waiting on this lock under a
+// private thirty-second budget would blow through that while the caller
+// believed it had bounded the work. On a slow network — where every poll
+// refreshes, slowly — the queue of waiting processes is exactly when status
+// must give up promptly and report from what it already knows, rather than
+// hang and be recorded as a disconnection.
 func (r *RefreshLock) DoWithDoubleCheck(
+	ctx context.Context,
 	isAlreadyRefreshed func() bool,
 	fn func() (string, error),
 ) (string, error) {
@@ -64,10 +81,10 @@ func (r *RefreshLock) DoWithDoubleCheck(
 
 		fl := flock.New(lockPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		lockCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)
 		defer cancel()
 
-		locked, err := fl.TryLockContext(ctx, 500*time.Millisecond)
+		locked, err := fl.TryLockContext(lockCtx, 500*time.Millisecond)
 		if err != nil {
 			return "", fmt.Errorf("refresh_lock: acquire %s: %w", lockPath, err)
 		}

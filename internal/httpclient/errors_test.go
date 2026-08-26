@@ -22,9 +22,12 @@ func TestIsRetryableCode(t *testing.T) {
 		{"rate_limited", true},
 		{"internal_error", true},
 		{"concurrent_work_limit", true},
+		{"work_edit_busy", true},
 		// Permanent: user must change something first.
 		{"insufficient_credits", false},
 		{"script_invalid", false},
+		{"image_invalid", false},
+		{"project_quota_exceeded", false},
 		{"freeze_not_found", false},
 		{"auth_required", false},
 		{"business_error", false},
@@ -63,6 +66,13 @@ func TestMapEnvelopeCode(t *testing.T) {
 		// Known business codes retain their specific labels.
 		{"insufficient_credits", 100001, http.StatusPaymentRequired, "insufficient_credits"},
 		{"script_invalid", 100004, http.StatusBadRequest, "script_invalid"},
+		{"image_invalid", 100007, http.StatusBadRequest, "image_invalid"},
+		{"work_edit_busy", 100008, http.StatusConflict, "work_edit_busy"},
+		{"project_quota_exceeded", 100009, http.StatusForbidden, "project_quota_exceeded"},
+		{"project_works_full", 100010, http.StatusForbidden, "project_works_full"},
+		{"tts_preview_quota_exceeded", 100011, http.StatusTooManyRequests, "tts_preview_quota_exceeded"},
+		// Unmapped 100xxx codes fall to the generic bucket, not an HTTP class.
+		{"unknown_business", 100099, http.StatusBadRequest, "business_error"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

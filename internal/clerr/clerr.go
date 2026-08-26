@@ -36,6 +36,11 @@ type Error struct {
 	Message string
 	Hint    string
 	Detail  any
+	// Silent suppresses rendering entirely: the process still exits with
+	// Code, but nothing is written to stderr. For commands whose normal
+	// output already *is* the answer, and where an error line printed on top
+	// of it would be a second, contradicting one.
+	Silent bool
 	// Cause is the underlying error, if any. It is not rendered — Message
 	// carries the user-facing text — but it stays reachable through
 	// errors.Is/As so structured backend codes (errs.Object) survive being
@@ -58,6 +63,17 @@ func Auth(msg string) *Error       { return newTyped(TypeAuth, ExitAuth, msg) }
 func Validation(msg string) *Error { return newTyped(TypeValidation, ExitValidation, msg) }
 func Network(msg string) *Error    { return newTyped(TypeNetwork, ExitNetwork, msg) }
 func Internal(msg string) *Error   { return newTyped(TypeInternal, ExitInternal, msg) }
+
+// SilentExit reports a status through the process exit code alone.
+//
+// It exists for commands that report by succeeding at printing something,
+// rather than by returning nothing. `auth status` is the case: "not
+// connected" is its answer, not its failure, so it writes the report and
+// then needs the exit code to agree with what the report says. Returning an
+// ordinary error would append an "Error: ..." line to a command that had
+// already answered correctly — and for a JSON caller, put a second document
+// on the stream.
+func SilentExit(code int) *Error { return &Error{Code: code, Silent: true} }
 
 func Newf(format string, args ...any) *Error        { return New(fmt.Sprintf(format, args...)) }
 func Authf(format string, args ...any) *Error       { return Auth(fmt.Sprintf(format, args...)) }

@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -77,11 +76,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		var eo *errObject
-		if errors.As(err, &eo) {
-			return eo
-		}
-		return &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+		return classifyTransportError(err)
 	}
 	defer resp.Body.Close()
 
@@ -149,11 +144,7 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body any) (*htt
 	streamClient := &http.Client{Transport: c.http.Transport}
 	resp, err := streamClient.Do(req)
 	if err != nil {
-		var eo *errObject
-		if errors.As(err, &eo) {
-			return nil, eo
-		}
-		return nil, &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+		return nil, classifyTransportError(err)
 	}
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()

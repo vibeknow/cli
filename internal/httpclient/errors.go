@@ -2,10 +2,52 @@ package httpclient
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/errs"
 )
+
+// classifyTransportError converts an error from http.Client.Do into the
+// error the CLI should surface. It exists because http.Client wraps every
+// RoundTripper failure in *url.Error, which hides the fact that some of
+// those failures never touched the network at all.
+//
+// The case that matters is AuthMiddleware: when no credential is stored, or
+// the stored one is dead, the middleware aborts the request with a
+// clerr.Auth carrying the "run `vibeknow auth login`" instruction. Flattening
+// that into network_error was wrong twice over — the process exited 1
+// instead of 3, so an agent could not tell "the user must log in" from "the
+// API misbehaved", and the error claimed Retryable, so the honest response
+// to it was to retry a request that cannot ever succeed without the user.
+func classifyTransportError(err error) error {
+	var eo *errObject
+	if errors.As(err, &eo) {
+		return eo
+	}
+	// A middleware that already classified the failure outranks any guess
+	// this layer could make from a transport error.
+	var ce *clerr.Error
+	if errors.As(err, &ce) {
+		return ce
+	}
+	// Same for a structured backend error that reached us through a
+	// RoundTripper rather than a response body — RefreshRetryMiddleware
+	// returns one when a forced refresh finds the session permanently gone.
+	// Rebuilding that as network_error told the user their connection was
+	// flaky when their session had actually been killed.
+	var o *errs.Object
+	if errors.As(err, &o) {
+		return &errObject{
+			Code:      o.Code,
+			Message:   o.Message,
+			TraceID:   o.TraceID,
+			Retryable: o.Retryable,
+		}
+	}
+	return &errObject{Code: "network_error", Message: err.Error(), Retryable: true}
+}
 
 type errObject struct {
 	Code      string
@@ -83,6 +125,12 @@ func parseBackendError(resp *http.Response) error {
 // Backend envelope codes that the CLI distinguishes by name. Keep the string
 // values stable — callers match on them via errs.HasCode.
 const (
+	// CodeAuthRequired is the generic 401. On an ordinary request it means
+	// the access token is stale and a refresh will fix it; on the refresh
+	// endpoint itself it means the refresh token was rejected — expired,
+	// revoked, or signed with a key the server no longer holds — and no
+	// amount of retrying will change that.
+	CodeAuthRequired = "auth_required"
 	// CodeSessionReplaced (backend 110008): issued when the single-device
 	// middleware sees a newer token_version, OR when a device-flow session's
 	// underlying user row has been soft-deleted.
@@ -119,7 +167,7 @@ const (
 // will never be allowed to touch.
 func ExitCodeForCode(code string) int {
 	switch {
-	case code == "auth_required",
+	case code == CodeAuthRequired,
 		code == CodeSessionReplaced,
 		code == CodeAccountDisabled,
 		code == CodeAccountPendingDeletion,
@@ -127,7 +175,7 @@ func ExitCodeForCode(code string) int {
 		return 3 // credential missing / invalid / expired → re-authenticate
 	case IsRetryableCode(code):
 		return 4 // rate_limited, internal_error, concurrent_work_limit
-	case code == "insufficient_credits":
+	case code == "insufficient_credits", isQuotaExhaustedCode(code):
 		return 5 // business failure; retrying the same command cannot help
 	case IsUserFixableCode(code), code == "invalid_args":
 		return 2 // the caller's input is wrong and can be corrected
@@ -135,9 +183,27 @@ func ExitCodeForCode(code string) int {
 	return 0
 }
 
+// isQuotaExhaustedCode reports whether the code means an allowance ran out:
+// too many projects for the tier, a project already at its work limit, the
+// rolling TTS preview budget spent.
+//
+// These share their shape with insufficient_credits and are mapped the same
+// way. Left at the generic exit 1 they read as "something went wrong", and
+// an agent's reasonable response to that is to try again — which cannot
+// work, because nothing about the request is wrong. Exit 5 says the run
+// failed for a reason the CLI cannot fix, so the answer is to tell the user
+// what ran out.
+func isQuotaExhaustedCode(code string) bool {
+	switch code {
+	case "project_quota_exceeded", "project_works_full", "tts_preview_quota_exceeded":
+		return true
+	}
+	return false
+}
+
 func IsRetryableCode(code string) bool {
 	switch code {
-	case "rate_limited", "internal_error", "concurrent_work_limit":
+	case "rate_limited", "internal_error", "concurrent_work_limit", "work_edit_busy":
 		return true
 	}
 	return false
@@ -151,7 +217,7 @@ func IsRetryableCode(code string) bool {
 // video wait) stays in sync.
 func IsUserFixableCode(code string) bool {
 	switch code {
-	case "script_invalid", "replica_invalid", "knowledge_unsupported":
+	case "script_invalid", "replica_invalid", "knowledge_unsupported", "image_invalid":
 		return true
 	}
 	return false
@@ -181,6 +247,25 @@ func MapBusinessCode(envCode int) (string, bool) {
 		// Knowledge document unsupported: parsed to completion but empty
 		// content (e.g. image-only PDF, unfetchable link). User-fixable.
 		return "knowledge_unsupported", true
+	case 100007:
+		// Image-mode preflight rejection: page count infeasible for the
+		// document (word count < pages × 50, or more mandatory images than
+		// pages). User-fixable input error. The label deliberately says
+		// "image", not the wire kind, which carries an internal codename.
+		return "image_invalid", true
+	case 100008:
+		// The work is being edited (scene-edit distributed lock held).
+		// Transient by construction — the lock clears when the edit ends.
+		return "work_edit_busy", true
+	case 100009:
+		// Project count at the membership tier's cap.
+		return "project_quota_exceeded", true
+	case 100010:
+		// Single project is full (max works per project).
+		return "project_works_full", true
+	case 100011:
+		// Per-work rolling TTS preview quota exhausted.
+		return "tts_preview_quota_exceeded", true
 	}
 	if envCode >= 100000 {
 		return "business_error", true
@@ -193,7 +278,7 @@ func MapBusinessCode(envCode int) (string, bool) {
 func mapEnvelopeCode(envCode, httpStatus int) string {
 	switch {
 	case envCode >= 40100 && envCode < 40200:
-		return "auth_required"
+		return CodeAuthRequired
 	case envCode >= 40300 && envCode < 40400:
 		return "permission_denied"
 	case envCode >= 40400 && envCode < 40500:
@@ -221,7 +306,7 @@ func mapEnvelopeCode(envCode, httpStatus int) string {
 func mapHTTPCode(status int) string {
 	switch {
 	case status == http.StatusUnauthorized:
-		return "auth_required"
+		return CodeAuthRequired
 	case status == http.StatusForbidden:
 		return "permission_denied"
 	case status == http.StatusNotFound:
