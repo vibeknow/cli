@@ -14,7 +14,7 @@
 
 - **一条命令，完整视频** —— `vibeknow create --from report.pdf` 自动完成文档解析、脚本生成、配音、画面设计、渲染和打包
 - **Agent 原生设计** —— 内置 3 个结构化 [Skills](./skills/)，兼容 Claude Code、Cursor 等 AI 工具，Agent 无需额外配置即可生成视频
-- **实时阶段进度** —— SSE 流式推送 6 阶段进度（解析 → 大纲 → 配音 → 渲染 → 发布 → 建议），人类看进度条、机器读 NDJSON
+- **实时阶段进度** —— SSE 流式推送 4 阶段进度（大纲 → 配音 → 渲染 → 发布），人类看进度条、机器读 NDJSON
 - **多服务架构** —— 连接多个后端服务，支持按服务配置 endpoint 和独立认证
 - **开源，零门槛** —— MIT 许可，`npm install` 即可使用
 - **安全可控** —— OS 原生 keychain 存储凭证、ANSI 转义字符清理、verbose 日志自动脱敏、非生产 endpoint 信任边界保护
@@ -99,6 +99,17 @@ vibeknow create --from report.pdf
 
 CI / 容器环境如果已经持有 JWT，可以跳过 Device Flow —— 见下方 [环境变量](#环境变量)。
 
+**由宿主拉起 CLI 的场景**（连接器平台、IDE 集成）想要的是一条阻塞命令，而不是上面的两段式：
+
+```bash
+vibeknow auth login --headless
+# 立刻把 {"user_code", "verification_uri", "expires_in", "hint"} 打到 stdout，
+# 然后原地轮询直到授权完成。不需要 TTY、不需要按回车，也不会自己开浏览器
+# —— 由宿主读到 URL 后去打开。
+```
+
+待授权的设备码同时会落盘到配置目录，因此宿主在用户授权完成前把进程杀掉**也不会丢掉这次登录**：下一次 `vibeknow auth status` 会把 token 兑换完成。在等待期间，`auth status --output json` 会在 `"authenticated": false` 之外返回 `"pending_authorization": true`，用于区分"正在等用户授权"和"从没登录过"。`auth logout` 会清掉它。
+
 ## Agent 技能
 
 [`./skills/`](./skills/) 目录包含三个采用开放 [Agent Skills](https://agentskills.io)
@@ -166,10 +177,19 @@ vibeknow create --from <doc_id> --kb-id <kb_id>
 # 自定义 prompt
 vibeknow create --from data.csv --prompt "制作一个两分钟的讲解视频"
 
+# 套用已存好的风格预设（~/.config/vibeknow/presets/brand.yaml）
+vibeknow create --from deck.pdf --preset brand
+vibeknow create --from deck.pdf --preset brand --aspect vertical   # 命令行上给的优先
+
 # 异步模式 —— 提交、确认任务已起跑，然后断开
 vibeknow create --from doc.pdf --async
 vibeknow video wait          # 自动接上最近一次的任务
 ```
+
+**预设**是一个 YAML 文件，装着你反复用的那组风格参数——模式、画幅、主题、
+音色、语言、背景音乐、数字人位置。它只提供默认值：命令行上同时给出的参数
+一律优先。它不能携带 `--export` / `--yes` / `--confirm`，所以打开别人给的
+预设文件永远不会替你批准一次扣费。完整约定见 [AGENTS.md](AGENTS.md)。
 
 `--async` 在后端确认任务已起跑后返回（秒级），而不是等视频渲染完（分钟级）；
 CLI 断开后渲染继续在服务端进行。参数不合法、积分不足这类当场被拒的情况，
@@ -246,9 +266,28 @@ output=sess_xxx.mp4
 ```bash
 vk create --from deck.pdf  --mode replica   # PPT 讲解（逐页还原）
 vk create --from post.md   --mode image --pages 8   # 图解视频（讲稿逐页 AI 生图）
-vk create --from notes.md  --mode handdraw  # 手绘动画
+vk create --from notes.md  --mode handdraw  # 手绘动画（中段长时间无进度属正常）
 vk create --from <src>     --aspect vertical --bgm
 ```
+
+风格与成片语言可叠加在任意 pipeline 模式上：
+
+```bash
+vk theme list --mode image                   # 查看该模式的风格目录
+vk create --from post.md --mode image --theme <theme_id>
+vk create --from post.md --language en-US    # 讲稿 + 配音语言
+```
+
+### 加数字人主讲
+
+```bash
+vk avatar list                               # 公模 sys_<id> + 本人训练的 ua_<id>
+vk create --from deck.pdf --avatar sys_7 --voice <它的 VOICE_ID>
+vk create --from deck.pdf --avatar ua_12 --avatar-position bottom-right --avatar-size 300
+```
+
+`--mode handdraw` 与 `--engine agent` 下不可用。若 `video export` 因数字人
+幕失败被拒，执行 `vk video avatar-retry`（不重复扣费），完成后再导出。
 
 `--script-lock`（原稿锁定）直接用文档原文当讲稿、跳过写稿，且可叠加在任意模式上
 （它取代了原来的 `--mode script`，旧写法仍可用但会告警）：
@@ -324,7 +363,7 @@ vibeknow voice list
 vibeknow voice list --output json
 
 # 管道友好（非 TTY 自动选择 json）
-vibeknow voice list | jq '.list[0].name'
+vibeknow voice list --output json | jq '.templates[0].name'
 ```
 
 ### 环境变量

@@ -77,9 +77,10 @@ the choice is not yours to make. Relay it and wait.
 
 - **Hero command**: `vibeknow create --from <source>` resolves input → uploads if needed → submits to figlens pipeline → streams progress → returns video URL.
 - **--from accepts 3 input types**: `doc_id` (used directly), URL (auto-uploaded to vectoria), local file path (auto-uploaded).
+- **Creation modes** mirror the product's five online modes: default (灵活创作), `--engine agent` (一键成片), `--mode image` (图解视频), `--mode replica` (PPT 讲解), `--mode handdraw` (手绘动画). 原稿锁定 is the orthogonal `--script-lock` switch, combinable with any mode. Style via `--theme` (browse with `vibeknow theme list --mode <mode>`), output language via `--language`.
 - **Sync vs async**: Default is sync (blocks until done). `--async` returns task_id + session_id immediately.
 - **NDJSON event stream**: `--output ndjson` emits structured progress events (schema_version: "1"). See [events.md](references/events.md).
-- **6 pipeline stages**: `parse` → `outline` → `storyboard` → `tts` → `render` → `publish`.
+- **4 pipeline stages**: `outline` → `tts` → `render` → `publish`. Not every node reports progress: parts of every run — and the entire middle of a `handdraw` run — are silent by design. Silence is not a hang; wait for a terminal event.
 - **session_id**: every `video` subcommand is addressed by a `(task_id, session_id)` pair, both returned by `create`. You do not have to carry them: `create` records the pair locally, so `vibeknow video wait` with no arguments reattaches to the most recent run and `vibeknow video wait <task_id>` looks up the session for you. Passing `--session-id` explicitly still works and always wins.
 - **Run ledger**: `vibeknow jobs list` shows what this machine started. Use it instead of re-running `create` when you have lost a task_id — a second `create` is a second billed render. The ledger is per-machine; when it has nothing, the video commands fall back to the account's most recent run and say so on stderr.
 - **stdout is the answer, stderr is the run**: with `--output json`, stdout carries exactly one JSON document and stderr carries live progress as `vk_event={...}` lines. You get both from one invocation — you do not have to choose between watching and parsing. Set `VIBEKNOW_EVENTS=1` to get the same lines in text mode, `VIBEKNOW_EVENTS=0` to suppress them.
@@ -91,12 +92,16 @@ the choice is not yours to make. Relay it and wait.
 | Command | Description |
 |---------|-------------|
 | `vibeknow create --from <source>` | Generate a video (sync by default) |
+| `vibeknow create --from <source> --preset <name>` | Same, with a saved style bundle; command-line flags still win |
 | `vibeknow video status <task_id> --session-id <sid>` | Get task status |
 | `vibeknow video wait <task_id> --session-id <sid>` | Stream progress, block until done |
 | `vibeknow video download <task_id> --dest out.mp4` | Download rendered video (`--dest` is the path; `--output` is the format) |
 | `vibeknow jobs list [--active]` | Recorded runs, newest first |
 | `vibeknow jobs get [task_id]` | One recorded run (default: most recent) |
-| `vibeknow voice list` | List available voice templates |
+| `vibeknow voice list [--language <locale>]` | Voices: public templates grouped by language + your cloned voices |
+| `vibeknow theme list --mode <mode>` | Visual themes/styles usable with `create --theme` |
+| `vibeknow avatar list` | Talking-head presenters (public presets + your trained ones) for `create --avatar` |
+| `vibeknow video avatar-retry [task_id]` | Retry failed avatar scenes (unblocks a rejected export; no re-charge) |
 
 For full flags and output examples, see [commands.md](references/commands.md).
 
@@ -109,12 +114,63 @@ vibeknow create --from slides.pdf
 # Blocks until done, prints video URL
 ```
 
-### Generate with specific voice
+### Pick a creation mode
 
 ```bash
-vibeknow voice list                              # find voice ID
-vibeknow create --from slides.pdf --voice v_warm_female
+vibeknow create --from slides.pdf --mode replica     # PPT 讲解: page-by-page replay (PDF/PPT only)
+vibeknow create --from notes.md --mode image --pages 6   # 图解视频: one AI illustration per page
+vibeknow create --from story.md --mode handdraw      # 手绘动画 (silent mid-run is normal)
+vibeknow create --from script.md --script-lock       # 原稿锁定: narrate the document verbatim
+vibeknow create --from doc.pdf --engine agent        # 一键成片 (v2 agent engine)
 ```
+
+### Style, language, voice
+
+```bash
+vibeknow theme list --mode image                 # browse the mode's style catalog
+vibeknow create --from notes.md --mode image --theme <theme_id>
+vibeknow voice list --language en-US             # voices are grouped by language
+vibeknow create --from slides.pdf --voice <speech_voice_id> --language en-US
+```
+
+### Reuse a saved style (`--preset`)
+
+```bash
+vibeknow create --from deck.pdf --preset brand-explainer      # <config>/presets/brand-explainer.yaml
+vibeknow create --from deck.pdf --preset ./team/shorts.yaml   # or a path
+vibeknow create --from deck.pdf --preset brand --mode replica # your --mode wins over the file's
+```
+
+A preset is a YAML file bundling style flags (`mode`, `aspect`, `theme`,
+`voice`, `language`, `bgm`, `pages`, `images`, `prompt`, `avatar*`,
+`script-lock`, `engine`). It supplies **defaults only** — every flag you also
+pass on the command line wins.
+
+A preset can never approve a spend: `export`, `yes` and `confirm` are refused
+with exit 2, as are `from`/`kb-id` and `async`/`preview-dir`/`output`. Same
+for any unknown key. All of it is checked before the first upload, so a bad
+preset costs nothing — read the error, fix the file, re-run.
+
+If the user asks what a run used, read the `preset.applied` event (or the
+`preset "<name>" applied: …` stderr line): its `keys` list is exactly what
+the file contributed, with command-line overrides already excluded. Do not
+infer it from the file.
+
+### Talking-head avatar
+
+```bash
+vibeknow avatar list                             # sys_<id> presets + your own ua_<id>
+vibeknow create --from slides.pdf --avatar sys_7 --voice <its VOICE_ID>
+vibeknow create --from slides.pdf --avatar ua_12 --avatar-position bottom-right --avatar-size 300
+```
+
+Not available with `--mode handdraw` or `--engine agent` (rejected with
+exit 2 — the backend would silently render without the presenter). Each
+public preset carries a paired `VOICE_ID`; using it keeps face and voice
+matched. **Export gating**: `video export` is refused while any scene's
+avatar is still rendering ("生成中") or has failed ("生成失败"). Failed
+scenes stay failed until retried — run `vibeknow video avatar-retry`,
+wait, then export again. The retry re-bills nothing.
 
 ### Async submit, then follow up
 
@@ -256,10 +312,11 @@ Key events (pipeline engine):
 | Event | Extra Fields | Meaning |
 |-------|-------------|---------|
 | `node.started` | `stage`, `node`, `message` | Pipeline node begins |
-| `node.succeeded` | `stage`, `node`, `message` | Node done |
+| `node.succeeded` | `stage`, `node`, `message`, `metrics?` | Node done; `metrics` (when present) carries real outputs, e.g. `script_chars`, `duration_sec` |
 | `node.failed` | `stage`, `node`, `message` | Node failed (not necessarily terminal — wait for `task.failed`) |
 | `task.succeeded` | `session_id`, `video_url`, `duration_ms` | **Terminal**: video ready |
 | `task.failed` | `code`, `message`, `retryable` | **Terminal**: task failed (`retryable=true` → exit 4, `false` → exit 5) |
+| `task.paused` | `message` | Run paused (web editor's pause, or `vibeknow video pause`). **Not** a failure: continue it with `vibeknow video resume <task_id>` — never by creating the video again, which bills in full. The command exits 6. |
 
 Agent engine (`--engine agent`) replaces `node.started/succeeded/failed` with `node.progress` carrying `status` + `message`, and omits `duration_ms` from `task.succeeded`.
 

@@ -110,3 +110,22 @@ This is distinct from task events — it means no task was created at all.
 | `task_failed` | Task terminated with error | Check `retryable` field |
 | `rate_limited` | Too many requests | Wait and retry |
 | `internal_error` | Server error | Report bug |
+| `insufficient_credits` | Not enough credits | Top up, then retry. Exit 5. |
+| `concurrent_work_limit` | Too many runs in flight | Wait for one to finish; retryable (exit 4) |
+| `script_invalid` | 原稿锁定 preflight rejected the script | Fix the document (length ≤ 8000 chars, usable text); exit 2 |
+| `replica_invalid` | PPT-mode preflight rejected the source | Needs a PPT-style PDF/PPT within page/content limits; exit 2 |
+| `knowledge_unsupported` | Document parsed to empty content | Use a document with extractable text; exit 2 |
+| `image_invalid` | Image-mode preflight rejected the page count | Lower `--pages`, pick fewer `--images`, or use a longer document; exit 2 |
+| `work_edit_busy` | The work is being edited right now | Transient; retry after the edit ends (exit 4) |
+| `project_quota_exceeded` | Account is at its project cap | Delete a project or upgrade the plan; retrying cannot help (exit 5) |
+| `project_works_full` | This project holds its maximum works | Use another project or remove works from it (exit 5) |
+| `tts_preview_quota_exceeded` | Rolling voice-preview budget for this work is spent | Stop previewing and proceed, or come back later (exit 5) |
+
+Any command run without a usable credential exits **3** and says
+``no credential found; run `vibeknow auth login` `` before it opens a
+connection. It is never reported as `network_error` — a missing login is not
+a transport problem, and retrying cannot fix it.
+
+The three quota codes exit 5 for the same reason `insufficient_credits` does:
+nothing about the request is wrong, so retrying it unchanged can only fail
+again. Report what ran out and let the user decide.

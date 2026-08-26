@@ -2,6 +2,425 @@
 
 ## Unreleased
 
+### Added — `create --preset`, a reusable style in a file
+
+`create` now takes 21 flags, and most of them describe how a video should
+look rather than which run this is. A team that has settled on its house
+style re-typed a dozen options every time, and an agent driving the CLI had
+to carry that combination in a prompt, where it drifts. `--preset` puts it
+in a YAML file: a name resolved under `<config>/presets/`, or a path.
+
+A preset only supplies defaults. Anything also given on the command line
+wins — including an explicit `--bgm=false` — so a file can never contradict
+what the caller typed.
+
+The option set is an allowlist, not "every create flag". A preset may not
+set `--export`, `--yes` or `--confirm`: those authorize a charge, and
+consent that arrives inside a file someone forwarded to you is not consent.
+It may not set `--from`/`--kb-id`, which identify one run's input, nor
+`--async`/`--preview-dir`/`--output`, which describe one invocation. Each of
+those is an explicit exit 2 naming the key and the reason rather than a
+silent drop — a `yes: true` that were quietly ignored would read as though
+it had worked.
+
+Everything is rejected before the first upload, so a broken preset costs
+nothing: an unknown key (with the valid list), an unsupported
+`schema_version`, an empty `create:` block, or a value the flag itself
+refuses. Every run reports what it applied — a `preset.applied` event with
+the sorted list of keys that took effect, or one stderr line in text mode —
+because with a preset in play the command line no longer answers "what was
+this run configured with".
+
+Client-side expansion only, with no backend involvement: a preset can
+express exactly what the command line can express and nothing more.
+
+### Added — `video set`, the first changes that do not mean regenerating
+
+Music, subtitles and the title can now be changed on a finished video. These
+are the settings the pipeline does not have to run again for, so they cost
+nothing and take effect at once — which is what makes them worth having in a
+tool driven by conversation, where "turn the music off" is a sentence and a
+full re-run is a bill.
+
+Subtitle style is read, modified and written back rather than written. The
+endpoint stores what it receives with no merge, so sending only the size the
+user asked about would have cleared the font, weight, colour, outline and
+animation with it — "make the subtitles bigger" would have quietly reset
+everything else about them, reporting success. A test pins the merge by
+asserting the untouched fields survive.
+
+Every one of these changes except the rename discards the work's rendered
+MP4 server-side, because the change has to be baked into the file. The
+preview and share link keep working; the download does not, until the next
+export — which bills. That is reported as `export_invalidated`, with the
+export command in `next_actions`, and stated on stderr in text mode: a user
+who turns the music off and later finds no file has no way to connect the two
+on their own.
+
+Presentation only. Narration, images and layout still have no edit path and
+still mean a fresh `create` at full price.
+
+### Added — `video script`, which reads what a video actually says
+
+Everything a caller could learn about a finished work described the
+container: its title, duration, cover, share link. The narration was not
+readable at all. It exists in the generation stream only as `script_chars` —
+a character *count* — so once a run ended, "what does this video say" had no
+answer short of watching it, and "show me the script" had no command behind
+it.
+
+`video script` returns the shot list with its narration: per shot the text,
+duration, layout and status, plus public URLs for the still, the narration
+audio and the subtitles. It also returns the whole script stitched in order,
+because that is the form the request usually takes and every caller would
+otherwise rebuild it. Absent media is omitted rather than emitted empty — a
+missing key reads as "not rendered yet", an empty string reads as a broken
+link.
+
+Read-only and free: it queries stored rows, re-runs nothing and bills
+nothing, so a conversation can come back to it as often as it likes. An
+empty shot list exits 6 rather than 0, since a run that has not produced
+shots yet is a *not yet*, not a silent video.
+
+This closes the reading half of the post-generation gap. The editing half is
+still open: nothing here changes a script, an image or a subtitle, and
+adjusting content still means a fresh `create` at full price.
+
+### Added — `video pause` and `video resume`
+
+A run could be started and then only waited out. That is a poor fit for a
+CLI driven by an agent acting on someone's sentence: the wrong document, the
+wrong aspect ratio, or a change of mind arrives *after* the run is going, and
+until now the only response was to let it finish and pay for a video nobody
+wanted. Pause stops it and keeps the work already done; resume continues from
+there rather than starting over.
+
+Resume also covers the failed case, which matters more than it sounds. It
+restarts from the last checkpoint and the backend reopens the original bill,
+so it costs a fraction of the alternative an agent would otherwise reach for
+— creating the video again, at full price, discarding every scene that had
+already succeeded. The returned `mode` says which of the two happened, since
+the caller has to be able to tell the user what it just did.
+
+The backend refuses several ways, all as HTTP 400 with a sentence, which lands
+on exit 2 — "your input is wrong, fix it and retry". For these that is wrong
+in the expensive direction: "this engine keeps no checkpoint", "content policy
+stopped it" and "the run is not in a pausable state" are facts about the run,
+not the arguments, and an agent told to fix its input will keep permuting
+flags against a condition no flag can reach. They now exit 5. The single
+genuinely retryable refusal — a concurrent pause/resume on the same session —
+is carved out to exit 4.
+
+### Changed — `auth status` exits 3 when there is no usable credential
+
+It used to exit 0 whichever answer it gave, on the reasoning that reporting
+successfully is not a failure. That reads fine for a person and badly for the
+program this command mostly talks to. A connector host decides whether to
+start a login from the exit code — WorkBuddy's connect sequence is *run
+status → exit code ≠ 0 → run auth* — so exiting 0 while unauthenticated
+invites it to skip the login and show a connected card for a machine holding
+no credential, where every command then fails with this same code 3 anyway.
+
+The spec is not self-consistent about this: its detailed decision table
+consults `statusMatchJson` after the exit code, and by that reading exiting 0
+was survivable. Being correct under only one of two readings bought nothing,
+so the exit code now agrees with the payload under both.
+
+Only the exit code changed. stdout still carries the same JSON, and nothing
+is written to stderr — the report is the message, and a caller parses it. A
+pending authorization counts as not connected, which is what keeps a host
+polling rather than concluding it is done.
+
+### Fixed — a refresh that could not be saved was replayed against the server
+
+When the keychain cannot be written, a refresh has already succeeded on the
+wire: the server has spent the presented token and handed back a new pair
+that now cannot be stored. The code kept that pair in memory and deleted the
+superseded entry — but a keychain that refuses writes refuses deletes for the
+same reason, so the stale copy survived. Reads preferred the keychain
+whenever it merely *read*, so everything after that in the process got the
+token the server had just spent.
+
+Presenting it again is not a retry. A rotating server reads a second
+presentation as a stolen credential, revokes the whole session, and logs a
+security warning; the user is signed out minutes later with nothing to
+connect it to. Expiry now decides which copy wins, which stays right in both
+directions — the unwritten copy beats the stale one it superseded, and a
+token another process has since written beats ours.
+
+Latent while go-account re-issued without spending the presented token. It
+became live when refresh moved onto `jwt.Refresh`.
+
+### Fixed — waiting for the refresh lock ignored the caller's deadline
+
+The cross-process lock was acquired under a private thirty-second budget
+built from `context.Background()`, which silently outranked every deadline a
+caller had set. `auth status` allows itself five seconds because a connector
+host polls it every three and abandons it at ten; on a slow network, where
+every poll refreshes and the waiters queue up, it could sit on that lock well
+past the point the host had already recorded a disconnection. The wait is now
+bounded by the caller's context, with the thirty seconds kept only as a
+backstop for callers that set no deadline.
+
+### Fixed — `auth logout` payload was missing `revoked` in one branch
+
+Logging out with no profile at all emitted an envelope without the `revoked`
+key the other paths carry, so a caller had to know which case it was in
+before reading the result. All three outcomes now report the same shape.
+
+### Fixed — `auth status` reported a live connection for a credential the server rejects
+
+`authenticated` was decided from the stored token's own expiry timestamps.
+That answers "has this credential run out of time", which is not the same
+question. A credential also dies when the server stops accepting it — the
+signing key was rotated, the session was revoked, the account was disabled —
+and none of those leave a mark on the copy in the keychain. It goes on
+looking valid for the rest of its nominal lifetime, so `status` reported a
+healthy connection while every actual command failed with exit 3.
+
+This is not hypothetical: go-account rotated its production signing secret,
+which invalidates every credential issued before that deploy. A connector
+host drives reconnection off `status` alone and polls it every three
+seconds, so it would have shown a connected card, indefinitely, with nothing
+prompting the user to reconnect.
+
+`status` now asks the server whether the credential is still accepted, which
+is what the connector spec recommends in the first place (§12, 方案 B). Three
+outcomes, deliberately kept distinct:
+
+- accepted → `authenticated: true`, with the server-confirmed identity
+- **rejected** → `authenticated: false`, and the dead credential is purged
+- **no answer** (timeout, 5xx, unreachable) → the local verdict stands
+
+Collapsing the last two would have been the easy mistake and a worse bug
+than the one being fixed: a few seconds of bad network would tear down a
+session that was never in any trouble.
+
+The check runs through the profile's real token provider rather than a
+static token, so a stale access token is refreshed here exactly as any other
+command would refresh it — otherwise the most common case of all, a
+connector left idle overnight, would report its perfectly good session as
+dead. The budget went from 3s to 5s to cover that extra round-trip, still
+well inside the 10s a connector host allows.
+
+### Fixed — a missing login was reported as a retryable network error
+
+Every command run without a usable credential exited **1** with
+`[network_error] … no credential found`, and the error claimed to be
+retryable. Both halves were wrong, and both mattered to an agent driving
+the CLI: exit 1 is the catch-all, so "the user has to connect an account"
+was indistinguishable from "the API misbehaved", and `retryable: true`
+invited a retry loop against a condition no retry can clear.
+
+The cause was in the shared HTTP layer. `AuthMiddleware` aborts the
+request with a proper auth error, but `http.Client` wraps every transport
+failure in `*url.Error`, and the layer above looked only for its own
+error type before rebuilding everything else as `network_error`. It now
+preserves a classification that was already made. Affected every command,
+not just recent ones; `create` additionally no longer degrades past an
+auth failure during prompt optimisation, which used to print a confusing
+"using default" line before dying at init anyway.
+
+### Fixed — a missing expiry field logged the user out and deleted the credential
+
+Token expiries were computed as `now + expires_in` unconditionally. An absent
+field decodes to zero, so the arithmetic produced `now - 30s` — a deadline
+already in the past. A credential minted from a response that omitted
+`refresh_expires_in` was therefore *born expired*: the next command read it as
+dead and purged it from the keychain. One missing field in a backend response
+was enough to log a user out immediately after a successful login, with no
+error anywhere to explain it.
+
+Zero now means "not stated" and is stored as an unset expiry, which `Status()`
+already reads as "no information". A negative lifetime is still honoured — a
+deadline in the past is information, not the absence of it.
+
+Relatedly, a refresh response that returns only a new access token — which
+RFC 6749 §6 explicitly permits, and is what any server that does not rotate
+refresh tokens sends — was stored verbatim, blanking the refresh token and
+back-dating its expiry. That destroyed a working session on its first refresh
+and forced a new login every access-token lifetime. What a refresh response
+omits now leaves the stored credential unchanged.
+
+### Fixed — a killed session was reported as a network error
+
+The 401 retry path had the same flaw as the missing-credential path: when a
+forced refresh found the session permanently gone — replaced on another
+device, account disabled — that error was returned through `RoundTrip`,
+wrapped by `http.Client` in `*url.Error`, and rebuilt as a retryable
+`network_error`. The user was told their connection was flaky and to try
+again, when their session had been killed and only logging in would help. The
+structured code now survives the transport layer, so it exits 3.
+
+### Changed — the 401 retry no longer buffers the request body
+
+To make a request replayable the retry middleware read it fully into memory
+first. Free for JSON, but document upload streams the file through an
+`io.Pipe`, so the buffering pulled entire decks into RAM and cancelled out the
+streaming it was built on — to cover a 401 that is already unlikely, because
+a near-expiry token is refreshed *before* the request goes out. Replay now
+uses `net/http`'s own `GetBody`, which exists for every in-memory body; a body
+that cannot be regenerated is sent once and its 401 surfaced as the auth error
+it is.
+
+### Fixed — a device login no longer dies with the process that started it
+
+`auth login --headless` polls until the user authorizes, but the host that
+spawns it decides how long it lives — the WorkBuddy connector spec caps
+the auth subprocess at five minutes while the device code is valid for
+fifteen. The code existed only in that process's memory, so a user who
+took their time authorized successfully in the browser and the CLI never
+found out: the connector sat at "not connected" with no way forward but
+authorizing all over again.
+
+The pending authorization is now parked in the config dir (0600) before
+the URL is printed, and **`auth status` completes the exchange** — which is
+the flow the connector spec recommends for device-code CLIs, and needs no
+host cooperation, because connect and reconnect both poll `status`
+already. Also in this area:
+
+- `auth status --output json` reports `pending_authorization: true` while
+  a login is open and waiting on the user — distinct from being logged
+  out, and the difference between "wait and re-check" and "start a login".
+- `auth logout` clears the parked code (otherwise the next `status` would
+  silently sign the user back in) and now succeeds when there is no
+  profile at all, instead of erroring on a disconnect that has nothing to
+  disconnect.
+- `auth status` bounds its identity lookup at 3s. It previously inherited
+  the shared 30s HTTP timeout, well past the 10s a connector host allows
+  for a status check — a stalled network read as "disconnected" and
+  flapped a connection that was fine.
+- `auth login --headless` no longer prints the raw `device_code`. It is a
+  live credential and the host captures stdout into its logs; nothing
+  outside the process needs it. `--no-wait` still prints it, since there
+  the caller must resume with `--device-code`.
+- Failed logins (code expired, authorization denied) exit **3** instead of
+  1.
+
+### Fixed — quota exhaustion exited 1
+
+`project_quota_exceeded`, `project_works_full` and
+`tts_preview_quota_exceeded` fell through to the generic exit 1, reading
+as "something went wrong" when nothing about the request was wrong. They
+now exit **5**, matching `insufficient_credits`: the run failed for a
+reason the CLI cannot fix, and the answer is to tell the user what ran
+out rather than to retry.
+
+### Fixed — `voice list --output json` hid cloned voices from `templates`
+
+The flat `templates` array listed public presets only, while the human
+table and `--voice` resolution both included the caller's cloned voices —
+so the same command answered "what can I use?" differently depending on
+`--output`. `templates` now means every voice `--voice` accepts.
+
+### Changed — stage map rebuilt against what the backend actually sends
+
+The progress stage table predated two backend reworks and had drifted into
+fiction: six of its node names no longer exist on the wire
+(`text_speech`, `content_analyze`, `video_director`, `design`,
+`scene_generate`, `theme_select`), one was a wrong guess that never
+existed (`image2_style_select` — the real step_id is
+`image2_theme_select`, so the image mode's style-selection stage never
+lit), and `big_director` — the standard line's longest LLM node, one to
+two minutes of planning — was missing entirely. Meanwhile the `parse` and
+`suggest` stages could never light at all: the backend registers no
+progress events for the nodes that fed them.
+
+The table now mirrors the backend's event registry exactly. The stage
+vocabulary is `outline → tts → render → publish` (four, not six); nodes
+the backend adds later degrade to free-form progress lines instead of
+being dropped. Consumers keying on `stage` values should drop `parse` and
+`suggest`, which never actually arrived.
+
+### Added — the five online creation modes, fully addressable
+
+The CLI's mode surface now matches the product's online lineup end to end:
+灵活创作 (default), 一键成片 (`--engine agent`), 图解视频 (`--mode
+image`), PPT 讲解 (`--mode replica`), 手绘动画 (`--mode handdraw`), plus
+the orthogonal 原稿锁定 switch (`--script-lock`). New on top:
+
+- **`--theme`** picks the visual style; **`vk theme list --mode <mode>`**
+  browses each mode's catalog (design / image / hand-drawn suites, the
+  latter with preview URLs). Suite membership is validated by the backend;
+  the agent engine rejects the flag locally rather than ignoring it.
+- **`--language`** sets the output locale for script + narration
+  (zh-CN, en-US, es-ES, fr-FR, pt-BR, ja-JP, ko-KR). Unknown values fail
+  locally with exit 2 — the backend would silently fall back to the
+  deployment default, discarding an explicit choice.
+- **`--pages` now travels on init too**, so the image-mode feasibility
+  preflight (word count ≥ pages × 50, mandatory images ≤ pages) runs
+  against the real page count instead of the backend's default of 4.
+  Range-checked locally at 1–20.
+
+### Changed — `vk voice list` speaks the multi-language catalog
+
+Voice listing moved from the flat `/voice-templates` endpoint to
+`/pipeline-voices`, the one the product's voice picker feeds from: public
+templates arrive grouped by language and the signed-in user's cloned
+voices ride alongside (usable with any `--language`). `--voice <#>` now
+resolves cloned voices too. `--language <locale>` filters the public
+groups; JSON output keeps the flat `templates` array (now with a
+`language` field) and adds `languages` + `cloned`.
+
+### Added — silence is now survivable
+
+Two kinds of quiet used to be indistinguishable from a hang:
+
+- **`task.paused`**: a run paused from the web editor now surfaces as its
+  own event instead of a dangling stream. `create` and `video wait` exit 6
+  with the resume path spelled out, and the run ledger records the run as
+  `paused` rather than `unknown`.
+- **Stall notice**: the hand-drawn line's whole middle section (style,
+  storyboard, drawing, vectorize) emits no progress events by design —
+  minutes of nothing on a healthy run. On the human path the CLI now
+  prints a "still generating" reassurance after 60 s of stream silence,
+  with a hand-drawn-specific wording; structured outputs are unchanged
+  (the contract there is: silence is normal, wait for a terminal event).
+
+Also in the stream contract: the backend's enveloped `[DONE]` sentinel
+terminates the read (EOF remains the fallback), data-frame keepalives are
+ignored by type rather than by accident, and `node.succeeded` events now
+carry the backend's `metrics` (real node outputs: `script_chars`,
+`chapters`, `duration_sec`, …) through to NDJSON and `vk_event` consumers.
+
+### Added — talking-head avatars
+
+`vk create --avatar sys_<id>|ua_<id>` puts a presenter in the video, with
+`--avatar-position` (four corners) and `--avatar-size` (120–480 px circle
+diameter at 1080p base); omitted options fall back server-side to the
+user's saved preference, then defaults. `vk avatar list` shows the public
+presets — each with its paired `voice_id`, so face and voice stay matched
+— alongside the user's own trained avatars and their states.
+
+The avatar wire fields are camelCase (the backend binds them that way);
+local validation mirrors the backend's hard 400s (reference shape,
+position enum, size range) so a bad flag fails before anything is
+uploaded or billed. Rejected up front with `--mode handdraw` and with
+`--engine agent`: both would be accepted by the backend and then silently
+rendered without the presenter (no hand-drawn avatar node; v2 stores the
+config but has no compositing yet).
+
+MP4 export of an avatar work is gated server-side until every scene's
+presenter has rendered; failed scenes block it permanently. New
+`vk video avatar-retry [task_id] [--scene N]` resets exactly the failed
+scenes (script, images, TTS, healthy scenes untouched; nothing re-billed)
+so the export can proceed.
+
+### Added — preflight codes 100007–100011 mapped
+
+`image_invalid` (100007, image-mode page-count preflight; exit 2),
+`work_edit_busy` (100008, scene-edit lock; retryable, exit 4),
+`project_quota_exceeded` (100009), `project_works_full` (100010),
+`tts_preview_quota_exceeded` (100011). Previously all five collapsed into
+`business_error`.
+
+### Docs — `auth login --headless` was never recorded here
+
+The flag shipped earlier (single command, no TTY: device-code envelope on
+stdout, poll in place, write the keychain, exit 0 — the shape WorkBuddy's
+connector runner drives), but the changelog never said so. Recorded now
+for the release this entry ships in.
+
 ### Added — progress and result from one invocation
 
 `--output json` was silent until the end; `--output ndjson` put the

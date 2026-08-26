@@ -14,7 +14,7 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 
 - **One Command, Full Video** — `vibeknow create --from report.pdf` handles everything: document parsing, script generation, TTS, scene design, rendering, and packaging
 - **Agent-Native Design** — 3 structured [Skills](./skills/) out of the box, compatible with Claude Code, Cursor, and other AI tools — Agents can create videos with zero extra setup
-- **Real-Time Stage Progress** — SSE streaming with 6-stage progress tracking (parse → outline → tts → render → publish → suggest), both for human progress bars and machine-readable NDJSON
+- **Real-Time Stage Progress** — SSE streaming with 4-stage progress tracking (outline → tts → render → publish), both for human progress bars and machine-readable NDJSON
 - **Multi-Service Architecture** — Connects to multiple backend services with per-service endpoint configuration and independent auth
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Secure & Controllable** — OS-native keychain credential storage, ANSI escape sanitization, credential redaction in verbose logs, non-production endpoint trust boundaries
@@ -99,6 +99,24 @@ vibeknow create --from report.pdf
 
 For CI / container environments with a pre-issued JWT, skip the Device Flow entirely — see [Environment Variables](#environment-variables) below.
 
+**Hosts that spawn the CLI** (connector platforms, IDE integrations) want one
+blocking command instead of the two-phase flow above:
+
+```bash
+vibeknow auth login --headless
+# Prints {"user_code", "verification_uri", "expires_in", "hint"} to stdout
+# immediately, then polls until authorized. No TTY, no Enter key, and it
+# never opens a browser itself — the host does that after reading the URL.
+```
+
+The pending authorization is also written to the config dir, so a host that
+kills the process before the user finishes authorizing does not lose the
+login: the next `vibeknow auth status` completes the token exchange. While
+one is outstanding, `auth status --output json` reports
+`"pending_authorization": true` alongside `"authenticated": false`, which
+distinguishes "waiting on the user" from "never logged in". `auth logout`
+discards it.
+
 ## Agent Skills
 
 The [`./skills/`](./skills/) directory ships three skills in the open
@@ -166,10 +184,20 @@ vibeknow create --from <doc_id> --kb-id <kb_id>
 # Custom prompt
 vibeknow create --from data.csv --prompt "Create a 2-minute explainer video"
 
+# Reuse a saved style bundle (~/.config/vibeknow/presets/brand.yaml)
+vibeknow create --from deck.pdf --preset brand
+vibeknow create --from deck.pdf --preset brand --aspect vertical   # your flag wins
+
 # Async mode — submit, confirm the run started, then detach
 vibeknow create --from doc.pdf --async
 vibeknow video wait          # reattaches to the most recent run
 ```
+
+A **preset** is a YAML file holding the style flags you reuse — mode, aspect,
+theme, voice, language, bgm, avatar placement. It supplies defaults only:
+anything you also pass on the command line wins. It cannot carry `--export`,
+`--yes` or `--confirm`, so opening someone else's preset can never approve a
+charge. See [AGENTS.md](AGENTS.md) for the full contract.
 
 `--async` returns once the backend confirms the run is live (seconds),
 not once the video is done (minutes). The render continues server-side
@@ -252,9 +280,29 @@ Or one-shot: `vk create --from ... --export --yes`.
 ```bash
 vk create --from deck.pdf  --mode replica   # PPT/PDF page-by-page
 vk create --from post.md   --mode image --pages 8   # one AI illustration per page
-vk create --from notes.md  --mode handdraw  # hand-drawn animation
+vk create --from notes.md  --mode handdraw  # hand-drawn animation (mid-run silence is normal)
 vk create --from <src>     --aspect vertical --bgm
 ```
+
+Style and language ride along with any pipeline mode:
+
+```bash
+vk theme list --mode image                   # browse a mode's style catalog
+vk create --from post.md --mode image --theme <theme_id>
+vk create --from post.md --language en-US    # script + narration language
+```
+
+### Add a talking-head avatar
+
+```bash
+vk avatar list                               # sys_<id> presets + your trained ua_<id>
+vk create --from deck.pdf --avatar sys_7 --voice <its VOICE_ID>
+vk create --from deck.pdf --avatar ua_12 --avatar-position bottom-right --avatar-size 300
+```
+
+Not available with `--mode handdraw` or `--engine agent`. If `video
+export` is refused because avatar scenes failed, run
+`vk video avatar-retry` (free) and export again once they finish.
 
 `--script-lock` narrates the document verbatim instead of writing a
 script from it, and stacks on top of any mode (it replaced the old
@@ -331,7 +379,7 @@ vibeknow voice list
 vibeknow voice list --output json
 
 # Pipe-friendly (non-TTY auto-selects json)
-vibeknow voice list | jq '.list[0].name'
+vibeknow voice list --output json | jq '.templates[0].name'
 ```
 
 ### Environment Variables

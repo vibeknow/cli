@@ -260,6 +260,56 @@ vk_event={"type":"resource_ready","asset_kind":"cover_image",
 - Failures emit `resource_preview_warning` and never fail the run. The
   video rendered; a missing thumbnail is not evidence about that.
 
+## Presets (`--preset`)
+
+`vk create` takes 21 flags, and most of them describe a *style* rather than
+a run — mode, aspect, theme, voice, language, bgm, avatar placement. A
+preset is that combination in a version-controllable YAML file:
+
+```yaml
+schema_version: "1"
+name: brand-explainer
+create:
+  mode: image
+  aspect: horizontal
+  language: zh-CN
+  bgm: true
+```
+
+`--preset <name>` resolves under `<config>/presets/`; anything with a path
+separator or a `.yaml`/`.yml` extension is a path. Keys are flag names;
+underscores and dashes are interchangeable.
+
+Two rules make it safe to run a file someone else wrote.
+
+**A preset only supplies defaults.** `Apply` skips every flag cobra reports
+as `Changed`, so the command line always wins — including an explicit
+`--bgm=false`. A file can never contradict what the caller typed.
+
+**The option set is an allowlist.** A preset cannot set `--export`, `--yes`
+or `--confirm`: those authorize a charge, and consent that arrives inside a
+forwarded file is not consent. It cannot set `--from`/`--kb-id` (one run's
+input, not a style) or `--async`/`--preview-dir`/`--output` (one
+invocation, not a style). Each refusal is an explicit exit 2 naming the key
+and the reason — a `yes: true` that were silently dropped would read as
+though it had worked, which is the failure mode this whole contract exists
+to remove.
+
+Expansion happens at the top of `RunE`, before the first upload, so every
+rejection is free and everything downstream — validation included — sees
+one flag set and cannot tell a preset value from a typed one. Values go
+through `pflag.Set`, so `pages: many` fails with the same message the
+command line gives.
+
+Every run reports what it applied: a `preset.applied` event carrying the
+sorted list of keys that actually took effect, or one stderr line in text
+mode.
+
+This is deliberately client-side only. It is **not** a place for per-node
+instructions: the task init request has no field to carry them
+(`client/figlens/task.go:31-56`), so a preset can express exactly what the
+command line can express and nothing more.
+
 ## Video kinds
 
 `vk create --mode <kind>` picks which figlens pipeline runs:

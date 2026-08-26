@@ -24,8 +24,23 @@ visibility: stdout carries exactly one document (the final snapshot) while
 stderr carries the run as it happens. With `--output ndjson` the stream
 stays on stdout as before and nothing is duplicated onto stderr.
 
-Two event types appear **only** on the stderr channel, and only when
-`--preview-dir` is set:
+Three event types appear **only** on the stderr channel.
+
+### preset.applied
+
+Emitted once, before anything is uploaded, when `--preset` was given.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `preset` | string | Preset name (from the file, else its filename stem) |
+| `path` | string | File it was read from |
+| `keys` | array of string | Flags the preset actually set, sorted. **Excludes** anything the command line also supplied — those keep the caller's value. |
+
+An empty `keys` array is not an error: it means every key the preset sets
+was also passed explicitly. Use this event to report what a run was
+configured with; the command line alone no longer answers that question.
+
+The next two appear only when `--preview-dir` is set:
 
 ### resource_ready
 
@@ -91,17 +106,29 @@ A pipeline node has begun (pipeline engine only).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `stage` | string | High-level stage bucket (e.g. `parse`, `outline`, `storyboard`, `tts`, `render`, `publish`) |
+| `stage` | string | High-level stage bucket: `outline`, `tts`, `render`, or `publish`. (Earlier schema drafts listed `parse`, `storyboard`, and `suggest`; the backend never emits events for the nodes that fed them, so they are gone.) |
 | `node` | string | Specific node display name within the stage |
 | `message` | string | Backend-supplied status message (may be empty) |
 
 ```json
-{"schema_version":"1","ts":"2026-05-15T10:00:01.234Z","type":"node.started","stage":"parse","node":"prepare","message":"开始解析"}
+{"schema_version":"1","ts":"2026-05-15T10:00:01.234Z","type":"node.started","stage":"outline","node":"script_writing","message":"撰写讲稿中"}
 ```
+
+Not every pipeline node reports progress. In particular the hand-drawn
+mode's entire middle section (style select, storyboard, drawing,
+vectorize) emits **no events at all** — minutes of silence between
+`script_writing` and `tts_generate` are normal there, not a hang.
 
 ### node.succeeded
 
-A pipeline node completed (pipeline engine only). Same fields as `node.started`.
+A pipeline node completed (pipeline engine only). Same fields as
+`node.started`, plus an optional `metrics` object carrying the node's real
+outputs when the backend measured any (keys are per-node, e.g.
+`script_chars`, `chapters`, `cover_count`, `duration_sec`, `bg_count`).
+
+```json
+{"schema_version":"1","ts":"2026-05-15T10:01:07.000Z","type":"node.succeeded","stage":"outline","node":"script_writing","message":"讲稿完成","metrics":{"script_chars":1234}}
+```
 
 ### node.failed
 
@@ -109,11 +136,15 @@ A pipeline node failed (pipeline engine only). Same fields as `node.started`. A 
 
 ### node.progress
 
-Free-form progress message (agent engine only). The agent does not have a named stage graph, so progress is reported as a status string + human-readable message.
+Free-form progress with no node attribution. Three producers share this
+shape: the agent engine (which has no node graph at all), the pipeline's
+run-started event, and the pipeline's stalled-run heartbeat
+(`status: "pending"`). Nodes the CLI does not recognize also degrade to
+this shape rather than being dropped.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | `"start"` / `"success"` / `"error"` |
+| `status` | string | `"start"` / `"success"` / `"error"` / `"pending"` |
 | `message` | string | Human-readable description of the current step |
 
 ```json
@@ -150,9 +181,27 @@ The `retryable` flag is **derived on the CLI side** from `code` — the backend 
 {"schema_version":"1","ts":"2026-05-15T10:05:00.000Z","type":"task.failed","code":"insufficient_credits","message":"积分不足","retryable":false}
 ```
 
+### task.paused
+
+The run was paused — the web editor's pause button, or a multi-instance
+handover. **Not a failure and not terminal on the backend**: the work sits
+in a paused state until resumed. Resume it with `vibeknow video resume`,
+which continues from where it stopped — do not create the video again, that
+bills in full and throws away every scene already generated. The command
+exits **6** with a message naming the resume command, and the local run
+ledger records the run as `paused`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | string | Backend's pause notice |
+
+```json
+{"schema_version":"1","ts":"2026-05-15T10:03:00.000Z","type":"task.paused","message":"任务已取消"}
+```
+
 ## Terminal Events
 
-After receiving `task.succeeded` or `task.failed`, the CLI closes the stream and exits. No more events will follow.
+After receiving `task.succeeded` or `task.failed`, the CLI closes the stream and exits. No more events will follow. `task.paused` also ends the stream on the CLI side (exit 6), but the run itself survives and is resumable.
 
 `task.cancelled` is not currently emitted — SIGINT terminates the process with exit 130 without producing a terminal NDJSON event.
 
