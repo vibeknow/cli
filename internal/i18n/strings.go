@@ -206,6 +206,13 @@ func init() {
 		"export.sigint_detach":   "detached from export; it continues running remotely. Re-attach with: vk video export-status %d --session-id %s",
 		"export.reattach_hint":   "re-attach with: vk video export-status %d --session-id %s",
 
+		// scene edit
+		"edit.confirm_prompt":             "About to replace the narration of shot %d and regenerate the whole shot — voice-over, layout and background image. This bills for text generation, speech synthesis and image generation, and cannot be undone. `--script-only` regenerates the voice-over alone and costs less. Continue?",
+		"edit.confirm_prompt_script_only": "About to replace the narration of shot %d and regenerate its voice-over. Layout and background image stay as they are. This bills for text generation and speech synthesis, and cannot be undone. Continue?",
+		"edit.cancelled":                  "cancelled by user",
+		"edit.succeeded":                  "shot %d updated",
+		"edit.export_stale":               "note: the rendered MP4 was made from the old narration and has not been withdrawn — `vk video download` will still return it. Run `vk video export %d --session-id %s` to re-render (bills). The preview and share link already show the edit.",
+
 		// update / upgrade notice
 		"update.available":  "A newer version %s is available (you have %s). Run `npm update -g vibeknow-cli` to upgrade.",
 		"update.checking":   "checking for updates...",
@@ -419,6 +426,13 @@ func init() {
 		"export.timeout":         "导出在 %s 内未完成；远端仍在渲染",
 		"export.sigint_detach":   "已断开；远端仍在渲染。重新连接: vk video export-status %d --session-id %s",
 		"export.reattach_hint":   "重新连接: vk video export-status %d --session-id %s",
+
+		// scene edit
+		"edit.confirm_prompt":             "即将替换第 %d 幕的讲稿并重新生成整幕——配音、版式、背景图。将按文本生成、语音合成、图像生成计费，且不可撤销。加 `--script-only` 只重生配音，更便宜。继续？",
+		"edit.confirm_prompt_script_only": "即将替换第 %d 幕的讲稿并重新生成配音，版式与背景图保持不变。将按文本生成与语音合成计费，且不可撤销。继续？",
+		"edit.cancelled":                  "已取消",
+		"edit.succeeded":                  "第 %d 幕已更新",
+		"edit.export_stale":               "注意：已渲染的 MP4 出自旧讲稿，且并未被撤下——`vk video download` 仍会返回它。跑 `vk video export %d --session-id %s` 重新渲染（计费）。预览与分享链接已是新内容。",
 
 		// update / upgrade notice
 		"update.available":  "新版本 %s 可用（当前 %s），运行 `npm update -g vibeknow-cli` 升级。",

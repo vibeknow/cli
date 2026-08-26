@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+### Added — `video edit`, the first change to what a video actually says
+
+Until now the CLI could read a video's narration but not change a word of
+it. Fixing one wrong sentence meant a fresh `create` at full price, throwing
+away everything about the video that was already right.
+
+`vk video edit --scene N --script "…"` replaces one shot's narration and
+regenerates that shot. `--scene` uses the numbers `vk video script` prints.
+`--script-only` regenerates the voice-over alone, leaving layout and
+background image untouched; the default rebuilds those too, which is what a
+rewrite of a noticeably different length needs, since nothing re-flows
+without it.
+
+This bills, so it goes through the same gate as `video export` under a
+second boundary, `scene_edit_confirmation`. Its payload carries `from` as
+well as `to`: the user is approving a diff, and showing only the replacement
+asks them to agree to a change they cannot see. Both halves are hashed into
+the `action_id`, which gives two properties for free — an agent iterating on
+wording cannot carry one approval across several rewrites, and a shot that
+changed underneath between the block and the resume invalidates the token
+rather than being silently overwritten. `script_only` is hashed too, so
+approving the cheap regeneration never authorises the expensive one.
+
+Unlike an export, no credit count is quoted. What an edit costs depends on
+how much text the model writes and how long the resulting speech runs, and
+the backend does not say in advance; the prompt names the kinds of billed
+work instead. A number invented to fill the field would undo the only thing
+the gate rests on.
+
+Four mistakes are refused locally, before anything is sent or billed, and
+they stay refused under `--yes`: a `--scene` outside the shot range (the
+message names the range), narration identical to what the shot already says,
+empty narration, and a missing `--scene` or `--script`.
+
+Two things a caller has to be told and would not otherwise learn. The
+rendered MP4 is **not** withdrawn — the backend leaves it in place, so
+`video download` keeps returning a video of the previous narration until the
+next export; the response reports this as `export_stale` with a
+`next_actions` entry. And there is **no undo**: the backend keeps a rollback
+snapshot to recover from its own mid-run failures but exposes no way to ask
+for a previous version back.
+
+The edit lock and the credit precheck are both answered before the event
+stream starts, as a JSON envelope on HTTP 200. Read as a stream they would
+look like a connection that carried no events — a generic exit 1. Read as an
+envelope they are `work_edit_busy` (exit 4, transient, retry) and
+`insufficient_credits` (exit 5).
+
+### Fixed — a terminal SSE event larger than 64KB ended the stream
+
+`bufio.Scanner`'s default line limit sat under the size of a completion
+event carrying a full rendered package. Past it the scan stopped, and the
+run read as "the backend went quiet" on the one event that says the work is
+finished. The limit is now 8MB.
+
 ### Added — `create --preset`, a reusable style in a file
 
 `create` now takes 21 flags, and most of them describe how a video should

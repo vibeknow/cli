@@ -17,8 +17,19 @@ type Reader struct {
 	scanner *bufio.Scanner
 }
 
+// maxLineBytes caps one SSE line. bufio.Scanner's own default is 64KB, which
+// is not enough: a terminal event carries the whole rendered package —
+// every scene's layout code — on one `data:` line, and a long video clears
+// 64KB easily. The failure mode that produced this limit is worth naming,
+// because it is not obviously a size problem: Scanner returns ErrTooLong,
+// the stream ends, and the run reads as "the backend went quiet" on the one
+// event that says the work is finished.
+const maxLineBytes = 8 << 20
+
 func NewReader(r io.Reader) *Reader {
-	return &Reader{scanner: bufio.NewScanner(r)}
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
+	return &Reader{scanner: s}
 }
 
 // Next returns the next complete event. Returns io.EOF when the stream ends.

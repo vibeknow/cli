@@ -72,6 +72,29 @@ Rules:
   `--confirm`, show the new terms, ask again.
 - Do not reach for `--yes` to get past a block you just received.
 
+### The two boundaries
+
+| `type` | Raised by | What is being agreed to |
+|--------|-----------|-------------------------|
+| `export_confirmation` | `video export`, `create --export` | Rendering the MP4: `{session_id, credits, operation}` |
+| `scene_edit_confirmation` | `video edit` | Rewriting one shot: `{session_id, scene_index, script_only, from, to}` |
+
+A token verifies only against the boundary it was minted for, so one is
+never usable for the other.
+
+`scene_edit_confirmation` carries **both** halves of the change. `from` is
+what the shot says now, `to` is what it would say — show the user the diff,
+not just the replacement. It also has no `credits` number, and that is not
+an omission: what an edit costs depends on how much text the model writes
+and how long the resulting speech runs, and the backend does not quote it in
+advance. The `message` names the *kinds* of work being billed instead.
+Do not invent a figure for the user.
+
+Because `from`, `to` and `script_only` are all part of what was agreed to,
+a token is invalidated by editing the proposed text at all, by adding or
+dropping `--script-only`, or by the shot changing underneath between the
+block and the resume.
+
 ## stage.failed Behavior
 
 - `fatal=false`: Progress information only. The pipeline may retry internally or skip the stage. CLI continues streaming. No non-zero exit code is set from this event alone.

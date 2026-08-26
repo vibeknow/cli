@@ -53,6 +53,42 @@ func ExportActionPayload(sessionID string) map[string]any {
 	}
 }
 
+// SceneEditActionType names the boundary for rewriting a shot's narration.
+//
+// Separate from ExportActionType because they are different decisions with
+// different costs, and a token minted for one must not authorise the other.
+const SceneEditActionType = "scene_edit_confirmation"
+
+// SceneEditActionPayload is what the user is being asked to agree to.
+//
+// The old and new narration are both in here, in full, and both are hashed
+// into the action_id. That is the point rather than a side effect:
+//
+//   - The user is agreeing to a *diff*, so both halves have to be visible.
+//     A payload carrying only the replacement asks them to approve a change
+//     they cannot see.
+//   - Consent is to one specific rewrite. An agent iterating on wording
+//     cannot carry a token from the last attempt to the next one, because
+//     the new text is different and the token no longer verifies.
+//   - If the work moved underneath — someone else edited this shot between
+//     the block and the resume — `from` no longer matches, the token stops
+//     verifying, and the caller is sent back to look at the current text.
+//     Without this, a stale confirmation would overwrite an edit nobody
+//     asked to discard.
+//
+// script_only is in here too: it decides what is billed, so it decides what
+// is being consented to.
+func SceneEditActionPayload(sessionID string, sceneIndex int, from, to string, scriptOnly bool) map[string]any {
+	return map[string]any{
+		"session_id":  sessionID,
+		"scene_index": sceneIndex,
+		"operation":   "edit_script",
+		"script_only": scriptOnly,
+		"from":        from,
+		"to":          to,
+	}
+}
+
 // GateOptions describes a spend the user has to authorise.
 type GateOptions struct {
 	// Type is the stable boundary token, e.g. "export_confirmation".

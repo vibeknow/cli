@@ -342,8 +342,81 @@ JSON output:
 Exit **6** means the work has no shots recorded yet — usually still
 generating. Check `video status` rather than retrying.
 
-Reading is not editing: there is no command that changes a script, image or
-subtitle. Adjusting content still means a fresh `create`, which bills again.
+Run this before `video edit`: the shot numbers it prints are what `--scene`
+takes, and the text it prints is what the edit will replace.
+
+## video edit
+
+Replace what one shot says and regenerate it. **Costs credits.**
+
+```
+vibeknow video edit [task_id] --scene N --script "…" [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scene int` | Which shot to change, numbered as `video script` prints them, **from 1** |
+| `--script string` | The new narration for that shot |
+| `--script-only` | Regenerate the voice-over only; leave layout and background image alone (cheaper) |
+| `--yes`, `-y` | Skip the confirmation gate — only when the user has already authorised this spend |
+| `--confirm string` | `action_id` from a previously blocked run |
+| `--session-id string` | Session ID (default: resolved from the local run ledger) |
+| `--preview-dir string` | Write the refreshed preview here and announce it as a `resource_ready` event |
+
+One shot per call. Editing three shots is three calls, three confirmations
+and three charges.
+
+**Which regeneration to ask for.** Everything billable on this path is
+downstream of the narration actually changing, so the choice is entirely
+about how much gets rebuilt:
+
+| | What regenerates | When it is right |
+|---|---|---|
+| `--script-only` | Voice-over, timeline, presenter | The new text is about as long as the old |
+| *(default)* | All of the above **plus** layout, content cards and background image | The new text is a different length, or says something different enough that the visuals no longer match |
+
+`--script-only` is cheaper. It is the wrong choice when the new text is much
+longer than the old: nothing re-flows, so the words can overrun the card
+they sit in.
+
+**The confirmation gate.** Same mechanism as `video export`, different
+boundary. Without a terminal the command exits **8** and writes
+`pending_actions` to stdout. The payload carries **both** `from` (what the
+shot says now) and `to` (what it would say), because that diff is what the
+user is being asked to approve — show them both, not just the replacement.
+
+The `action_id` is bound to that exact diff, plus `script_only`. So:
+
+- Changing a single character of `--script` invalidates the token. An agent
+  iterating on wording gets a fresh block for each version — deliberately.
+- Approving `--script-only` does **not** authorise the full regeneration.
+- If someone else edits the shot between the block and the resume, `from`
+  no longer matches and the token stops verifying, rather than silently
+  overwriting an edit nobody asked to discard.
+
+Re-run without `--confirm` to get current terms and a current token.
+
+**The rendered MP4 is not withdrawn.** Unlike `video set`, the backend
+leaves the old file in place, so `video download` keeps returning a video of
+the *previous* narration until the next `video export`. The JSON response
+says so as `export_stale: true` with a `next_actions` entry. The preview and
+share link show the edit immediately.
+
+**There is no undo.** No endpoint returns a previous version of a shot. Read
+the current text with `video script` first if it is worth keeping.
+
+**Exit codes.** `0` the shot was changed; `8` blocked on the spend;
+`4` another edit holds the lock on this work (transient — wait and retry);
+`5` out of credits; `2` the command line is wrong, and nothing was sent.
+
+Four mistakes are caught locally, before anything is billed or sent —
+`--scene` outside the shot range (the message names the range), narration
+identical to what the shot already says, empty narration, and a missing
+`--scene` or `--script`. All are exit 2 even with `--yes`.
+
+**Not covered by this command.** Changing images, swapping a layout,
+deleting a shot, and editing several shots in one charge all exist on the
+backend and are not wired up yet.
 
 ## video set
 
@@ -379,5 +452,5 @@ share link keep working; the download does not, until the next `video export`
 Exit **5** means this work cannot take that setting (an engine without BGM
 volume, a renderer that cannot carry styled subtitles). No value fixes it.
 
-This changes presentation only. Narration, images and layout have no edit
-command — those still require a fresh `create`, at full price.
+This changes presentation only, and costs nothing. Narration is changed with
+`video edit`, which bills. Images and layout still have no command.

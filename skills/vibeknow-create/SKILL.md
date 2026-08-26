@@ -102,6 +102,8 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow theme list --mode <mode>` | Visual themes/styles usable with `create --theme` |
 | `vibeknow avatar list` | Talking-head presenters (public presets + your trained ones) for `create --avatar` |
 | `vibeknow video avatar-retry [task_id]` | Retry failed avatar scenes (unblocks a rejected export; no re-charge) |
+| `vibeknow video script [task_id]` | Read what the video says, shot by shot (free) |
+| `vibeknow video edit [task_id] --scene N --script "…"` | Rewrite one shot's narration (**bills**; confirmation gate) |
 
 For full flags and output examples, see [commands.md](references/commands.md).
 
@@ -155,6 +157,36 @@ If the user asks what a run used, read the `preset.applied` event (or the
 `preset "<name>" applied: …` stderr line): its `keys` list is exactly what
 the file contributed, with command-line overrides already excluded. Do not
 infer it from the file.
+
+### Fix a line of narration (`video edit`)
+
+```bash
+vibeknow video script 42                                       # free: read the shots and their numbers
+vibeknow video edit 42 --scene 3 --script "换一种说法，更短一点。"   # exit 8: shows the diff, asks
+vibeknow video edit 42 --scene 3 --script "…" --confirm act_…   # after the user agrees
+```
+
+The only content edit there is. One shot per call — three shots is three
+confirmations and three charges. `--scene` uses the numbers `video script`
+prints, counting from 1.
+
+Add `--script-only` to regenerate just the voice-over (cheaper, layout
+untouched). Leave it off — the default — to rebuild the shot's layout and
+background image too, which is what a rewrite of a noticeably different
+length needs, since nothing re-flows without it.
+
+The block payload carries `from` and `to`. **Show the user both**: they are
+approving a diff, and there is no undo — no endpoint returns a previous
+version of a shot. The token is bound to that exact text, so reworded
+attempts each get their own block.
+
+Afterwards the preview and share link are current but the rendered MP4 is
+**not**: the backend leaves the old file in place, so `video download` still
+returns the previous narration until the next `video export`. The response
+flags this as `export_stale`.
+
+Exit 4 means another edit holds the lock on this work — wait a moment and
+retry the same command.
 
 ### Talking-head avatar
 

@@ -795,7 +795,10 @@ var createCmd = &cobra.Command{
 
 func init() {
 	createCmd.Flags().StringVar(&flagCreateFrom, "from", "", "doc_id, URL, or local file path (required)")
-	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice from `vk voice list` — either the # or the speech_voice_id")
+	// Single quotes, not backticks: cobra reads the first backquoted span as
+	// the flag's argument placeholder, so the usage line read
+	// `--voice vk voice list` instead of `--voice string`.
+	createCmd.Flags().StringVar(&flagCreateVoiceID, "voice", "", "voice from 'vk voice list' — either the # or the speech_voice_id")
 	createCmd.Flags().StringVar(&flagCreatePrompt, "prompt", "", "custom prompt for video generation (default: auto-generated)")
 	createCmd.Flags().BoolVar(&flagCreateAsync, "async", false, "print task_id/session_id and exit without waiting")
 	createCmd.Flags().BoolVar(&flagCreateExport, "export", false, "after preview, also render MP4 (extra credits + time)")

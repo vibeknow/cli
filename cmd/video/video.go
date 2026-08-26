@@ -26,6 +26,7 @@ func init() {
 	Cmd.AddCommand(exportCmd)
 	Cmd.AddCommand(exportStatusCmd)
 	Cmd.AddCommand(scriptCmd)
+	Cmd.AddCommand(editCmd)
 	Cmd.AddCommand(setCmd)
 	Cmd.AddCommand(pauseCmd)
 	Cmd.AddCommand(resumeCmd)

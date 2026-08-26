@@ -55,8 +55,9 @@ The contract holds on **every** command, not just `vk create`:
   names the real one in the hint.
 - An expired or missing credential exits **3** on every command that
   talks to a backend. Re-authenticate and retry.
-- `rate_limited`, `internal_error` and `concurrent_work_limit` exit
-  **4**: the same command is worth retrying after a wait.
+- `rate_limited`, `internal_error`, `concurrent_work_limit` and
+  `work_edit_busy` exit **4**: the same command is worth retrying after a
+  wait.
 - `insufficient_credits` exits **5**: retrying cannot help.
 - A paid action reached with no terminal attached and no prior authority
   exits **8**: the decision was handed back, not made.
@@ -117,7 +118,27 @@ export` exiting 0 states that the MP4 exists; at this boundary it does not.
 Not 2 either — the command line is fine, and sending an agent to look for
 an argument mistake it did not make wastes a turn.
 
-Scoped to the two paid paths (`vk video export`, `vk create --export`).
+Two boundaries exist, and a token verifies only against the one it was
+minted for:
+
+| Type | Raised by | Payload |
+|------|-----------|---------|
+| `export_confirmation` | `vk video export`, `vk create --export` | `session_id`, `credits`, `operation` |
+| `scene_edit_confirmation` | `vk video edit` | `session_id`, `scene_index`, `script_only`, `from`, `to` |
+
+`scene_edit_confirmation` carries no credit count, and that is the honest
+answer rather than a gap: the price depends on how much text the model
+writes and how long the speech runs, and the backend does not quote it in
+advance. Naming the *kinds* of billed work is what the CLI can say without
+inventing a figure — and inventing one would undermine the only thing the
+gate rests on, which is that the user saw real terms.
+
+It carries `from` as well as `to` for two reasons. The user is approving a
+diff, so both halves have to be visible. And since the payload is hashed,
+a shot that changed underneath between the block and the resume mints a
+different token, so a stale confirmation cannot overwrite an edit nobody
+asked to discard.
+
 `kb delete` keeps the plain prompt: it is destructive but not billed, and
 `kb prune`, the bulk path, is already dry-run by default.
 

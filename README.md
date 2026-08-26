@@ -275,6 +275,26 @@ code from the state it waited for.
 
 Or one-shot: `vk create --from ... --export --yes`.
 
+### Fix one line without regenerating the video
+
+```
+$ vk video script 42                     # free: read what it says, shot by shot
+[3] 结论  (4.5s)
+增长主要来自海外市场。
+
+$ vk video edit 42 --scene 3 --script "增长几乎全部来自海外市场。"
+```
+
+A wrong sentence used to mean a fresh `create` at full price. `video edit`
+replaces one shot's narration and regenerates that shot; `--script-only`
+regenerates the voice-over alone, for less.
+
+It bills, so it goes through the same confirmation gate as `video export` —
+and shows both the current and the proposed wording, because that diff is
+what you are agreeing to. There is no undo, and the previously rendered MP4
+is left in place: `video download` returns the old narration until you
+export again.
+
 ### Choose a video mode
 
 ```bash

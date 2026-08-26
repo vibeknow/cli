@@ -24,7 +24,25 @@ visibility: stdout carries exactly one document (the final snapshot) while
 stderr carries the run as it happens. With `--output ndjson` the stream
 stays on stdout as before and nothing is duplicated onto stderr.
 
-Three event types appear **only** on the stderr channel.
+Six event types appear **only** on the stderr channel.
+
+### edit.started / edit.progress / edit.succeeded
+
+The progress of a `video edit` run. These are the only events that command
+emits; its result is the single JSON document on stdout.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scene_index` | number | Which shot is being changed, numbered from 1 |
+| `message` | string | The backend's own sentence for the current step, already localised. Absent on `edit.succeeded`. |
+| `status` | string | `success` or `fail` for that step. `edit.progress` only. |
+| `preview_url` | string | Refreshed playable preview. `edit.succeeded` only. |
+
+A `status: "fail"` on one step is not the outcome of the run. Take the exit
+code as the verdict, never a mid-stream step. When a step does fail the
+backend restores the pre-edit version, so the shot is normally unchanged —
+but that is compensation rather than a transaction, so confirm with
+`video script` rather than assuming.
 
 ### preset.applied
 
