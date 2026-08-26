@@ -651,13 +651,14 @@ var createCmd = &cobra.Command{
 		if taskPaused && successSessionID == "" {
 			// Paused is a known non-terminal state, not an unknown one: no
 			// probe needed, and re-running create would double-spend. Exit 6
-			// (did not reach a terminal state) with the resume path spelled
-			// out — resuming is a web-editor action today.
+			// (did not reach a terminal state) naming the command that
+			// continues from where it stopped — anything vaguer invites the
+			// expensive answer, which is to create the video over again.
 			updateJob(task.TaskID, task.SessionID, func(r *jobs.Record) {
 				r.Status = jobs.StatusPaused
 			})
 			return clerr.Newf("%s", i18n.T("create.err.task_paused",
-				fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID))).WithCode(6)
+				fmt.Sprintf("vk video resume %d --session-id %s", task.TaskID, task.SessionID))).WithCode(6)
 		}
 
 		if successSessionID == "" {

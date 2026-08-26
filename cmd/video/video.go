@@ -25,5 +25,9 @@ func init() {
 	Cmd.AddCommand(urlCmd)
 	Cmd.AddCommand(exportCmd)
 	Cmd.AddCommand(exportStatusCmd)
+	Cmd.AddCommand(scriptCmd)
+	Cmd.AddCommand(setCmd)
+	Cmd.AddCommand(pauseCmd)
+	Cmd.AddCommand(resumeCmd)
 	Cmd.AddCommand(avatarRetryCmd)
 }

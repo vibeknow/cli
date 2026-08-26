@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -55,7 +56,7 @@ var waitCmd = &cobra.Command{
 			emitEvent = w.Event
 		}
 
-		var taskFailed, taskSucceeded, sawAnyEvent bool
+		var taskFailed, taskSucceeded, taskPaused, sawAnyEvent bool
 		var successSessionID string
 
 		var failedCode string
@@ -85,6 +86,8 @@ var waitCmd = &cobra.Command{
 					fmt.Fprintf(stderr, "task succeeded\n")
 				case "task.failed":
 					fmt.Fprintf(stderr, "task failed: %s\n", ev.Message)
+				case "task.paused":
+					fmt.Fprintf(stderr, "task paused\n")
 				}
 			}
 
@@ -99,6 +102,22 @@ var waitCmd = &cobra.Command{
 				taskFailed = true
 				failedCode = ev.Code
 				failedRetryable = ev.Retryable
+			case "task.paused":
+				taskPaused = true
+			}
+		}
+
+		// Human path only: reassure through silent pipeline stretches
+		// (the hand-drawn line emits nothing for its whole middle section).
+		if emitEvent == nil && !ch.Structured() {
+			stall := cmdutil.StartStallNotifier(time.Minute, func(elapsed time.Duration) {
+				fmt.Fprintln(stderr, i18n.T("create.still_running", elapsed))
+			})
+			defer stall.Stop()
+			inner := emit
+			emit = func(ev figlens.StreamEvent) {
+				stall.Touch()
+				inner(ev)
 			}
 		}
 
@@ -129,6 +148,18 @@ var waitCmd = &cobra.Command{
 				r.Error = failedCode
 			})
 			return clerr.Newf("task failed").WithCode(code)
+		}
+		if taskPaused && !taskSucceeded {
+			// Known non-terminal state — skip the probe: the backend told us
+			// exactly where the run stands. Name the resume command rather
+			// than the web editor, or a caller with no browser concludes the
+			// run is lost and pays to create it again.
+			noteJob(taskID, flagWaitSessionID, func(r *jobs.Record) {
+				r.Status = jobs.StatusPaused
+			})
+			return clerr.Newf(
+				"task paused; resume it with: vk video resume %d --session-id %s",
+				taskID, flagWaitSessionID).WithCode(6)
 		}
 		if !taskSucceeded {
 			// The stream closed without a terminal event. Exiting 0 here

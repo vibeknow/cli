@@ -28,6 +28,13 @@ type Work struct {
 	Duration   int64  `json:"duration"`
 	Engine     string `json:"engine,omitempty"`
 	Status     int    `json:"status"`
+	// Bgm / Subtitle are "on" / "off", and SubtitleStyle is the stored style
+	// as raw JSON. They are read here so a partial change can be merged onto
+	// what is already set: the style endpoint overwrites wholesale, so
+	// sending one field without the rest silently clears the others.
+	Bgm           string `json:"bgm,omitempty"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	SubtitleStyle string `json:"subtitle_style,omitempty"`
 }
 
 func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work, error) {
