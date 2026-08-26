@@ -16,6 +16,7 @@ import (
 	jobscmd "github.com/vibeknow/cli/cmd/jobs"
 	kbcmd "github.com/vibeknow/cli/cmd/kb"
 	profilecmd "github.com/vibeknow/cli/cmd/profile"
+	subtitlecmd "github.com/vibeknow/cli/cmd/subtitle"
 	themecmd "github.com/vibeknow/cli/cmd/theme"
 	videocmd "github.com/vibeknow/cli/cmd/video"
 	voicecmd "github.com/vibeknow/cli/cmd/voice"
@@ -94,6 +95,7 @@ func init() {
 	rootCmd.AddCommand(jobscmd.Cmd)
 	rootCmd.AddCommand(kbcmd.Cmd)
 	rootCmd.AddCommand(profilecmd.Cmd)
+	rootCmd.AddCommand(subtitlecmd.Cmd)
 	rootCmd.AddCommand(themecmd.Cmd)
 	rootCmd.AddCommand(videocmd.Cmd)
 	rootCmd.AddCommand(voicecmd.Cmd)

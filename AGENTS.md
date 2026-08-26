@@ -405,6 +405,43 @@ background images have already been billed.
 Non-numeric values pass through unvalidated, because cloned voices do
 not appear in the template list.
 
+## Subtitle style
+
+`vk subtitle fonts` and `vk subtitle presets` read two catalogs the backend
+vendors from design-suite and treats as the single source — the web font
+picker, the render-time whitelist and these endpoints all read the same file.
+So a value present in the list *is* a value the backend accepts; there is no
+approximation to hedge against. `--subtitle-font` and `--subtitle-preset` take
+either the display `#` or the real value, the same bargain `--voice` makes.
+
+Three things about the write path are easy to get wrong:
+
+**The style is stored wholesale.** `POST /works/subtitleStyle` marshals what
+it receives straight into the column, so a partial write clears everything it
+omits. Always `ParseSubtitleStyle` the work's current style first, change what
+was asked for, send the whole thing back.
+
+**A preset is a patch, and its zeroes are meaningful.** `SubtitleStylePatch`
+is built out of pointers for exactly one reason: the plated presets carry
+`"strokeWidth": 0` to switch off an outline the work may already have, while
+saying nothing at all about font size. Decoded into value fields those two
+cases collapse, and whichever way the merge then guesses, one family of
+presets breaks. Keep the pointers.
+
+**Local range checks are not defensive symmetry.** The backend *clamps*
+`bottomPercent` to [0.02, 0.98] and `strokeWidth` to [0, 12] instead of
+refusing them, and does not validate `fontWeight` at all. Clamping is worse
+than refusing for a caller: the request succeeds having stored something else,
+and nothing reports the substitution. The checks in `validateSubtitleStyleFlags`
+run before any network call, so an impossible number costs nothing and is
+named as the mistake it is.
+
+The animation whitelist is the one piece of this with no endpoint behind it —
+`figlens.SubtitleAnimations` is a copy of a server-side constant. A value
+added server-side is unusable until that list catches up, which is why the
+error says "not one this CLI recognises" rather than "invalid". If you touch
+it, keep the wording honest about where the limit lives.
+
 ## KB management
 
 `vk kb list / delete / prune` manage vectoria knowledgebases. The

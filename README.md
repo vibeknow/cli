@@ -295,6 +295,26 @@ what you are agreeing to. There is no undo, and the previously rendered MP4
 is left in place: `video download` returns the old narration until you
 export again.
 
+### Make the subtitles readable
+
+```
+$ vk subtitle presets
+#  NAME   LOOK
+1  白字·黑底  text #ffffff · plate rgba(8,8,12,0.68) · no outline
+2  白字·黑边  text #ffffff · no plate · outline 3px rgba(0,0,0,0.92) · Noto Sans SC 600
+
+$ vk video set 42 --subtitle-preset 2 --subtitle-size 52
+```
+
+Subtitle readability is a combination, not a set of independent settings — an
+outline behind a solid plate is invisible, a plate under an outline is muddy.
+The presets are the looks the design team ships, each carrying every field it
+needs. Individual flags still apply on top, so the call above means "that
+look, but bigger".
+
+`vk subtitle fonts` lists the families that are allowed, which previously had
+no way to be discovered at all.
+
 ### Choose a video mode
 
 ```bash

@@ -242,6 +242,60 @@ vibeknow theme list [--mode default|image|handdraw|replica] [flags]
 {"mode": "image", "themes": [{"id": "…", "name": "…", "desc": "…", "tags": ["…"]}]}
 ```
 
+## subtitle fonts
+
+List the font families `video set --subtitle-font` accepts. Free, needs no
+work, changes nothing.
+
+```
+vibeknow subtitle fonts [--output json]
+```
+
+This is the complete set, not a sample: the backend validates against the same
+catalog it serves here, so a family in this list is accepted and one that is
+not is refused. Faces unreadable at subtitle size are already filtered out.
+
+**JSON output shape:**
+```json
+{"fonts": [{"n": 1, "family": "Noto Sans SC", "label": "黑体 (Noto Sans)"}]}
+```
+
+`--subtitle-font` takes either `n` or `family`. `family` is the value the
+backend stores and compares byte for byte; `n` is a display index and is the
+easier thing to pass.
+
+The catalog records which numeric weights each family ships, but the endpoint
+does not return them, so `--subtitle-font-weight` cannot be checked against
+the family. Asking for a weight a family lacks is **not** an error — the
+renderer falls back to one it has, silently.
+
+## subtitle presets
+
+List the ready-made subtitle looks for `video set --subtitle-preset`. Free,
+needs no work, changes nothing.
+
+```
+vibeknow subtitle presets [--output json]
+```
+
+**JSON output shape:**
+```json
+{"presets": [{
+  "n": 1,
+  "name": "白字·黑底",
+  "patch": {"color": "#ffffff", "backgroundColor": "rgba(8,8,12,0.68)", "strokeWidth": 0},
+  "sets": ["color", "backgroundColor", "strokeWidth"]
+}]}
+```
+
+`patch` is what applying the preset writes; `sets` names the same fields as a
+flat list. **What a preset omits matters as much as what it sets** — omitted
+fields keep the work's current value. Note `"strokeWidth": 0` above: that is
+the preset actively removing an outline, not a field left unset.
+
+Names are Chinese and contain a middle dot (`·`), which is awkward to type and
+worse to get through a shell. Pass `n` instead.
+
 ## avatar list
 
 List talking-head presenters: public presets (`sys_<id>`) merged with the
@@ -432,9 +486,16 @@ vibeknow video set [task_id] [flags]
 | `--bgm on\|off` | Background music |
 | `--bgm-volume float` | Music level, 0.1–2.0 (1.0 = unchanged) |
 | `--subtitle on\|off` | Subtitles |
+| `--subtitle-preset string` | Ready-made look: the `#` or the name from `subtitle presets` |
 | `--subtitle-size int` | Subtitle font size in px |
-| `--subtitle-color string` | Subtitle colour, e.g. `#FFFFFF` |
-| `--subtitle-font string` | Subtitle font family (backend allow-list) |
+| `--subtitle-color string` | Subtitle text colour, e.g. `#FFFFFF` |
+| `--subtitle-font string` | Font family: the `#` or the exact family from `subtitle fonts` |
+| `--subtitle-font-weight int` | 100–900 (400 regular, 700 bold) |
+| `--subtitle-bg-color string` | Plate behind the subtitle; `transparent` for none |
+| `--subtitle-bottom float` | Height above the bottom edge, as a fraction of frame height, 0.02–0.98 |
+| `--subtitle-stroke-color string` | Outline colour; only visible with a stroke width above 0 |
+| `--subtitle-stroke-width float` | Outline width in px, 0–12 (0 = no outline) |
+| `--subtitle-animation string` | Per-line entry animation (12 values; see below) |
 | `--title string` | Rename the task |
 | `--session-id string` | Session ID (default: resolved from the local run ledger) |
 
@@ -442,6 +503,49 @@ Several can be combined in one call. Only the flags you pass are touched:
 subtitle style is read, modified and written back, because the backend stores
 the style wholesale and a write-only change would clear the font, weight,
 colour, outline and animation along with whatever was being adjusted.
+
+### Prefer `--subtitle-preset` over the individual style flags
+
+Reach for a preset first. Subtitle readability is a *combination*, not a set of
+independent settings, and the individual flags let you build combinations that
+do not work:
+
+- The outlined looks also set `backgroundColor: transparent`. An outline
+  behind a solid plate is invisible.
+- The plated looks also set `strokeWidth: 0`. A plate under an outline is
+  muddy.
+
+Set one half without the other and the command still exits 0 — nothing on the
+wire is wrong, the video just looks bad. A preset carries both halves.
+
+A preset sets only the fields that make up its look. Size, vertical position
+and entry animation belong to the video rather than to the look, so they are
+left as the work had them. **Individual flags apply on top of a preset**, so
+`--subtitle-preset 2 --subtitle-size 52` means "that look, but bigger".
+
+The result is reported back in `applied.subtitle_style` — the complete style
+as stored — and the preset's name in `applied.subtitle_preset`.
+
+### Values checked before anything is sent
+
+These are refused locally with exit **2** and no request made, even though the
+backend would accept them:
+
+| Flag | Rule | Why locally |
+|------|------|-------------|
+| `--subtitle-bottom` | 0.02–0.98 | The backend **clamps** instead of refusing. Ask for 1.5 and the call succeeds having stored 0.98, with nothing reporting the substitution. |
+| `--subtitle-stroke-width` | 0–12 | Clamped the same way. |
+| `--subtitle-font-weight` | 100–900 | The backend does not check it at all; a typo would render at some fallback weight with no error anywhere. |
+| `--subtitle-animation` | one of the 12 | Refused server-side with a message that does not name the alternatives. |
+| `--subtitle-font` | in the catalog | Refused server-side as `fontFamily not allowed`, which names neither what is allowed nor where to look. |
+| `--subtitle-preset` | in the catalog | Same. |
+
+Animation values: `none`, `fade`, `fadeup`, `fadedown`, `slideleft`,
+`slideright`, `scale`, `blur`, `pop`, `springup`, `rotate`, `karaoke`. Case is
+folded for you. There is no endpoint for this list — it is a copy of a
+server-side constant — so an animation added server-side is unusable until the
+CLI catches up; the error says "not one this CLI recognises" rather than
+"invalid" for that reason.
 
 **Every change except `--title` discards the rendered MP4.** The change has to
 be baked into the file, so the old one no longer matches the work. Preview and

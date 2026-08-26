@@ -101,6 +101,8 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow voice list [--language <locale>]` | Voices: public templates grouped by language + your cloned voices |
 | `vibeknow theme list --mode <mode>` | Visual themes/styles usable with `create --theme` |
 | `vibeknow avatar list` | Talking-head presenters (public presets + your trained ones) for `create --avatar` |
+| `vibeknow subtitle fonts` | Font families `video set --subtitle-font` accepts (free) |
+| `vibeknow subtitle presets` | Ready-made subtitle looks for `video set --subtitle-preset` (free) |
 | `vibeknow video avatar-retry [task_id]` | Retry failed avatar scenes (unblocks a rejected export; no re-charge) |
 | `vibeknow video script [task_id]` | Read what the video says, shot by shot (free) |
 | `vibeknow video edit [task_id] --scene N --script "…"` | Rewrite one shot's narration (**bills**; confirmation gate) |
@@ -187,6 +189,32 @@ flags this as `export_stale`.
 
 Exit 4 means another edit holds the lock on this work — wait a moment and
 retry the same command.
+
+### Make the subtitles readable (`video set`)
+
+```bash
+vibeknow subtitle presets                                  # free: see the looks and what each one sets
+vibeknow video set 42 --subtitle-preset 2                  # apply one
+vibeknow video set 42 --subtitle-preset 2 --subtitle-size 52   # that look, but bigger
+```
+
+**Use a preset rather than assembling a look from the individual flags.**
+Readability is a combination: the outlined looks also clear the background
+plate, and the plated looks also switch the outline off. Set one half without
+the other and the command still exits 0 — the video just looks wrong, and
+nothing reports it.
+
+A preset touches only the fields that make up its look; size, vertical
+position and entry animation stay as the work had them. Any `--subtitle-*`
+flag you pass alongside wins over the preset.
+
+For a font, `vibeknow subtitle fonts` lists every family that will be
+accepted; pass the `#`. A guess is refused server-side with a message that
+does not say what the alternatives are, so do not guess.
+
+Free and immediate, like the rest of `video set` — but it still discards the
+rendered MP4 (`export_invalidated`), so a re-`export` is needed to get a file
+that matches.
 
 ### Talking-head avatar
 

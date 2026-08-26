@@ -278,6 +278,23 @@ $ vk video edit 42 --scene 3 --script "增长几乎全部来自海外市场。"
 拟改措辞，因为你要同意的是这个差异。**不可撤销**；已渲染的 MP4 也不会被撤下，
 `video download` 在你重新导出之前仍返回旧讲稿的版本。
 
+### 把字幕调到能看清
+
+```
+$ vk subtitle presets
+#  NAME   LOOK
+1  白字·黑底  text #ffffff · plate rgba(8,8,12,0.68) · no outline
+2  白字·黑边  text #ffffff · no plate · outline 3px rgba(0,0,0,0.92) · Noto Sans SC 600
+
+$ vk video set 42 --subtitle-preset 2 --subtitle-size 52
+```
+
+字幕能不能看清，取决于几个字段的**组合**而不是单个设置——底板上的描边看不见，
+描边下的底板发糊。预设是设计侧给的成套观感，每一套都带齐了它需要的全部字段。
+单独的参数仍然叠加在预设之上，所以上面这条的意思是"就这套观感，但字大一点"。
+
+`vk subtitle fonts` 列出允许的字体家族——在此之前这份清单根本无从得知。
+
 ### 选择视频模式
 
 ```bash

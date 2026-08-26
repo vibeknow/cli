@@ -9,13 +9,43 @@ import (
 	"testing"
 )
 
+// subtitleFontFixture is a slice of the real catalog, in catalog order, so the
+// display index a test passes as --subtitle-font means the same thing here as
+// it does against the backend.
+var subtitleFontFixture = []map[string]any{
+	{"family": "Noto Sans SC", "label": "黑体 (Noto Sans)", "cdnUrl": "https://cdn.test/noto/index.css"},
+	{"family": "LXGW WenKai", "label": "霞鹜文楷", "cdnUrl": "https://cdn.test/lxgw/index.css"},
+	{"family": "Smiley Sans", "label": "得意黑", "cdnUrl": "https://cdn.test/smiley/index.css"},
+}
+
+// subtitlePresetFixture keeps the two presets whose patches disagree, copied
+// verbatim from the shipped catalog. The pair is the point: one puts the text
+// on a plate and switches the outline off, the other outlines the text and
+// clears the plate. A merge that drops "the field set to zero" turns the first
+// into a subtitle wearing both.
+var subtitlePresetFixture = []map[string]any{
+	{"name": "白字·黑底", "patch": map[string]any{
+		"color": "#ffffff", "backgroundColor": "rgba(8,8,12,0.68)", "strokeWidth": 0,
+	}},
+	{"name": "白字·黑边", "patch": map[string]any{
+		"color": "#ffffff", "backgroundColor": "transparent", "strokeWidth": 3,
+		"strokeColor": "rgba(0,0,0,0.92)", "fontFamily": "Noto Sans SC", "fontWeight": 600,
+	}},
+}
+
 // settingsServer records every write `video set` makes, and serves a work that
 // already has a fully-populated subtitle style so a partial change has
-// something to preserve.
-func settingsServer(t *testing.T) (*httptest.Server, func(string) map[string]any) {
+// something to preserve. It also serves the two subtitle catalogs, since
+// --subtitle-font and --subtitle-preset resolve against them before writing.
+//
+// The third return value counts writes only. Reads are free and a refused
+// command is allowed to have made them; what matters is that a command which
+// exits non-zero changed nothing.
+func settingsServer(t *testing.T) (*httptest.Server, func(string) map[string]any, func() int) {
 	t.Helper()
 	var mu sync.Mutex
 	seen := map[string]map[string]any{}
+	writes := 0
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -28,19 +58,32 @@ func settingsServer(t *testing.T) (*httptest.Server, func(string) map[string]any
 			}})
 			return
 		}
+		if r.URL.Path == "/v1/works/subtitleFonts" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"fonts": subtitleFontFixture}})
+			return
+		}
+		if r.URL.Path == "/v1/works/subtitlePresets" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"presets": subtitlePresetFixture}})
+			return
+		}
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		mu.Lock()
 		seen[r.URL.Path] = body
+		writes++
 		mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"status": "ok"}})
 	}))
 
 	return srv, func(path string) map[string]any {
-		mu.Lock()
-		defer mu.Unlock()
-		return seen[path]
-	}
+			mu.Lock()
+			defer mu.Unlock()
+			return seen[path]
+		}, func() int {
+			mu.Lock()
+			defer mu.Unlock()
+			return writes
+		}
 }
 
 // TestVideoSet_SubtitleStyleMergesOntoWhatIsThere is the one that matters.
@@ -53,7 +96,7 @@ func TestVideoSet_SubtitleStyleMergesOntoWhatIsThere(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
-	srv, seen := settingsServer(t)
+	srv, seen, _ := settingsServer(t)
 	defer srv.Close()
 
 	bin := build(t)
@@ -99,7 +142,7 @@ func TestVideoSet_ReportsThatTheDownloadIsGone(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
-	srv, seen := settingsServer(t)
+	srv, seen, _ := settingsServer(t)
 	defer srv.Close()
 
 	bin := build(t)
@@ -138,7 +181,7 @@ func TestVideoSet_RenameDoesNotInvalidateTheExport(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
-	srv, seen := settingsServer(t)
+	srv, seen, _ := settingsServer(t)
 	defer srv.Close()
 
 	bin := build(t)
@@ -169,7 +212,7 @@ func TestVideoSet_NothingToChangeIsExit2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
-	srv, _ := settingsServer(t)
+	srv, _, _ := settingsServer(t)
 	defer srv.Close()
 
 	bin := build(t)

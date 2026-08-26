@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Added — `subtitle fonts` / `subtitle presets`, and the rest of the subtitle style
+
+`--subtitle-font` has always been documented as "a family the backend
+allows", with no way to find out which those are. A wrong guess came back as
+`fontFamily not allowed`, naming neither the alternatives nor where to look
+for them — the worst shape an argument can have for a caller that cannot see
+the catalog. `vibeknow subtitle fonts` lists it. Both the `#` and the exact
+family work as `--subtitle-font`.
+
+`vibeknow subtitle presets` lists the eleven ready-made looks the product
+ships, and `video set --subtitle-preset` applies one. This matters more than
+it sounds: subtitle readability is a combination rather than a set of
+independent settings. The outlined looks also clear the background plate; the
+plated looks also switch the outline off. Assembling one by hand from
+individual flags is easy to get half right, and half right exits 0 — nothing
+on the wire is wrong, the video just looks bad. A preset carries both halves.
+
+A preset patches only the fields that make up its look, so size, vertical
+position and entry animation survive it, and any `--subtitle-*` flag passed
+alongside applies on top: `--subtitle-preset 2 --subtitle-size 52` means
+"that look, but bigger".
+
+Six style fields that the client already modelled but no flag could reach are
+now reachable: `--subtitle-font-weight`, `--subtitle-bg-color`,
+`--subtitle-bottom`, `--subtitle-stroke-color`, `--subtitle-stroke-width` and
+`--subtitle-animation`.
+
+Their ranges are checked before anything is sent, which is not symmetry for
+its own sake. The backend *clamps* position and outline width instead of
+refusing them, so asking for a subtitle at 1.5× the frame height succeeded
+while storing 0.98, and nothing reported the substitution — the command said
+it worked and only the video disagreed. Font weight it does not validate at
+all. Refusing locally costs one exit code and states the range.
+
+`video set`'s text output no longer prints the resulting style through Go's
+default struct formatting. `{Source Han Sans 36 0 #ffffff rgba(8,8,12,0.68) 0
+#000000 0 fade}` names no field and pads the gaps with zeroes that were never
+set; it was survivable when a change touched one field and is not now that a
+preset sets six. Fields are listed one per line, and only the ones actually
+being stored. The report is also sorted, so repeating a command does not
+reorder its own output.
+
 ### Added — `video edit`, the first change to what a video actually says
 
 Until now the CLI could read a video's narration but not change a word of
