@@ -98,7 +98,7 @@ func TestLoginHeadless(t *testing.T) {
 
 	if err := config.AddProfile(config.Profile{
 		Name:          "default",
-		CredentialRef: "vibeknow.default",
+		CredentialRef: testCredentialRef(t),
 		Endpoints:     map[string]string{"account": srv.URL},
 		Trust:         "dev",
 		IsProduction:  false,

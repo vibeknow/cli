@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/config"
+	"github.com/vibeknow/cli/internal/keychain"
 )
 
 // deviceAuthServer stands in for the account service. authorized controls
@@ -54,6 +56,39 @@ func deviceAuthServer(t *testing.T, authorized *bool, tokenCalls *int) *httptest
 	}))
 }
 
+// testCredentialRef returns a credential ref unique to the calling test, and
+// deletes it when the test ends.
+//
+// `VIBEKNOW_CONFIG_HOME` does not isolate stored credentials, and cannot: they
+// live in the OS credential store precisely so they are not sitting in a
+// directory. Windows makes that concrete — tokens go to DPAPI +
+// `HKCU\Software\VibeknowCLI\keychain`, which no amount of temp-dir juggling
+// scopes. So two tests sharing one ref share one credential: the first to
+// store a token hands it to every test that runs after, and a test asserting
+// "not authenticated" fails on a token it never wrote. The service name is
+// fixed (`vibeknow`) and the ref is the account within it, so varying the ref
+// is what separates them.
+//
+// A fixed ref is also how a test suite eats a developer's real login: writing
+// to `vibeknow.default` — the ref the actual CLI uses — replaces the token
+// they are signed in with, on their own machine, as a side effect of running
+// `go test`.
+func testCredentialRef(t *testing.T) string {
+	t.Helper()
+	ref := "vibeknow.test-" + strings.Map(func(r rune) rune {
+		if r == '/' || r == ' ' {
+			return '-'
+		}
+		return r
+	}, t.Name())
+	t.Cleanup(func() {
+		if kc, err := keychain.OpenFor("vibeknow"); err == nil {
+			_ = kc.Delete(ref)
+		}
+	})
+	return ref
+}
+
 // setupPendingProfile isolates config, registers a profile pointing at srv,
 // and parks a device code against it.
 func setupPendingProfile(t *testing.T, srvURL string, expiresIn time.Duration) {
@@ -63,7 +98,7 @@ func setupPendingProfile(t *testing.T, srvURL string, expiresIn time.Duration) {
 
 	if err := config.AddProfile(config.Profile{
 		Name:          "default",
-		CredentialRef: "vibeknow.pendingtest",
+		CredentialRef: testCredentialRef(t),
 		Endpoints:     map[string]string{"account": srvURL},
 		Trust:         "dev",
 		IsProduction:  false,

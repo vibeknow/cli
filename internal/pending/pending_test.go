@@ -3,6 +3,7 @@ package pending
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -130,8 +131,16 @@ func TestSecret_FileIsPrivateAndReused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("key file should have been created: %v", err)
 	}
-	if got := fi.Mode().Perm(); got != 0o600 {
-		t.Fatalf("key mode = %o, want 600 — it is the thing an agent must not be able to reason its way around", got)
+	// Windows has no POSIX mode bits. Go synthesizes them from the read-only
+	// attribute, so a writable file always reports 0666 no matter what perm
+	// was passed to create it, and asserting 0600 there tests the synthesis
+	// rather than the file. Access on that platform is decided by the ACL
+	// inherited from the config directory, which this assertion could not see
+	// even if the number were right.
+	if runtime.GOOS != "windows" {
+		if got := fi.Mode().Perm(); got != 0o600 {
+			t.Fatalf("key mode = %o, want 600 — it is the thing an agent must not be able to reason its way around", got)
+		}
 	}
 
 	before, _ := os.ReadFile(p)
