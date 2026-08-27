@@ -93,6 +93,20 @@ both engines fetch the document before anything else runs (go-figlens
 `internal/pipeline/node/video_knowledge.go`, `internal/service/trpc_assistant.go`)
 and fail without one.
 
+### Added — `video status --preview-dir`
+
+`--preview-dir` was available on the commands that run a job, which meant
+only the process that started a run could ever put its cover or its MP4 on
+disk. An agent that reattached to a task — someone else's, or its own after
+its context was discarded — could name the artifacts and not hand them over.
+
+`status` now takes the flag too, delivering whatever the work row currently
+points at: the cover from the moment the preview exists, the MP4 from the
+moment an export has produced one. Both are skipped when absent, so a
+snapshot taken mid-render still costs nothing and delivers nothing — no
+signing round-trips either. A `--preview-dir` that cannot be written is
+refused before the request, as it is on `create`.
+
 ### Added — `subtitle fonts` / `subtitle presets`, and the rest of the subtitle style
 
 `--subtitle-font` has always been documented as "a family the backend
