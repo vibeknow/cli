@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Changed — where the binary is fetched from, and how long that is allowed to take
+
+`scripts/install.js` tried GitHub Releases first and
+`registry.npmmirror.com/-/binary/vibeknow-cli/` second. The second does not
+exist — the package is not registered for binary sync there — so in practice
+there was one source, and it is the one most likely to be unreachable from a
+corporate or mainland network. Each attempt was allowed 120 seconds, and a
+WorkBuddy connector's whole `npm install -g` gets 300, so a host that was
+reachable-but-stalled could spend the entire budget before the fallback was
+even tried.
+
+The source list now starts with `VIBEKNOW_BINARY_BASE_URL` when it is set,
+which is what lets a mirror change without publishing a package: a connector
+passes it through its `cli.json` `env` field, and npm hands the install
+command's environment to postinstall. Per-source wall clock drops to 45
+seconds, and a failed attempt now prints why — with several sources tried in
+turn, that line is the only thing separating "this host is blocked here" from
+"this version was never published".
+
+Releases also learn about pre-releases. `npm publish` puts every version on
+`latest` unless told otherwise, so tagging `v0.8.0-rc.1` to rehearse the
+install path would have handed that build to every existing user. A tag
+carrying a pre-release part now publishes to the `rc` dist-tag and marks the
+GitHub release as a pre-release, and the skill-version gate compares against
+the release being rehearsed rather than the rc string.
+
 ### Fixed — the same progress line appeared twice in one payload
 
 `video wait --for` emitted both `stage` and `message` even when they were the

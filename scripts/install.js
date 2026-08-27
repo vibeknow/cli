@@ -30,21 +30,51 @@ function archiveName(version, platform) {
   return `vibeknow-cli-${version}-${platform.os}-${platform.arch}${platform.ext}`;
 }
 
+// Per-source wall clock. The whole install runs inside a host budget — a
+// WorkBuddy connector gets 300s for `npm install -g` including this script —
+// so a source that hangs has to be abandoned early enough to leave the next
+// one a chance. 120s per source spent that budget on the first host that went
+// quiet, which is the failure mode this is most likely to meet: not a refused
+// connection but a reachable-yet-stalled CDN.
+const DOWNLOAD_TIMEOUT_MS = 45000;
+
 function downloadUrls(version, archive) {
-  return [
-    `https://github.com/${GITHUB_REPO}/releases/download/v${version}/${archive}`,
-    `https://registry.npmmirror.com/-/binary/vibeknow-cli/v${version}/${archive}`,
-  ];
+  const urls = [];
+
+  // A mirror supplied by the environment wins. This exists so the source list
+  // can change without publishing a package: WorkBuddy passes it through
+  // cli.json's `env` field, which reaches this script because npm hands the
+  // install command's environment to postinstall. Moving to a new bucket is
+  // then a connector update, not a release.
+  const base = (process.env.VIBEKNOW_BINARY_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (base) {
+    urls.push(`${base}/v${version}/${archive}`);
+  }
+
+  urls.push(`https://github.com/${GITHUB_REPO}/releases/download/v${version}/${archive}`);
+  // Kept last, and known to 404 until the package is registered for binary
+  // sync on npmmirror. A miss costs one round trip rather than the timeout
+  // above, so leaving it in place is cheap and it starts working the moment
+  // the sync is configured — but nothing should be relying on it today.
+  urls.push(`https://registry.npmmirror.com/-/binary/vibeknow-cli/v${version}/${archive}`);
+  return urls;
 }
 
 function download(url, dest) {
   try {
-    execSync(`curl -fSL --retry 3 -o "${dest}" "${url}"`, {
+    execSync(`curl -fSL --retry 2 --connect-timeout 10 -o "${dest}" "${url}"`, {
       stdio: ['ignore', 'ignore', 'pipe'],
-      timeout: 120000,
+      timeout: DOWNLOAD_TIMEOUT_MS,
     });
     return true;
-  } catch {
+  } catch (e) {
+    // Reported rather than swallowed: with several sources tried in turn, the
+    // last message is the only thing separating "this host is blocked here"
+    // from "this version was never published", and those need different fixes.
+    const detail = (e.stderr ? e.stderr.toString() : '').trim().split('\n').pop();
+    if (detail) {
+      console.log(`[vibeknow] ${detail}`);
+    }
     return false;
   }
 }

@@ -19,6 +19,12 @@ jobs:
       - name: Verify skill versions match tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # A pre-release tag carries the release it rehearses, so it is
+          # checked against that: v0.8.0-rc.1 expects skills at 0.8.0. Asking
+          # an rc to restamp every SKILL.md would leave those files reading
+          # 0.8.0-rc.1 at the moment the real release is cut, which is the
+          # version skew this gate exists to catch.
+          TAG_VERSION="${TAG_VERSION%%-*}"
           fail=0
           for f in skills/*/SKILL.md; do
             SKILL_VERSION="$(awk '/^version:/ {gsub(/[" ]/, "", $2); print $2; exit}' "$f")"
@@ -63,9 +69,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A pre-release tag is marked as one so it never becomes the
+          # "latest release" GitHub serves — install.js builds its download
+          # URL from an exact version, but anything reading /releases/latest
+          # would otherwise be handed a rehearsal build.
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
+            $prerelease \
             dist/*.tar.gz dist/*.zip
 
   publish-npm:
@@ -79,8 +92,17 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # npm puts every publish on the `latest` dist-tag unless told otherwise,
+      # pre-releases included. Without this branch, tagging v0.8.0-rc.1 to
+      # rehearse the install path would hand that build to every existing user
+      # and to WorkBuddy's `npm install -g vibeknow-cli` — the opposite of a
+      # rehearsal. `--tag rc` keeps it reachable as vibeknow-cli@rc only.
       - name: Publish vibeknow-cli
-        run: npm publish --access public
+        run: |
+          npm_tag="latest"
+          case "$GITHUB_REF_NAME" in *-*) npm_tag="rc" ;; esac
+          echo "publishing to dist-tag: $npm_tag"
+          npm publish --access public --tag "$npm_tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
