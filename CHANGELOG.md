@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+### Fixed — the same progress line appeared twice in one payload
+
+`video wait --for` emitted both `stage` and `message` even when they were the
+same string, which they always are on `--engine agent`: that line reports no
+node names at all, so the free-form line *is* the stage. One fact written
+twice reads as two, and a caller comparing them looks for a difference that
+is not there. `message` is now emitted only where it adds something a node
+position does not.
+
+### Fixed — a finished pipeline node was reported as the current one
+
+`video wait --for` recorded the last node it heard about but not whether that
+node had ended, so a run reported the same position whether it was inside a
+node or long past it. On the hand-drawn line that is most of the run: it
+finishes `script_writing`, then draws in silence for minutes, and every check
+during that stretch answered "outline / script_writing" — naming work that
+had completed, on the one line where a person is most likely to conclude
+something has stalled and start over at full price.
+
+A finished node now reads `past <node>`, and on the hand-drawn line
+`past <node>; drawing (this line reports no progress until it finishes)`.
+Only the absence is explained; nothing here claims the run is healthy, which
+is not knowable from silence. A `node.warning` neither moves the run nor
+closes the node, so it no longer affects the answer either way.
+
+Found by running each creation mode against a real account, which is also
+what established what that line actually emits: `handdraw_*` nodes emit
+nothing, but the shared `script_writing` / `tts_generate` / `bgm` /
+`video_package` nodes do, so the silence is a middle rather than the whole.
+
+### Added — `video wait --for`, waiting in steps a chat client can take
+
+A render takes minutes. A caller whose own tool gives it two — which is what
+an agent in a chat client has — could not use `video wait` at all: it blocks
+until the run finishes, so the call was killed mid-stream and the run read as
+a failure it was not.
+
+Polling `video status` instead was the obvious escape and it does not work.
+The snapshot's preview half is one boolean, `ready`, because it is built from
+the work row and the work row learns nothing until the export stage. So a
+caller checking every ten seconds got `ready: false` ten seconds ago, `ready:
+false` now, and had nothing to tell the user either time. The progress does
+exist — the event stream carries the stage, and `internal/stage` already
+translates it — it was simply not reachable from a command that returns.
+
+`--for 90s` keeps the stream and gives it a deadline: watch for that long,
+then report the stage reached and stop. `next_actions` hands back the same
+command to run again. Nothing is lost between calls and nothing is billed
+twice; the run belongs to the backend, not to the process watching it.
+
+It exits **6**, not 0. Exiting 0 would mean the task succeeded, and a caller
+running `wait && download` would be sent after a video that is still being
+made. Exit 6 already means "not terminal, reattach rather than start over",
+which is the right next move — and `reason: "wait_budget_expired"` separates
+it from the two other things 6 covers, a broken stream and a paused task,
+both of which are states nobody asked for. A budget of zero or less is
+refused rather than treated as "no budget": silently becoming an unbounded
+wait is the exact hang the flag exists to prevent.
+
+The reported stage is the last position on the wire, so it advances between
+calls. Two cases report `no stage reported yet` and neither is a fault: the
+first seconds of any run, and the hand-drawn line, whose whole middle section
+emits nothing.
+
 ### Added — `subtitle fonts` / `subtitle presets`, and the rest of the subtitle style
 
 `--subtitle-font` has always been documented as "a family the backend

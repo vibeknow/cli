@@ -1,6 +1,7 @@
 package video
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 var (
 	flagWaitSessionID  string
 	flagWaitPreviewDir string
+	flagWaitFor        time.Duration
 )
 
 var waitCmd = &cobra.Command{
@@ -27,8 +29,13 @@ var waitCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	Example: `  vk video wait
   vk video wait 123
+  vk video wait 123 --for 90s --output json
   vk video wait 123 --session-id sess_xxx --output ndjson`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("for") && flagWaitFor <= 0 {
+			return clerr.Validation("--for must be a positive duration, e.g. 90s or 2m")
+		}
+
 		taskID, sessionID, err := resolveTarget(cmd.Context(), args, flagWaitSessionID)
 		if err != nil {
 			return err
@@ -62,8 +69,16 @@ var waitCmd = &cobra.Command{
 		var failedCode string
 		var failedRetryable bool
 
+		// Latest position in the pipeline, kept so a --for budget that runs
+		// out has something to report other than "not done". A caller polling
+		// on a timer is the only witness the user has during the render, and
+		// "still generating" repeated every ninety seconds is indistinguishable
+		// from a hang.
+		progress := runProgress{startedAt: time.Now()}
+
 		emit := func(ev figlens.StreamEvent) {
 			sawAnyEvent = true
+			progress.observe(ev)
 
 			switch {
 			case emitEvent != nil:
@@ -121,13 +136,40 @@ var waitCmd = &cobra.Command{
 			}
 		}
 
-		err = c.StreamChat(ctx, figlens.StreamParams{
+		// --for turns the wait into a bounded one. The budget lives on its own
+		// context so its expiry stays distinguishable from a cancellation the
+		// caller asked for: Ctrl-C and "the ninety seconds are up" have to
+		// produce different answers, and both surface here as a cancelled
+		// stream.
+		streamCtx := ctx
+		var budget context.Context
+		if flagWaitFor > 0 {
+			var stop context.CancelFunc
+			budget, stop = context.WithTimeout(ctx, flagWaitFor)
+			defer stop()
+			streamCtx = budget
+		}
+		budgetSpent := func() bool {
+			return budget != nil && budget.Err() != nil && ctx.Err() == nil &&
+				!taskSucceeded && !taskFailed && !taskPaused
+		}
+
+		err = c.StreamChat(streamCtx, figlens.StreamParams{
 			TaskID:    taskID,
 			SessionID: flagWaitSessionID,
 			Query:     "",
 		}, emit)
 		if err != nil {
+			if budgetSpent() {
+				return stillRunningError(taskID, flagWaitSessionID, progress, flagWaitFor)
+			}
 			return clerr.Newf("stream interrupted: %s", err).WithCode(6)
+		}
+		if budgetSpent() {
+			// Same answer on a clean close: the backend ending the stream
+			// without a terminal event, at the moment the budget ran out, is
+			// still a run that is going and a caller that should come back.
+			return stillRunningError(taskID, flagWaitSessionID, progress, flagWaitFor)
 		}
 		if taskFailed {
 			// Mirror `vk create`: user-fixable input → 2, retryable → 4,
@@ -211,4 +253,5 @@ var waitCmd = &cobra.Command{
 func init() {
 	waitCmd.Flags().StringVar(&flagWaitSessionID, "session-id", "", "session ID (default: looked up in the local run ledger)")
 	waitCmd.Flags().StringVar(&flagWaitPreviewDir, "preview-dir", "", i18n.T("create.flag.preview_dir"))
+	waitCmd.Flags().DurationVar(&flagWaitFor, "for", 0, "stop waiting after this long and report where the run is (e.g. 90s); default waits for the run to finish")
 }
