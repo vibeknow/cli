@@ -66,6 +66,33 @@ calls. Two cases report `no stage reported yet` and neither is a fault: the
 first seconds of any run, and the hand-drawn line, whose whole middle section
 emits nothing.
 
+### Added — `create --text` and `--from -`, for text that was pasted rather than saved
+
+`--from` took a path, a URL or a doc_id, so a passage the user pasted into a
+conversation had no way in. The workaround was to write a temp file through
+the shell, which mangles multi-line text on quoting and then names the
+document after whatever the temp file was called.
+
+`--text` takes the text itself; `--from -` reads it from stdin, which is what
+long or multi-line content should use — a quoted heredoc puts the text through
+untouched. Either way it is uploaded as a document named after its opening
+line, and everything downstream behaves exactly as it does for a file,
+`--script-lock` included: "照着我这段话念" is now a command.
+
+Empty or whitespace-only text is refused, and so is anything over 512 KB —
+the pipeline truncates document content to 8000 runes before any node sees it,
+so a larger upload buys nothing and is more likely a mistake. Passing both
+`--text` and `--from` is refused too: they name the same thing, and picking
+one would leave the caller with a video built from an input it did not choose
+and no way to find out. `--text` is not allowed in a `--preset`, for the same
+reason `--from` is not: it identifies one run's input, not a reusable style.
+
+**This is not generation from a topic.** The content is the user's; nothing
+here invents any. A request with no material at all still has no command —
+both engines fetch the document before anything else runs (go-figlens
+`internal/pipeline/node/video_knowledge.go`, `internal/service/trpc_assistant.go`)
+and fail without one.
+
 ### Added — `subtitle fonts` / `subtitle presets`, and the rest of the subtitle style
 
 `--subtitle-font` has always been documented as "a family the backend

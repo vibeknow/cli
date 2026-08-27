@@ -102,6 +102,7 @@ var denied = map[string]string{
 	"yes":         "grants consent to a charge; pass --yes on the command line",
 	"confirm":     "carries a one-time action token; pass --confirm on the command line",
 	"from":        "identifies one run's input, not a reusable style",
+	"text":        "identifies one run's input, not a reusable style",
 	"kb-id":       "identifies one run's input, not a reusable style",
 	"async":       "describes this invocation, not the style; pass --async on the command line",
 	"preview-dir": "is a local path that does not travel with the file; pass --preview-dir on the command line",

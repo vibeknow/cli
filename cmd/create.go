@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -32,6 +33,7 @@ import (
 
 var (
 	flagCreateFrom    string
+	flagCreateText    string
 	flagCreateVoiceID string
 	flagCreatePrompt  string
 	flagCreateAsync   bool
@@ -102,9 +104,15 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		if flagCreateFrom == "" {
-			return clerr.Validation("--from is required").
-				WithHint("pass a local file, an http(s) URL, or a doc_id together with --kb-id")
+		if flagCreateText != "" && flagCreateFrom != "" {
+			// Two ways to name the same input. Letting both through would
+			// mean picking one and ignoring the other, and whichever we
+			// dropped the caller would never be told about.
+			return clerr.Validation("--text and --from both name the source; pass one, not both")
+		}
+		if flagCreateFrom == "" && flagCreateText == "" {
+			return clerr.Validation("--from or --text is required").
+				WithHint("--from takes a local file, an http(s) URL, a doc_id with --kb-id, or - to read the text from stdin; --text takes the text itself")
 		}
 
 		// --export runs after the preview snapshot, which --async never
@@ -206,10 +214,37 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		// Step 1: resolve --from to kb_id + doc_id.
+		// Step 1: resolve --from / --text to kb_id + doc_id.
 		var kbID, docID string
 
 		switch {
+		case flagCreateText != "" || flagCreateFrom == "-":
+			// Text the caller already has, rather than a file it has to put
+			// somewhere first. In a chat client the most common source after
+			// a dropped file is a passage pasted into the message, and the
+			// only way to use it was to write a temp file through the shell —
+			// which mangles multi-line text on quoting and names the document
+			// after whatever the temp file was called.
+			//
+			// This is not a topic prompt: the content is the user's, and
+			// nothing here invents any. `--prompt` still only steers how the
+			// script is written.
+			if flagCreateFrom == "-" {
+				text, err := readStdinText()
+				if err != nil {
+					return err
+				}
+				// Kept on the flag so everything downstream — the ledger
+				// label included — sees one field holding this run's text,
+				// however it arrived.
+				flagCreateText = text
+			}
+			var err error
+			kbID, docID, err = uploadText(ctx, flagCreateText)
+			if err != nil {
+				return err
+			}
+
 		case docIDRe.MatchString(flagCreateFrom):
 			// Direct doc_id — skip upload. --kb-id (printed by `vk doc
 			// upload` / a prior create) restores the kb half of the
@@ -398,7 +433,7 @@ var createCmd = &cobra.Command{
 			SessionID: task.SessionID,
 			WorkID:    task.WorkID,
 			Status:    jobs.StatusSubmitted,
-			Source:    flagCreateFrom,
+			Source:    jobSource(),
 			Mode:      videoKind,
 			Engine:    engine.String(),
 		})
@@ -794,7 +829,8 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.Flags().StringVar(&flagCreateFrom, "from", "", "doc_id, URL, or local file path (required)")
+	createCmd.Flags().StringVar(&flagCreateFrom, "from", "", "doc_id, URL, local file path, or - to read the text from stdin")
+	createCmd.Flags().StringVar(&flagCreateText, "text", "", "use this text as the source document, instead of a file (for text pasted into a chat)")
 	// Single quotes, not backticks: cobra reads the first backquoted span as
 	// the flag's argument placeholder, so the usage line read
 	// `--voice vk voice list` instead of `--voice string`.
@@ -832,6 +868,110 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 		return "", "", fmt.Errorf("%q is not a regular file", filePath)
 	}
 
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", "", fmt.Errorf("open %q: %w", filePath, err)
+	}
+	defer f.Close()
+
+	return uploadDocument(ctx, fi.Name(), f)
+}
+
+// jobSource labels the run in the local ledger.
+//
+// `vk jobs list` is where a caller goes after losing its ids, and it picks
+// the right row by recognising the source. A paste has no path to show, so
+// it gets its opening words — enough to tell two of them apart, which an
+// empty column is not.
+func jobSource() string {
+	if flagCreateFrom != "" && flagCreateFrom != "-" {
+		return flagCreateFrom
+	}
+	text := strings.TrimSpace(flagCreateText)
+	if text == "" {
+		return "text"
+	}
+	return "text: " + strings.TrimSuffix(pastedTextName(text), ".md")
+}
+
+// maxPastedTextBytes bounds a paste. The pipeline truncates document content
+// to 8000 runes before any node sees it (go-figlens
+// internal/pipeline/node/video_knowledge.go), so a megabyte of text buys
+// nothing and costs an upload; this leaves generous room above that ceiling
+// while refusing an obvious mistake, such as a whole file redirected in.
+const maxPastedTextBytes = 512 * 1024
+
+// readStdinText reads `--from -`.
+func readStdinText() (string, error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		// Nothing is going to arrive, and the alternative to saying so is a
+		// process that looks hung to whoever ran it.
+		return "", clerr.Validation("--from - reads the text from stdin, but stdin is a terminal").
+			WithHint("pipe or redirect the text in, or pass it with --text")
+	}
+	b, err := io.ReadAll(io.LimitReader(os.Stdin, maxPastedTextBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read stdin: %w", err)
+	}
+	return string(b), nil
+}
+
+// uploadText turns text the caller already holds into the kb_id + doc_id pair
+// every generation path needs.
+func uploadText(ctx context.Context, text string) (string, string, error) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return "", "", clerr.Validation("the text is empty")
+	}
+	if len(text) > maxPastedTextBytes {
+		return "", "", clerr.Validationf(
+			"the text is %d bytes, over the %d-byte limit for a paste",
+			len(text), maxPastedTextBytes).
+			WithHint("save it to a file and pass --from <path>")
+	}
+	return uploadDocument(ctx, pastedTextName(trimmed), strings.NewReader(trimmed))
+}
+
+// pastedTextName gives a paste a document name.
+//
+// The name is what the document is called everywhere afterwards — `vk doc`,
+// the knowledge base, the work list — so deriving it from the opening line
+// beats a constant: several pastes in one session are otherwise
+// indistinguishable. The generated title is unaffected either way; the
+// backend writes that from the content with an LLM.
+func pastedTextName(text string) string {
+	line := text
+	if i := strings.IndexAny(line, "\r\n"); i >= 0 {
+		line = line[:i]
+	}
+	// Strip what a filename must not carry, and anything non-printing that a
+	// paste can pick up from a rich-text source.
+	line = strings.Map(func(r rune) rune {
+		switch {
+		case r == '/' || r == '\\' || r == ':':
+			return '-'
+		case unicode.IsControl(r):
+			return -1
+		}
+		return r
+	}, line)
+	line = strings.TrimSpace(strings.Trim(line, "#*-—= \t"))
+
+	const maxNameRunes = 40
+	if runes := []rune(line); len(runes) > maxNameRunes {
+		line = strings.TrimSpace(string(runes[:maxNameRunes]))
+	}
+	if line == "" {
+		line = "pasted-text"
+	}
+	return line + ".md"
+}
+
+// uploadDocument creates a throwaway knowledge base, puts one document in it,
+// and waits for it to parse. The kb belongs to the caller on success and is
+// deleted on every failure path — an orphan costs the user a slot in their
+// quota for a run that never happened.
+func uploadDocument(ctx context.Context, name string, content io.Reader) (string, string, error) {
 	vc, err := cliauth.NewVectoriaClient()
 	if err != nil {
 		return "", "", err
@@ -858,14 +998,8 @@ func uploadFile(ctx context.Context, filePath string) (string, string, error) {
 		}
 	}()
 
-	f, err := os.Open(filePath)
-	if err != nil {
-		return "", "", fmt.Errorf("open %q: %w", filePath, err)
-	}
-	defer f.Close()
-
-	fmt.Fprintln(os.Stderr, i18n.T("create.uploading_file", fi.Name()))
-	doc, err := vc.UploadDoc(ctx, kbID, fi.Name(), f)
+	fmt.Fprintln(os.Stderr, i18n.T("create.uploading_file", name))
+	doc, err := vc.UploadDoc(ctx, kbID, name, content)
 	if err != nil {
 		return "", "", err
 	}
