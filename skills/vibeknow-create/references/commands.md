@@ -21,12 +21,36 @@
 
 ## create
 
-Resolve `--from` to a document, then generate a video via the figlens pipeline.
+Resolve the source to a document, then generate a video via the figlens pipeline.
 
 `--from` accepts:
 - A `doc_id` (e.g. `doc_abc12345`) — used directly
 - A URL (`http://` or `https://`) — uploaded to vectoria first
 - A local file path — uploaded to vectoria first
+- `-` — read the source text from stdin
+
+`--text` supplies the text itself, for the case where the user pasted a
+passage rather than pointing at a file:
+
+```bash
+vibeknow create --text "季度复盘要点…" --async --output json
+
+# For anything long or multi-line, prefer stdin: a quoted heredoc puts the
+# text through untouched, where an argument goes through the shell's quoting.
+vibeknow create --from - --async --output json <<'EOF'
+标题行
+带 $VAR、`反引号` 和 "引号" 的正文
+EOF
+```
+
+The text is uploaded as a document named after its opening line, and
+everything downstream behaves exactly as it would for a file — `--script-lock`
+included, which is how "照着我这段话念" is expressed.
+
+**This is not a way to generate a video from a topic.** The content has to be
+the user's; nothing here invents any, and `--prompt` only steers how the
+script is written. A request with no material at all ("做个讲量子计算的视频")
+has no command — ask for the source.
 
 ```
 vibeknow create [flags]
@@ -34,7 +58,8 @@ vibeknow create [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--from string` | doc_id, URL, or local file path **(required)** |
+| `--from string` | doc_id, URL, local file path, or `-` for stdin. Required unless `--text` is given |
+| `--text string` | Use this text as the source document. Mutually exclusive with `--from`; refused when empty or over 512 KB |
 | `--preset string` | Saved bundle of style options: a name under `<config>/presets/` or a path to a `.yaml` file. Supplies defaults only — anything also given on the command line wins. See **Presets** below. |
 | `--mode string` | `replica` (PPT 讲解, page-by-page; PDF/PPT sources only), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画). Omit for 灵活创作 (the default line). |
 | `--script-lock` | 原稿锁定: narrate the document verbatim instead of writing a script. Orthogonal to `--mode` — combines with any of them. |
@@ -131,6 +156,12 @@ vibeknow video status <task_id> [flags]
 | Flag | Description |
 |------|-------------|
 | `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
+| `--preview-dir string` | Write whatever artifacts exist here and announce each as a `resource_ready` event |
+
+`--preview-dir` on `status` matters for a caller that did not start the run:
+the cover exists from the moment the preview does, and the MP4 from the
+moment an export has produced one, but only the process that started the run
+ever held them. Taken mid-render it delivers nothing and costs nothing.
 
 ## video wait
 
@@ -144,12 +175,77 @@ vibeknow video wait <task_id> [flags]
 |------|-------------|
 | `--session-id string` | Session ID (default: resolved from the local run ledger; see `vibeknow jobs list`) |
 | `--preview-dir string` | Write the cover still here and announce it as a `resource_ready` event |
+| `--for duration` | Stop waiting after this long and report where the run got to (e.g. `90s`). Omit to wait for the run to finish |
 
 Behavior is identical to sync-mode `create` once the task is already submitted. Useful after `create --async` or to recover from exit code 6 (stream interrupted).
 
 Exiting 0 from `wait` always means the task genuinely reached a terminal
 state. A stream that closes without one exits 6 and carries the
 `resend_safe` verdict — see [errors.md](errors.md#exit-6-errordetail).
+
+### `--for`: waiting in bounded steps
+
+A generation takes minutes, and a caller whose own tool times out sooner than
+that cannot use an unbounded wait. Polling `video status` instead answers only
+`ready: false` — the work row carries no progress until the export stage — so
+a caller that checks every ten seconds has nothing new to say each time.
+
+`--for` keeps the event stream, which does carry the stage, and hands it back
+when the budget runs out:
+
+```bash
+vibeknow video wait 42 --session-id s_x --for 90s --output json
+# exit 6, and on stderr:
+#   "error": { "detail": {
+#     "status": "running", "reason": "wait_budget_expired",
+#     "stage": "tts / tts_generate", "waited_ms": 90000,
+#     "next_actions": [{ "command": "vk video wait 42 --session-id s_x --for 90s" }] } }
+```
+
+Call it again to keep waiting. Nothing is lost between calls and nothing is
+billed twice — the run belongs to the backend, not to the process watching it.
+
+Exit **6**, not 0, because 0 on `wait` means the task succeeded, and
+`wait && download` must not be sent after a video that is still being made.
+`reason` separates a spent budget from the other two things exit 6 covers:
+
+| `reason` | What happened | What to do |
+|---|---|---|
+| `wait_budget_expired` | The budget ran out; the run is fine | Run the `next_actions` command |
+| *(absent)*, stream ended | State unknown — see `resend_safe` | See [errors.md](errors.md#exit-6-errordetail) |
+| *(absent)*, task paused | A `task.paused` event arrived | `vibeknow video resume` |
+
+`stage` is the last position on the wire, so it advances between calls. What
+it can say, verified against each line:
+
+| Shape | Meaning |
+|---|---|
+| `outline / script_writing` | Inside that node |
+| `past script_writing` | That node finished and nothing has been reported since |
+| `past script_writing; drawing (…)` | Same, on the hand-drawn line, where the gap is expected and long |
+| `no stage reported yet` | The first seconds of a run, before anything has been emitted |
+
+None is a fault, and none says the run is healthy — silence is not evidence
+either way. What they rule out is the mistake that costs money: concluding a
+quiet run has died and starting a second one.
+
+**The same `stage` two calls running is normal**, and on the slower lines it
+is usual: a single step can outlast several budgets. It is not a signal to
+shorten the budget, to poll harder, or to start over.
+
+`message` carries the free-form line that accompanies a node. It is omitted
+when it would repeat `stage` — on `--engine agent` there are no nodes, so the
+free-form line *is* the stage.
+
+Which nodes actually arrive, per line:
+
+| `--mode` | Reported nodes |
+|---|---|
+| *(default)* and `--script-lock` | `big_director` `script_writing` `storyboard_plan` `tts_generate` `scene_filling` `bg_images` `cover` `bgm` `video_package` |
+| `image` | `style_select` `image_storyboard` `image_gen`, plus `script_writing` `tts_generate` `bgm` `video_package` |
+| `replica` | `doc_dissect` `doc_replica_plan` `doc_replica_shoot`, plus `tts_generate` `bgm` `video_package` |
+| `handdraw` | `script_writing` `tts_generate` `bgm` `video_package` only. The middle — style, storyboard, drawing, vectorising — emits nothing, and that is where most of the time goes |
+| `--engine agent` | No node names at all; free-form progress lines only |
 
 ## video export
 
@@ -393,8 +489,17 @@ JSON output:
 | `scenes[].tts_url` / `srt_url` / `bg_image_url` | Narration audio / subtitles / still for that shot; **omitted entirely when absent**, so a missing key means "not rendered yet" rather than a broken link |
 | `scene_count` / `duration_sec` | Totals |
 
-Exit **6** means the work has no shots recorded yet — usually still
-generating. Check `video status` rather than retrying.
+A work with no shots never returns an empty result; it exits non-zero, and
+which code says whether waiting will help:
+
+| Exit | Cause | What to do |
+|---|---|---|
+| 6 | No shots **yet** — usually still generating | Check `video status`, then read again |
+| 5 | The work was made with `--engine agent` (一键成片), which renders without a storyboard | Nothing to read, ever. Say so — do not retry |
+| 5 | The run failed or was deleted, so it never got that far | Check `video status`; a failed run may be resumable with `video resume` |
+
+The distinction matters because exit 6 tells a caller to come back, and for
+the two exit-5 cases there is nothing to come back for.
 
 Run this before `video edit`: the shot numbers it prints are what `--scene`
 takes, and the text it prints is what the edit will replace.

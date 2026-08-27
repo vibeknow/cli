@@ -181,6 +181,12 @@ vibeknow create --from report.pdf --voice 1
 # Reuse an already-uploaded document (doc_id needs its --kb-id)
 vibeknow create --from <doc_id> --kb-id <kb_id>
 
+# Text you already have, rather than a file — for a passage pasted into a chat
+vibeknow create --text "Three common mistakes in knowledge management…"
+vibeknow create --from - --script-lock <<'EOF'          # narrate it verbatim
+Hello. Today I want to talk about one thing only…
+EOF
+
 # Custom prompt
 vibeknow create --from data.csv --prompt "Create a 2-minute explainer video"
 
@@ -190,6 +196,10 @@ vibeknow create --from deck.pdf --preset brand --aspect vertical   # your flag w
 
 # Async mode — submit, confirm the run started, then detach
 vibeknow create --from doc.pdf --async
+
+# Follow it in steps short enough for a caller that cannot block for minutes.
+# Exit 6 with reason "wait_budget_expired" means keep going; exit 0 means done.
+vibeknow video wait --for 90s --output json
 vibeknow video wait          # reattaches to the most recent run
 ```
 

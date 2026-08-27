@@ -174,6 +174,12 @@ vibeknow create --from report.pdf --voice 1
 # 复用已上传的文档（doc_id 必须配上它的 --kb-id）
 vibeknow create --from <doc_id> --kb-id <kb_id>
 
+# 手上是一段文字而不是文件——对话里粘贴的正文用这个
+vibeknow create --text "知识管理的三个常见误区…"
+vibeknow create --from - --script-lock <<'EOF'          # 照着原文念
+大家好。今天我只讲一件事……
+EOF
+
 # 自定义 prompt
 vibeknow create --from data.csv --prompt "制作一个两分钟的讲解视频"
 
@@ -183,6 +189,10 @@ vibeknow create --from deck.pdf --preset brand --aspect vertical   # 命令行�
 
 # 异步模式 —— 提交、确认任务已起跑，然后断开
 vibeknow create --from doc.pdf --async
+
+# 分段跟进，每段都短到不会被调用方自己的超时掐断。
+# 退出码 6 且 reason 为 "wait_budget_expired" = 继续等；退出码 0 = 真的完成了。
+vibeknow video wait --for 90s --output json
 vibeknow video wait          # 自动接上最近一次的任务
 ```
 

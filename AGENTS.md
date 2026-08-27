@@ -29,10 +29,19 @@ The video pipeline has two stages — agents should understand both:
    MP4. Takes several minutes and extra credits.
 
 Commands:
-- `vk create --from <src>` — pipeline → preview → `share_url`
+- `vk create --from <src>` — pipeline → preview → `share_url`. `<src>` is a
+  path, a URL, a doc_id, or `-` to read the source text from stdin;
+  `--text <string>` passes that text directly, for a passage pasted into a
+  conversation rather than saved to a file.
+- `vk video wait [task_id] [--session-id <sess>] --for 90s --output json` —
+  watch the run for that long, then report the stage it reached and exit
+  **6** with `reason: "wait_budget_expired"`. For callers whose own timeout
+  is shorter than a render; run it again to keep waiting.
 - `vk video status [task_id] [--session-id <sess>] --output json` —
   full snapshot: `{preview, export, next_actions}`. Agents should
-  follow `next_actions[].command` to plan the next step.
+  follow `next_actions[].command` to plan the next step. `--preview-dir`
+  also writes whatever artifacts exist to disk, which is the only route to
+  them for a caller that did not start the run.
 - `vk video export [task_id] [--session-id <sess>] --yes --output json` —
   render MP4. `--yes` skips the confirmation prompt; `VIBEKNOW_ASSUME_YES=1`
   works at the environment level.
@@ -44,8 +53,14 @@ Commands:
 the local run ledger (see below). An explicit value always wins.
 
 Exit codes: `0` success, `2` user error, `3` auth, `4` retryable, `5`
-business failure, `6` interrupted / state unknown, `7` partial success
+business failure, `6` not a terminal state, `7` partial success
 (preview ready, export failed), `8` blocked on a user decision.
+
+Exit 6 covers three situations and `error.detail.reason` tells them apart:
+`wait_budget_expired` is a `--for` budget running out on a healthy run, and
+the absence of a reason is either a stream that ended without a terminal
+event (read `resend_safe`) or a paused task (`vk video resume`). None of the
+three is ever answered with a second `create`.
 
 The contract holds on **every** command, not just `vk create`:
 

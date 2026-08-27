@@ -17,8 +17,43 @@
 
 ## Exit 6: `error.detail`
 
-Exit 6 carries a machine-readable verdict on the one question that matters
-here — whether re-running recovers a lost run or pays for a second one.
+Exit 6 means "not a terminal state". Three things reach it, and they need
+different responses, so check `reason` first:
+
+| `reason` | What happened | What to do |
+|---|---|---|
+| `wait_budget_expired` | `video wait --for` reached its budget. The run is fine and nothing was lost. | Run the `next_actions` command to keep waiting |
+| *(absent)* | The stream ended with no terminal event, or the task was paused | Read `delivery` / `resend_safe` below, or `video resume` for a pause |
+
+A spent budget carries the run's position rather than a verdict on resending,
+because there is nothing to decide — the run is going:
+
+```json
+{ "ok": false,
+  "error": {
+    "type": "api", "code": 6,
+    "message": "still generating (tts / tts_generate) after 1m30s — run again to keep waiting",
+    "detail": {
+      "status": "running",
+      "reason": "wait_budget_expired",
+      "task_id": 42, "session_id": "s_x",
+      "stage": "tts / tts_generate",
+      "waited_ms": 90000,
+      "next_actions": [{ "command": "vk video wait 42 --session-id s_x --for 1m30s",
+                         "purpose": "Keep waiting; the run is still going and no work is lost" }]
+    } } }
+```
+
+`stage` is the last position seen on the wire, so it advances between calls.
+`past <node>` means that node finished and nothing has been reported since;
+on the hand-drawn line it is followed by `drawing (…)`, because that line's
+middle emits nothing and that is where most of its time goes. Neither shape
+is a fault, and neither says the run is healthy — silence is not evidence
+either way. See `commands.md` for what each line reports.
+
+The other two cases carry a machine-readable verdict on the one question that
+matters there — whether re-running recovers a lost run or pays for a second
+one.
 
 ```json
 { "ok": false,

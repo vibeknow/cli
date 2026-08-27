@@ -76,15 +76,16 @@ the choice is not yours to make. Relay it and wait.
 ## Core Concepts
 
 - **Hero command**: `vibeknow create --from <source>` resolves input → uploads if needed → submits to figlens pipeline → streams progress → returns video URL.
-- **--from accepts 3 input types**: `doc_id` (used directly), URL (auto-uploaded to vectoria), local file path (auto-uploaded).
+- **Four ways to name the source**: `--from` takes a `doc_id` (used directly), a URL (auto-uploaded to vectoria), a local file path (auto-uploaded), or `-` to read the text from stdin. `--text` takes the text itself, for a passage the user pasted rather than a file they pointed at. What it cannot do is invent material: a request with no source ("做个讲量子计算的视频") has no command — ask for it.
 - **Creation modes** mirror the product's five online modes: default (灵活创作), `--engine agent` (一键成片), `--mode image` (图解视频), `--mode replica` (PPT 讲解), `--mode handdraw` (手绘动画). 原稿锁定 is the orthogonal `--script-lock` switch, combinable with any mode. Style via `--theme` (browse with `vibeknow theme list --mode <mode>`), output language via `--language`.
 - **Sync vs async**: Default is sync (blocks until done). `--async` returns task_id + session_id immediately.
+- **Waiting in bounded steps**: `vibeknow video wait --for 90s` watches the event stream for that long, then reports the stage it reached and exits 6 with `reason: "wait_budget_expired"`. Run it again to keep waiting. Use it when your own tool times out sooner than a render takes — `video status` cannot substitute, since the work row carries no progress until the export stage.
 - **NDJSON event stream**: `--output ndjson` emits structured progress events (schema_version: "1"). See [events.md](references/events.md).
 - **4 pipeline stages**: `outline` → `tts` → `render` → `publish`. Not every node reports progress: parts of every run — and the entire middle of a `handdraw` run — are silent by design. Silence is not a hang; wait for a terminal event.
 - **session_id**: every `video` subcommand is addressed by a `(task_id, session_id)` pair, both returned by `create`. You do not have to carry them: `create` records the pair locally, so `vibeknow video wait` with no arguments reattaches to the most recent run and `vibeknow video wait <task_id>` looks up the session for you. Passing `--session-id` explicitly still works and always wins.
 - **Run ledger**: `vibeknow jobs list` shows what this machine started. Use it instead of re-running `create` when you have lost a task_id — a second `create` is a second billed render. The ledger is per-machine; when it has nothing, the video commands fall back to the account's most recent run and say so on stderr.
 - **stdout is the answer, stderr is the run**: with `--output json`, stdout carries exactly one JSON document and stderr carries live progress as `vk_event={...}` lines. You get both from one invocation — you do not have to choose between watching and parsing. Set `VIBEKNOW_EVENTS=1` to get the same lines in text mode, `VIBEKNOW_EVENTS=0` to suppress them.
-- **Local artifacts**: `share_url` is a hosted page you cannot show anyone from a terminal. Pass `--preview-dir <dir>` to `create`, `video wait`, or `video export` and the cover still (and the MP4, once exported) land on disk, each announced by a `resource_ready` event carrying an absolute `local_path` to a fully written file. Hand each new `local_path` to the user once. Unchanged content is not re-announced, so re-running into the same directory is safe.
+- **Local artifacts**: `share_url` is a hosted page you cannot show anyone from a terminal. Pass `--preview-dir <dir>` to `create`, `video status`, `video wait`, or `video export` and the cover still (and the MP4, once exported) land on disk, each announced by a `resource_ready` event carrying an absolute `local_path` to a fully written file. On `status` this is the only route open to a caller that did not start the run — reattaching to someone else's task, or coming back after losing its own context. Hand each new `local_path` to the user once. Unchanged content is not re-announced, so re-running into the same directory is safe.
 - **Spending requires consent**: `video export` renders an MP4 and costs credits. Without a terminal it does not decide for you — see **Spend Decisions** below.
 
 ## Quick Reference
@@ -92,9 +93,11 @@ the choice is not yours to make. Relay it and wait.
 | Command | Description |
 |---------|-------------|
 | `vibeknow create --from <source>` | Generate a video (sync by default) |
+| `vibeknow create --text "<text>"` | Same, from text the user pasted (`--from -` for stdin) |
 | `vibeknow create --from <source> --preset <name>` | Same, with a saved style bundle; command-line flags still win |
-| `vibeknow video status <task_id> --session-id <sid>` | Get task status |
+| `vibeknow video status <task_id> --session-id <sid>` | Get task status (`--preview-dir` to also fetch the artifacts) |
 | `vibeknow video wait <task_id> --session-id <sid>` | Stream progress, block until done |
+| `vibeknow video wait <task_id> --for 90s` | Same, but come back after 90s with the stage reached (exit 6) |
 | `vibeknow video download <task_id> --dest out.mp4` | Download rendered video (`--dest` is the path; `--output` is the format) |
 | `vibeknow jobs list [--active]` | Recorded runs, newest first |
 | `vibeknow jobs get [task_id]` | One recorded run (default: most recent) |
@@ -232,6 +235,21 @@ avatar is still rendering ("生成中") or has failed ("生成失败"). Failed
 scenes stay failed until retried — run `vibeknow video avatar-retry`,
 wait, then export again. The retry re-bills nothing.
 
+### Use text the user pasted
+
+```bash
+vibeknow create --text "季度复盘要点…" --async --output json
+
+# Long or multi-line: stdin, so the shell never touches the text
+vibeknow create --from - --script-lock --async --output json <<'EOF'
+第一段讲稿…
+第二段讲稿…
+EOF
+```
+
+`--script-lock` on a paste is "照着我这段话念". Without it the text is source
+material and a script gets written from it.
+
 ### Async submit, then follow up
 
 ```bash
@@ -245,6 +263,22 @@ vibeknow video status t_xxx --session-id s_yyy
 # Or: wait for completion
 vibeknow video wait t_xxx --session-id s_yyy
 ```
+
+### Follow a run when you cannot block for minutes
+
+```bash
+vibeknow create --from report.pdf --async --output json
+# → {"task_id":42,"session_id":"s_yyy"}
+
+vibeknow video wait 42 --session-id s_yyy --for 90s --output json
+# exit 6 + reason "wait_budget_expired" → report the stage, run it again
+# exit 0 → done; the snapshot is on stdout
+```
+
+Each call comes back inside the budget with a stage worth repeating, instead
+of one long block your own timeout would cut. Repeating the call costs
+nothing: the run belongs to the backend, not to the process watching it.
+Never answer a spent budget with a second `create`.
 
 ### Agent mode (NDJSON streaming)
 
