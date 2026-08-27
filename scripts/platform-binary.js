@@ -2,12 +2,18 @@
 
 // Locating the binary that shipped as an optional dependency.
 //
-// `vibeknow-cli` declares one `vibeknow-cli-<platform>-<arch>` package per
+// `vibeknow-cli` declares one `@vibeknow/cli-<platform>-<arch>` package per
 // platform in optionalDependencies, each carrying that platform's binary and
 // nothing else. npm matches their `os`/`cpu` fields against the machine and
 // installs exactly one; the other four are skipped, which is why they are
 // optional rather than regular dependencies — a skip has to be a normal
 // outcome, not an install failure.
+//
+// The scope is load-bearing. Five unscoped names all starting `vibeknow-cli-`
+// read to npm's abuse heuristics as typosquatting the package beside them, and
+// get refused with "Package name triggered spam detection". A scope tells the
+// registry the family has one owner, which is why @esbuild/*, @swc/* and
+// @rollup/* all look like this.
 //
 // The point of the arrangement is reachability. A binary fetched from GitHub
 // Releases needs a second host to be reachable on top of the registry, and on
@@ -36,7 +42,7 @@ function platformPackageName() {
     'linux-arm64',
     'win32-x64',
   ];
-  return supported.includes(key) ? `vibeknow-cli-${key}` : null;
+  return supported.includes(key) ? `@vibeknow/cli-${key}` : null;
 }
 
 function binName() {

@@ -58,8 +58,14 @@ for platform in "${platforms[@]}"; do
   # package but not these).
   NOS="$(node_os "$OS")"
   NARCH="$(node_arch "$ARCH")"
-  pkg_name="vibeknow-cli-${NOS}-${NARCH}"
-  pkg_dir="$NPM_DIST/$pkg_name"
+  # Scoped, and it has to be. Publishing five unscoped names that all begin
+  # `vibeknow-cli-` reads to npm's abuse heuristics as typosquatting the
+  # package they sit next to, and it refuses them:
+  #   403 Package name triggered spam detection
+  # A scope is what tells the registry the family has a single owner, which is
+  # why every project doing this — @esbuild/*, @swc/*, @rollup/* — is scoped.
+  pkg_name="@vibeknow/cli-${NOS}-${NARCH}"
+  pkg_dir="$NPM_DIST/cli-${NOS}-${NARCH}"
   mkdir -p "$pkg_dir"
   cp "$out" "$pkg_dir/$bin_name"
   chmod 755 "$pkg_dir/$bin_name"
@@ -83,7 +89,7 @@ for platform in "${platforms[@]}"; do
 JSON
 
   cat >"$pkg_dir/README.md" <<MD
-# $pkg_name
+# ${pkg_name}
 
 The \`vibeknow\` binary for ${NOS}-${NARCH}.
 

@@ -13,12 +13,19 @@ never registered for binary sync there. So in practice there was one source,
 and it was the wrong one.
 
 The binary now rides inside npm packages instead. There is one per platform —
-`vibeknow-cli-darwin-arm64`, `-darwin-x64`, `-linux-x64`, `-linux-arm64`,
-`-win32-x64` — each carrying that platform's binary and nothing else, and
-`vibeknow-cli` lists all five in `optionalDependencies`. npm matches their
-`os`/`cpu` fields against the machine and installs exactly one; the other four
-are skipped, which is why they are optional rather than regular dependencies —
-a skip has to be a normal outcome rather than a failed install.
+`@vibeknow/cli-darwin-arm64` and its four siblings — each carrying that
+platform's binary and nothing else, and `vibeknow-cli` lists all five in
+`optionalDependencies`. npm matches their `os`/`cpu` fields against the machine
+and installs exactly one; the other four are skipped, which is why they are
+optional rather than regular dependencies — a skip has to be a normal outcome
+rather than a failed install.
+
+They are scoped because they have to be. Published unscoped, five names all
+beginning `vibeknow-cli-` read to npm's abuse heuristics as typosquatting the
+package they sit beside, and the registry refuses them outright:
+`403 Package name triggered spam detection`. A scope is what tells it the
+family has one owner — which is why every project shipping binaries this way
+(`@esbuild/*`, `@swc/*`, `@rollup/*`) looks like this.
 
 What this buys is that the binary arrives over whatever registry already
 works. The public mirrors, or a company's internal proxy, which has to work or

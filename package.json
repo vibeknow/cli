@@ -11,11 +11,11 @@
     "postinstall": "node scripts/install.js"
   },
   "optionalDependencies": {
-    "vibeknow-cli-darwin-arm64": "0.9.0",
-    "vibeknow-cli-darwin-x64": "0.9.0",
-    "vibeknow-cli-linux-arm64": "0.9.0",
-    "vibeknow-cli-linux-x64": "0.9.0",
-    "vibeknow-cli-win32-x64": "0.9.0"
+    "@vibeknow/cli-darwin-arm64": "0.9.0",
+    "@vibeknow/cli-darwin-x64": "0.9.0",
+    "@vibeknow/cli-linux-arm64": "0.9.0",
+    "@vibeknow/cli-linux-x64": "0.9.0",
+    "@vibeknow/cli-win32-x64": "0.9.0"
   },
   "files": [
     "scripts/",
