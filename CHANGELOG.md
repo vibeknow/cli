@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 — 2026-08-27
 
 ### Added — the device page opens with the code already filled in
 
