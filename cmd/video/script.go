@@ -57,6 +57,32 @@ subtitles.`,
 		}
 
 		format, _ := cmd.Flags().GetString("output")
+
+		// Checked before the format branch, not after it. Below, the JSON
+		// branch returns, so this used to be reachable only in text mode:
+		// the same work answered exit 6 to a person and exit 0 with
+		// `scene_count: 0` to a script — and a script is what every agent
+		// caller uses. An empty document reported as success is the one
+		// answer that cannot be acted on, because "nothing was recorded"
+		// and "this video says nothing" are not distinguishable in it.
+		if len(scenes) == 0 {
+			// Two causes, and telling them apart is the whole point: one is
+			// worth waiting for and the other never arrives.
+			if figlens.RemapEngineForDisplay(work.Engine) == "agent" {
+				return clerr.New("this video was made with the agent engine (一键成片), which records no shots").
+					WithCode(5).
+					WithHint("that line has no storyboard to read — only pipeline-engine videos do")
+			}
+			if work.Status == figlens.WorkStatusFailed || work.Status == figlens.WorkStatusDeleted {
+				return clerr.New("this work never finished generating, so it has no shots").
+					WithCode(5).
+					WithHint("check `vk video status`; a failed run can sometimes be resumed with `vk video resume`")
+			}
+			return clerr.New("this work has no shots recorded yet").
+				WithCode(6).
+				WithHint("a run that is still generating has nothing to read; check `vk video status` first")
+		}
+
 		if format == "json" || format == "ndjson" {
 			items := make([]map[string]any, 0, len(scenes))
 			var total float64
@@ -100,12 +126,6 @@ subtitles.`,
 				// array is work every caller would otherwise repeat.
 				"script": joinScript(scenes),
 			})
-		}
-
-		if len(scenes) == 0 {
-			return clerr.New("this work has no shots recorded yet").
-				WithCode(6).
-				WithHint("a run that is still generating has nothing to read; check `vk video status` first")
 		}
 
 		out := cmd.OutOrStdout()

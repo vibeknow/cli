@@ -12,14 +12,20 @@ import (
 // that turns a session into a work_id, and the shot list itself.
 func scenesServer(t *testing.T, scenes []map[string]any) *httptest.Server {
 	t.Helper()
+	return scenesServerWork(t, scenes, map[string]any{
+		"id": 77, "session_id": "s_run", "title": "季度报告解读", "status": 1,
+	})
+}
+
+// scenesServerWork is scenesServer with control over the work row, for the
+// cases where why there are no shots matters more than that there are none.
+func scenesServerWork(t *testing.T, scenes []map[string]any, work map[string]any) *httptest.Server {
+	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/v1/works/detailBySession"):
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": 0,
-				"data": map[string]any{"id": 77, "session_id": "s_run", "title": "季度报告解读", "status": 1},
-			})
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": work})
 		case strings.HasPrefix(r.URL.Path, "/v1/works/scenes"):
 			if got := r.URL.Query().Get("work_id"); got != "77" {
 				t.Errorf("work_id = %q, want 77 (resolved from the session)", got)
@@ -123,5 +129,86 @@ func TestVideoScript_StillGeneratingSaysSo(t *testing.T) {
 	}
 	if !strings.Contains(stdout+stderr, "no shots recorded") {
 		t.Errorf("no explanation of why there is nothing to read\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
+}
+
+// TestVideoScript_EmptyShotListIsTheSameAnswerInEveryFormat pins the parity
+// that was missing.
+//
+// The empty-list check used to sit after the JSON branch had already
+// returned, so one work answered exit 6 to a person and exit 0 with
+// `scene_count: 0` to a script — and a script is what every agent caller
+// uses, because the skill tells it to always pass --output json. What
+// reached the user from that path was "this video has 0 shots", stated as a
+// fact about a video that simply had not recorded any.
+func TestVideoScript_EmptyShotListIsTheSameAnswerInEveryFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	srv := scenesServer(t, []map[string]any{})
+	defer srv.Close()
+
+	bin := build(t)
+	configHome := buildVideoProfile(t, srv.URL)
+
+	for _, format := range []string{"text", "json", "ndjson"} {
+		t.Run(format, func(t *testing.T) {
+			stdout, stderr, code := runVideoCmd(t, bin, configHome,
+				"video", "script", "42", "--session-id", "s_run", "--output", format)
+			if code != 6 {
+				t.Fatalf("--output %s: exit %d, want 6\nstdout: %s\nstderr: %s", format, code, stdout, stderr)
+			}
+			// Nothing on stdout either: an empty result document is exactly
+			// the thing a caller would go on to report as the answer.
+			if strings.Contains(stdout, "scene_count") {
+				t.Errorf("--output %s printed a result for a work with no shots: %s", format, stdout)
+			}
+		})
+	}
+}
+
+// Shots that are never coming must not be reported as shots not yet arrived.
+// Exit 6 tells a caller to check status and come back, which for these two is
+// an instruction to wait forever.
+func TestVideoScript_ShotsThatWillNeverExistAreNotWorthWaitingFor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tests := []struct {
+		desc string
+		work map[string]any
+		want string
+	}{
+		{
+			// The agent line renders without a storyboard, so a finished
+			// one-shot video has no shot rows and never will.
+			desc: "agent engine records no shots",
+			work: map[string]any{"id": 77, "session_id": "s_run", "status": 1, "engine": "agent"},
+			want: "agent engine",
+		},
+		{
+			desc: "a failed run never got that far",
+			work: map[string]any{"id": 77, "session_id": "s_run", "status": 3},
+			want: "never finished generating",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			srv := scenesServerWork(t, []map[string]any{}, tt.work)
+			defer srv.Close()
+
+			bin := build(t)
+			configHome := buildVideoProfile(t, srv.URL)
+
+			stdout, stderr, code := runVideoCmd(t, bin, configHome,
+				"video", "script", "42", "--session-id", "s_run", "--output", "json")
+			if code != 5 {
+				t.Fatalf("exit %d, want 5 (permanent, do not retry)\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if !strings.Contains(stdout+stderr, tt.want) {
+				t.Errorf("the reason should be stated, want %q\nstdout: %s\nstderr: %s", tt.want, stdout, stderr)
+			}
+		})
 	}
 }

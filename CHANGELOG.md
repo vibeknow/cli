@@ -32,6 +32,26 @@ what established what that line actually emits: `handdraw_*` nodes emit
 nothing, but the shared `script_writing` / `tts_generate` / `bgm` /
 `video_package` nodes do, so the silence is a middle rather than the whole.
 
+### Fixed — `video script` reported "0 shots" as a success to every agent caller
+
+The empty-shot-list check sat after the JSON branch had already returned, so
+one work gave two different answers: exit 6 with an explanation to a person,
+and exit **0** with `scene_count: 0` and an empty `script` to a script. A
+script is what every agent caller uses — the skill tells it to always pass
+`--output json` — so the path with the explanation was the one nobody took.
+What came out the other end was "this video has 0 shots", stated as a fact
+about a video that had simply not recorded any.
+
+The check now runs before the format branch, and separates two causes that
+need opposite responses. A run still generating is exit 6, which means come
+back. A work that will *never* have shots is exit 5, which means stop asking:
+the agent engine (一键成片) renders without a storyboard, and a failed or
+deleted run never got that far. Exit 6 on those was an instruction to wait
+for something that is not coming.
+
+Found by running the connector against a real account, where all ten existing
+works happened to be agent-engine ones — the case the tests did not have.
+
 ### Added — `video wait --for`, waiting in steps a chat client can take
 
 A render takes minutes. A caller whose own tool gives it two — which is what
