@@ -13,7 +13,7 @@ never registered for binary sync there. So in practice there was one source,
 and it was the wrong one.
 
 The binary now rides inside npm packages instead. There is one per platform —
-`@vibeknow/cli-darwin-arm64` and its four siblings — each carrying that
+`@vectorfunc/vibeknow-cli-darwin-arm64` and its four siblings — each carrying that
 platform's binary and nothing else, and `vibeknow-cli` lists all five in
 `optionalDependencies`. npm matches their `os`/`cpu` fields against the machine
 and installs exactly one; the other four are skipped, which is why they are

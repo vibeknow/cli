@@ -2,7 +2,7 @@
 
 // Locating the binary that shipped as an optional dependency.
 //
-// `vibeknow-cli` declares one `@vibeknow/cli-<platform>-<arch>` package per
+// `vibeknow-cli` declares one `@vectorfunc/vibeknow-cli-<platform>-<arch>` package per
 // platform in optionalDependencies, each carrying that platform's binary and
 // nothing else. npm matches their `os`/`cpu` fields against the machine and
 // installs exactly one; the other four are skipped, which is why they are
@@ -42,7 +42,7 @@ function platformPackageName() {
     'linux-arm64',
     'win32-x64',
   ];
-  return supported.includes(key) ? `@vibeknow/cli-${key}` : null;
+  return supported.includes(key) ? `@vectorfunc/vibeknow-cli-${key}` : null;
 }
 
 function binName() {

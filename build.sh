@@ -64,8 +64,8 @@ for platform in "${platforms[@]}"; do
   #   403 Package name triggered spam detection
   # A scope is what tells the registry the family has a single owner, which is
   # why every project doing this — @esbuild/*, @swc/*, @rollup/* — is scoped.
-  pkg_name="@vibeknow/cli-${NOS}-${NARCH}"
-  pkg_dir="$NPM_DIST/cli-${NOS}-${NARCH}"
+  pkg_name="@vectorfunc/vibeknow-cli-${NOS}-${NARCH}"
+  pkg_dir="$NPM_DIST/vibeknow-cli-${NOS}-${NARCH}"
   mkdir -p "$pkg_dir"
   cp "$out" "$pkg_dir/$bin_name"
   chmod 755 "$pkg_dir/$bin_name"
