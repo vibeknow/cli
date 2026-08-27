@@ -17,6 +17,27 @@ A connector host that scrapes the new field and declares its code as embedded
 `codeEmbeddedInUri: true`) turns "copy the code, switch window, paste" into
 "click confirm".
 
+### Fixed — the platform-package publish step was never authenticated
+
+`release.yml`'s "Publish platform packages" step never had `NODE_AUTH_TOKEN`
+set — the two steps after it did, but this one did not. Every run through
+this release published each of the five platform packages anonymously and got
+the 404 npm returns for an unauthenticated PUT, on every attempt regardless of
+which token was in `secrets.NPM_TOKEN` or how its 2FA was configured. Changing
+either looked like the fix at the time; neither could have been, since no
+token was ever read.
+
+It only ever appeared to succeed when the same versions had already been
+published by hand moments earlier: the fallback path runs `npm view`, an
+unauthenticated read that succeeds for any public package regardless of
+whether this job can publish, and reported "already published" over a
+`npm publish` that had in fact just failed.
+
+Fixed by moving the whole job to npm's OIDC trusted publishing (`id-token:
+write`, no token, no secret to forget on a step) rather than by adding the
+missing line — a per-step credential is the kind of thing that goes missing
+again.
+
 ## 0.9.0 — 2026-08-27
 
 ### Changed — the binary now ships over the npm registry, not from a second host

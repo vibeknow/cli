@@ -127,13 +127,27 @@ jobs:
   publish-npm:
     needs: release
     runs-on: ubuntu-latest
+    # id-token: write is what OIDC trusted publishing signs with. Without it
+    # `npm publish` falls back to looking for NODE_AUTH_TOKEN, which this job
+    # no longer sets — so a missing permission here fails loudly rather than
+    # silently reverting to a token that isn't there.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
+      # Trusted publishing needs npm >=11.5.1 and Node >=22.14.0 — newer than
+      # this job previously required, since it never had to mint OIDC tokens
+      # before. actions/setup-node still sets the registry, which npm needs to
+      # know where to publish even when it isn't authenticating with a token
+      # against it.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - run: npm install -g npm@latest
 
       - name: Download npm platform packages
         uses: actions/download-artifact@v4
@@ -150,6 +164,17 @@ jobs:
       #
       # Each is published on the same dist-tag as the main package, so an rc
       # rehearsal pulls rc binaries rather than `latest` ones.
+      #
+      # This step never carried NODE_AUTH_TOKEN even before the OIDC move —
+      # every run through v0.9.1 published unauthenticated and got the same
+      # 404 npm returns to any anonymous PUT, on every package regardless of
+      # scope or token settings. It only ever appeared to pass because these
+      # packages had already been published by hand moments earlier: the
+      # fallback below does an unauthenticated `npm view`, which succeeds for
+      # any public package whether or not this job can publish, and printed
+      # "already published" over a `npm publish` that had in fact just failed.
+      # Trusted publishing removes the class of bug, not just this instance —
+      # there is no per-step token to forget.
       - name: Publish platform packages
         run: |
           npm_tag="latest"
@@ -182,9 +207,13 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) npm_tag="rc" ;; esac
           echo "publishing to dist-tag: $npm_tag"
           npm publish --access public --tag "$npm_tag"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # Not migrated to trusted publishing: this package is a standing
+      # `dependencies: { "vibeknow-cli": "*" }` redirect that rarely changes
+      # and has never needed the platform packages' auth to work (it predates
+      # today's token churn entirely, same as vibeknow-cli always did). The
+      # `|| true` is for the ordinary case of nothing new to publish, not for
+      # swallowing an auth failure.
       - name: Publish vibeknow (redirect package)
         working-directory: npm/vibeknow
         run: npm publish --access public || true
