@@ -22,8 +22,13 @@ type DeviceCodeResponse struct {
 	DeviceCode      string `json:"device_code"`
 	UserCode        string `json:"user_code"`
 	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
+	// RFC 8628 optional field: the verification URI with the user code already
+	// embedded (?user_code=…), so an opened page needs no copy-paste. Empty
+	// when the account service predates it — callers fall back to synthesizing
+	// the same shape from VerificationURI + UserCode.
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
 }
 
 // DeviceCode initiates the device authorization flow.

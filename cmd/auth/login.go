@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -138,8 +139,9 @@ func loginInteractive(cmd *cobra.Command) error {
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadString('\n')
 
-	// Open browser.
-	if err := openBrowser(dcResp.VerificationURI); err != nil {
+	// Open browser on the code-embedded URI, so the page comes up prefilled;
+	// the bare URI printed above stays as the manual fallback.
+	if err := openBrowser(completeVerificationURI(dcResp)); err != nil {
 		fmt.Fprint(cmd.ErrOrStderr(), i18n.T("auth.login.browser_failed", err))
 	}
 
@@ -242,6 +244,24 @@ func parkDeviceCode(p config.Profile, accountURL string, dcResp *account.DeviceC
 	})
 }
 
+// completeVerificationURI returns the verification URI with the user code
+// embedded. The account service sends it as verification_uri_complete
+// (RFC 8628); against an older deployment that omits the field, the same
+// shape is synthesized locally — the device page has always prefilled its
+// input from ?user_code=, so the fallback is exactly as good as the real
+// thing. Opening this URI instead of the bare one is what turns "copy the
+// code, switch window, paste" into "click confirm".
+func completeVerificationURI(dcResp *account.DeviceCodeResponse) string {
+	if dcResp.VerificationURIComplete != "" {
+		return dcResp.VerificationURIComplete
+	}
+	joiner := "?"
+	if strings.Contains(dcResp.VerificationURI, "?") {
+		joiner = "&"
+	}
+	return dcResp.VerificationURI + joiner + "user_code=" + url.QueryEscape(dcResp.UserCode)
+}
+
 // writeDeviceCodeEnvelope prints the device authorization for a machine
 // caller. withDeviceCode controls whether the raw device_code is included:
 // it is a live credential (holding it is enough to claim the token once the
@@ -252,10 +272,11 @@ func parkDeviceCode(p config.Profile, accountURL string, dcResp *account.DeviceC
 // captured logs would be a leak that buys nothing.
 func writeDeviceCodeEnvelope(cmd *cobra.Command, dcResp *account.DeviceCodeResponse, withDeviceCode bool) error {
 	output := map[string]any{
-		"user_code":        dcResp.UserCode,
-		"verification_uri": dcResp.VerificationURI,
-		"expires_in":       dcResp.ExpiresIn,
-		"hint":             i18n.T("auth.login.hint.visit_code", dcResp.VerificationURI, dcResp.UserCode),
+		"user_code":                 dcResp.UserCode,
+		"verification_uri":          dcResp.VerificationURI,
+		"verification_uri_complete": completeVerificationURI(dcResp),
+		"expires_in":                dcResp.ExpiresIn,
+		"hint":                      i18n.T("auth.login.hint.visit_code", dcResp.VerificationURI, dcResp.UserCode),
 	}
 	if withDeviceCode {
 		output["device_code"] = dcResp.DeviceCode

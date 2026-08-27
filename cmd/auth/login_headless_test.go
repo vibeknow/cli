@@ -132,13 +132,19 @@ func TestLoginHeadless(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
 	}
-	for _, field := range []string{"user_code", "verification_uri", "expires_in", "hint"} {
+	for _, field := range []string{"user_code", "verification_uri", "verification_uri_complete", "expires_in", "hint"} {
 		if _, ok := got[field]; !ok {
 			t.Errorf("missing field %q in envelope: %+v", field, got)
 		}
 	}
 	if got["verification_uri"] != "https://example.test/activate" {
 		t.Errorf("verification_uri = %v, want https://example.test/activate", got["verification_uri"])
+	}
+	// The fake account server predates verification_uri_complete, so the CLI
+	// must synthesize it — a connector that opens this URI lands the user on
+	// a device page with the code already filled in.
+	if got["verification_uri_complete"] != "https://example.test/activate?user_code=WBUD-DYCO" {
+		t.Errorf("verification_uri_complete = %v, want https://example.test/activate?user_code=WBUD-DYCO", got["verification_uri_complete"])
 	}
 	// The raw device_code is deliberately NOT printed here. Holding it is
 	// enough to claim the token once the user authorizes, and in --headless

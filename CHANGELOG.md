@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added — the device page opens with the code already filled in
+
+`auth login` envelopes (`--headless` / `--no-wait`) now carry
+`verification_uri_complete`: the verification URI with `?user_code=` embedded
+(RFC 8628 §3.2). The account service provides the field; against an older
+deployment the CLI synthesizes the same shape locally, which is just as good
+because the device page has always prefilled its input from that query
+parameter — the three pieces simply had never been connected. The interactive
+login opens the browser on this URI too.
+
+A connector host that scrapes the new field and declares its code as embedded
+(WorkBuddy: `uriPattern` on `verification_uri_complete` +
+`codeEmbeddedInUri: true`) turns "copy the code, switch window, paste" into
+"click confirm".
+
 ## 0.9.0 — 2026-08-27
 
 ### Changed — the binary now ships over the npm registry, not from a second host
