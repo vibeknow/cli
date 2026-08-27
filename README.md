@@ -57,6 +57,17 @@ vibeknow create --from https://example.com/article
 
 That's the whole flow. `vibeknow init` handles profile creation, opens the browser for Device Flow authentication, and stores the token in your OS keychain.
 
+> **Where the binary comes from**: `vibeknow-cli` ships each platform's Go
+> binary as its own npm package (`vibeknow-cli-darwin-arm64` and friends),
+> listed in `optionalDependencies`. npm matches their `os`/`cpu` against your
+> machine and installs only the one that fits — so the binary arrives over
+> **whichever registry you already use**, public mirror or corporate proxy, with
+> no second host needing to be reachable.
+>
+> If those were skipped (`--no-optional` and similar), `postinstall` falls back
+> to downloading from GitHub Releases. On restricted networks that step tends to
+> fail; reinstall with `--include=optional` instead.
+
 **From source** (only needed if you want to build the Go binary yourself):
 
 ```bash

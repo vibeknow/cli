@@ -4,10 +4,25 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { resolvePlatformBinary } = require('./platform-binary.js');
 
 const binName = 'vibeknow' + (process.platform === 'win32' ? '.exe' : '');
 const binPath = path.join(__dirname, '..', 'bin', binName);
 const oldBinPath = binPath + '.old';
+
+// The binary that shipped as an optional dependency wins, and wins before
+// anything else runs: it is already on disk, at the right version, and needed
+// no network at all. Everything below this point — the .old recovery, the
+// on-demand download — exists for installs that did not get one.
+const packaged = resolvePlatformBinary();
+if (packaged) {
+  try {
+    execFileSync(packaged, process.argv.slice(2), { stdio: 'inherit' });
+    process.exit(0);
+  } catch (e) {
+    process.exit(typeof e.status === 'number' ? e.status : 1);
+  }
+}
 
 // Windows self-update can leave the previous binary renamed to <name>.old
 // when the replace step is interrupted. Recover it so the CLI keeps working.
@@ -54,14 +69,16 @@ if (!fs.existsSync(binPath)) {
 if (!fs.existsSync(binPath)) {
   console.error(
     `Error: vibeknow binary not found at ${binPath}\n\n` +
-    `This usually means the postinstall script was skipped.\n` +
-    `Common causes:\n` +
-    `  - npm is configured with ignore-scripts=true\n` +
-    `  - The postinstall download failed (proxy / firewall / release unavailable)\n\n` +
-    `To fix, run the install script manually:\n` +
-    `  node "${path.join(__dirname, 'install.js')}"\n` +
-    `Or reinstall globally:\n` +
-    `  npm install -g vibeknow-cli\n`
+    `The binary normally arrives as an optional dependency, and is downloaded\n` +
+    `only when that was skipped. Both paths missed, which usually means:\n` +
+    `  - npm ran with --no-optional / --ignore-optional, and the download\n` +
+    `    then failed too (proxy / firewall / release unavailable)\n` +
+    `  - npm is configured with ignore-scripts=true, which skips the download\n` +
+    `  - the registry in use carries vibeknow-cli but not its platform packages\n\n` +
+    `To fix, reinstall and let the optional dependency through:\n` +
+    `  npm install -g vibeknow-cli --include=optional\n` +
+    `Or fetch the binary directly:\n` +
+    `  node "${path.join(__dirname, 'install.js')}"\n`
   );
   process.exit(1);
 }

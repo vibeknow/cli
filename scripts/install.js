@@ -5,6 +5,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { resolvePlatformBinary, platformPackageName } = require('./platform-binary.js');
 
 const PLATFORM_MAP = {
   'darwin-arm64':  { os: 'darwin',  arch: 'arm64', ext: '.tar.gz' },
@@ -95,6 +96,16 @@ function extractZip(archive, destDir) {
 }
 
 function install() {
+  // The optional platform package is the normal path, and when it landed
+  // there is nothing to do: the binary is already on disk at the matching
+  // version. Checking first is what keeps a 6 MB download off every install
+  // that did not need one — and off networks where it would have failed.
+  const packaged = resolvePlatformBinary();
+  if (packaged) {
+    console.log(`[vibeknow] using the binary from ${platformPackageName()} — no download needed.`);
+    return;
+  }
+
   if (isNpx()) {
     console.log('[vibeknow] npx detected — binary will be downloaded on first run.');
     return;
@@ -145,8 +156,21 @@ function install() {
   }
 
   if (!downloaded) {
+    // Reaching here means the optional platform package was not installed and
+    // the download hosts were not reachable. On the networks where the second
+    // half is true, the first half is the one worth fixing — pointing at a
+    // GitHub URL that just failed is no help — so the package route is named
+    // first.
     console.error(`[vibeknow] failed to download binary.`);
-    console.error(`[vibeknow] you can download manually from:`);
+    console.error(``);
+    console.error(`[vibeknow] the binary normally arrives as an optional dependency`);
+    console.error(`[vibeknow] (${platformPackageName() || 'no package for this platform'}), which was not installed here.`);
+    console.error(`[vibeknow] if this network cannot reach the hosts below, install it instead:`);
+    console.error(``);
+    console.error(`  npm install -g vibeknow-cli --include=optional`);
+    console.error(``);
+    console.error(`[vibeknow] that pulls the binary from whichever npm registry you already use.`);
+    console.error(`[vibeknow] otherwise you can download manually from:`);
     urls.forEach(u => console.error(`  ${u}`));
     fs.rmSync(tmpDir, { recursive: true, force: true });
     process.exit(1);

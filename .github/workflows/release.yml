@@ -36,6 +36,23 @@ jobs:
             fail=1
           fi
 
+          # The optional platform packages are pinned exactly, and they are
+          # built from the tag. A pin left on the previous version resolves to
+          # a package that exists — the last release's — so npm installs an
+          # older binary beside a newer wrapper and reports success. Nothing
+          # downstream notices: `vibeknow version` prints whatever that binary
+          # says, and the connector's versionCheck then fails against a
+          # correctly-published release.
+          while IFS=$'\t' read -r dep pin; do
+            if [ "$pin" != "$TAG_VERSION" ]; then
+              echo "::error file=package.json::optionalDependencies.$dep is pinned to $pin, but this release is $TAG_VERSION"
+              fail=1
+            fi
+          done < <(node -e "
+            const d = require('./package.json').optionalDependencies || {};
+            for (const [k, v] of Object.entries(d)) console.log(k + '\t' + v);
+          ")
+
           # A pre-release tag carries the release it rehearses, so skills are
           # checked against that: v0.8.0-rc.1 expects skills at 0.8.0. Asking
           # an rc to restamp every SKILL.md would leave those files reading
@@ -70,6 +87,14 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+
+      # The staged platform packages travel separately: the release job wants
+      # only the archives, and publish-npm wants only these.
+      - name: Upload npm platform packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-platform-packages
+          path: dist/npm/
 
   release:
     needs: build
@@ -109,6 +134,42 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Download npm platform packages
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-platform-packages
+          path: dist/npm
+
+      # The platform packages go first, and the order is load-bearing.
+      # `vibeknow-cli` pins them exactly in optionalDependencies; publish it
+      # while they are still missing and every install in that window resolves
+      # nothing, silently — optional dependencies that 404 are skipped, not
+      # failed — leaving those users on the download fallback the whole
+      # arrangement exists to avoid.
+      #
+      # Each is published on the same dist-tag as the main package, so an rc
+      # rehearsal pulls rc binaries rather than `latest` ones.
+      - name: Publish platform packages
+        run: |
+          npm_tag="latest"
+          case "$GITHUB_REF_NAME" in *-*) npm_tag="rc" ;; esac
+          for dir in dist/npm/*/; do
+            name="$(node -p "require('./$dir/package.json').name")"
+            echo "publishing $name to dist-tag: $npm_tag"
+            # Republishing an identical version is an error, not a no-op, so a
+            # re-run after a partial failure has to tolerate the ones that
+            # already landed.
+            npm publish "$dir" --access public --tag "$npm_tag" || {
+              published="$(npm view "$name@${GITHUB_REF_NAME#v}" version 2>/dev/null || true)"
+              if [ -n "$published" ]; then
+                echo "$name@${GITHUB_REF_NAME#v} is already published; continuing"
+              else
+                echo "::error::failed to publish $name and it is not on the registry"
+                exit 1
+              fi
+            }
+          done
 
       # npm puts every publish on the `latest` dist-tag unless told otherwise,
       # pre-releases included. Without this branch, tagging v0.8.0-rc.1 to

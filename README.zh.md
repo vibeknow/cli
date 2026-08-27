@@ -57,6 +57,10 @@ vibeknow create --from https://example.com/article
 
 就这么简单。`vibeknow init` 负责创建 profile、打开浏览器完成 Device Flow 认证，并把 token 存入系统密钥链。
 
+> **二进制怎么来的**：`vibeknow-cli` 把各平台的 Go 二进制打成独立的 npm 包（`vibeknow-cli-darwin-arm64` 等）放在 `optionalDependencies` 里，npm 按 `os`/`cpu` 只装匹配当前机器的那一个。所以二进制走的是**你已经在用的那个 registry**——公共镜像也好、公司内网代理也好——不需要额外一个主机可达。
+>
+> 如果用了 `--no-optional` 之类的开关跳过了它，`postinstall` 会退回从 GitHub Releases 下载。内网环境下那一步大概率不通，重装时带上 `--include=optional` 即可。
+
 **从源码安装**（只有需要自己构建 Go 二进制时才用）：
 
 ```bash

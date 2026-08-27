@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.9.0 — 2026-08-27
+
+### Changed — the binary now ships over the npm registry, not from a second host
+
+Installing needed two things to be reachable: the npm registry for the
+package, and GitHub Releases for the 6 MB binary that `postinstall` fetched.
+On mainland and corporate networks the second one is the one that is not, and
+there was no way around it — the fallback sources were a `VIBEKNOW_BINARY_BASE_URL`
+nobody had set and an npmmirror binary path that 404s, because the package was
+never registered for binary sync there. So in practice there was one source,
+and it was the wrong one.
+
+The binary now rides inside npm packages instead. There is one per platform —
+`vibeknow-cli-darwin-arm64`, `-darwin-x64`, `-linux-x64`, `-linux-arm64`,
+`-win32-x64` — each carrying that platform's binary and nothing else, and
+`vibeknow-cli` lists all five in `optionalDependencies`. npm matches their
+`os`/`cpu` fields against the machine and installs exactly one; the other four
+are skipped, which is why they are optional rather than regular dependencies —
+a skip has to be a normal outcome rather than a failed install.
+
+What this buys is that the binary arrives over whatever registry already
+works. The public mirrors, or a company's internal proxy, which has to work or
+nothing installs at all. No second host has to be reachable, and no
+infrastructure has to be operated to make one reachable.
+
+The download is still there, now as the fallback it should always have been:
+optional dependencies can legitimately be absent (`--no-optional`,
+`--ignore-optional`, a registry carrying the main package but not these). When
+both paths miss, the error names the package route first — pointing at a
+GitHub URL that just failed is no help on the network where it failed.
+
+`postinstall` also stops downloading when the platform package landed, which
+is every normal install: 6 MB that was being fetched to overwrite a binary
+already sitting on disk.
+
+### Changed — `engines.node` raised to >=18
+
+It said `>=16` while the WorkBuddy connector's `cli.json` declared `>=18`, so
+the two disagreed about the runtime being supported. Nothing in `scripts/`
+needs 18 — the highest bar is `fs.rmSync`, which is 14.14 — but Node 16 went
+end-of-life in September 2023, and the version that gets tested is the one
+that should be declared.
+
 ## 0.8.0 — 2026-08-27
 
 ### Fixed — the release gate did not check the one version that decides where the binary comes from
