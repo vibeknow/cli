@@ -16,25 +16,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify skill versions match tag
+      - name: Verify versions match tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          # A pre-release tag carries the release it rehearses, so it is
+          fail=0
+
+          # package.json is checked against the FULL tag, pre-release suffix
+          # included, because it is what decides where the binary is fetched
+          # from. `scripts/install.js` reads its version and builds
+          # `<source>/v<version>/vibeknow-cli-<version>-<os>-<arch>`, while
+          # build.sh names the release assets from the tag. Let those two drift
+          # and every source 404s: npm installs fine, postinstall cannot find a
+          # binary, and the connector fails to install for everyone. Nothing
+          # else catches it — `npm publish` only rejects the exact-duplicate
+          # case, so 0.7.1 against a v0.9.0 tag would ship a broken package.
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error file=package.json::package.json version ($PKG_VERSION) does not match release tag ($TAG_VERSION); install.js builds the binary URL from this field, so a mismatch 404s every download source"
+            fail=1
+          fi
+
+          # A pre-release tag carries the release it rehearses, so skills are
           # checked against that: v0.8.0-rc.1 expects skills at 0.8.0. Asking
           # an rc to restamp every SKILL.md would leave those files reading
           # 0.8.0-rc.1 at the moment the real release is cut, which is the
-          # version skew this gate exists to catch.
-          TAG_VERSION="${TAG_VERSION%%-*}"
-          fail=0
+          # version skew this gate exists to catch. package.json above cannot
+          # be relaxed the same way — it names a file that has to exist.
+          SKILL_TAG_VERSION="${TAG_VERSION%%-*}"
           for f in skills/*/SKILL.md; do
             SKILL_VERSION="$(awk '/^version:/ {gsub(/[" ]/, "", $2); print $2; exit}' "$f")"
-            if [ "$SKILL_VERSION" != "$TAG_VERSION" ]; then
-              echo "::error file=$f::SKILL.md version ($SKILL_VERSION) does not match release tag ($TAG_VERSION)"
+            if [ "$SKILL_VERSION" != "$SKILL_TAG_VERSION" ]; then
+              echo "::error file=$f::SKILL.md version ($SKILL_VERSION) does not match release tag ($SKILL_TAG_VERSION)"
               fail=1
             fi
           done
+
           [ "$fail" = "0" ] || exit 1
-          echo "All skill versions match $TAG_VERSION"
+          echo "package.json matches $TAG_VERSION; all skill versions match $SKILL_TAG_VERSION"
 
       - uses: actions/setup-go@v5
         with:

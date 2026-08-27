@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-08-27
+
+### Fixed — the release gate did not check the one version that decides where the binary comes from
+
+`release.yml` verified that every `skills/*/SKILL.md` carried the tag's
+version, and nothing verified `package.json`. But `package.json` is the field
+the download URL is built from: `scripts/install.js` reads it and asks for
+`<source>/v<version>/vibeknow-cli-<version>-<os>-<arch>`, while `build.sh`
+names the release assets from the tag. Let those two drift and npm installs
+cleanly, postinstall then requests a path that exists on none of the three
+sources, and the install fails for everyone — with a 404 as the only
+explanation. `npm publish` does not catch it either; it rejects only the
+exact-duplicate version.
+
+The gate now covers both, and they are checked against different things.
+`package.json` is held to the **full** tag, pre-release suffix included,
+because it names a file that has to exist: `v0.8.0-rc.1` requires
+`0.8.0-rc.1`. SKILL.md files stay on the stripped tag, for the reason already
+documented there — an rc restamping them would leave `0.8.0-rc.1` in the files
+at the moment the real release is cut.
+
+### Fixed — the exit-3 row sent agents to a skill that is not always there
+
+`skills/vibeknow-create/references/errors.md` answered exit 3 with "Use
+vibeknow-core skill to diagnose." That skill ships with the CLI, but this file
+is also the reference bundled into the WorkBuddy connector, which carries one
+skill and no `vibeknow-core` — so the row named something absent, precisely
+when an agent had gone looking for detail it did not already have. The row now
+says what exit 3 actually is (nobody can retry their way out of it) and gives
+the recovery for both cases: reconnect in the host that manages the login, or
+`auth status` / `auth login` on a standalone install.
 
 ### Fixed — printed commands carried a task id of zero
 

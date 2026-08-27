@@ -7,7 +7,7 @@
 | 0 | Success | Extract `video_url` from stdout (JSON) or last NDJSON `task.succeeded` event |
 | 1 | General error | Read stderr for details |
 | 2 | Invalid arguments | Check `--from` is provided, file exists, URL is valid |
-| 3 | Auth error | Credential missing or expired. Use vibeknow-core skill to diagnose. |
+| 3 | Auth error | Credential missing, expired, or superseded by another login — every command exits this way, and re-running changes nothing. Only a person can fix it, so say so instead of retrying. Where a host manages the login for you (the WorkBuddy connector does), tell the user to reconnect there; where it is your own install, `vibeknow auth status --output json` names the cause and `vibeknow auth login` repairs it. |
 | 4 | Task failed, **retryable** | Safe to re-submit. The `task.failed` event's `retryable` field is `true`. |
 | 5 | Task failed, **not retryable** | Do not retry. Report `error_code` and `error_message` to user. |
 | 6 | Stream interrupted, **task status unknown** | The task may still be running on the server. Read `error.detail.resend_safe` before doing anything (below). Unless it is `true`, reconnect with `vibeknow video wait` — do **not** re-submit, which would create a duplicate billed task. |
