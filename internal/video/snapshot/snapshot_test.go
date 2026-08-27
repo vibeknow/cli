@@ -233,3 +233,15 @@ func TestBuild_EngineEmptyOmitted(t *testing.T) {
 		t.Fatalf("Engine = %q, want \"\" (omitempty)", s.Engine)
 	}
 }
+
+func TestTargetOmitsAnUnknownTaskID(t *testing.T) {
+	// Every `video` subcommand addresses a run by session, and passing
+	// --session-id explicitly returns before any task_id is resolved — so
+	// zero is the normal case there, not a bug upstream.
+	if got := snapshot.Target(0, "s_abc"); got != "--session-id s_abc" {
+		t.Errorf("Target(0, …) = %q, want the task id left out", got)
+	}
+	if got := snapshot.Target(42, "s_abc"); got != "42 --session-id s_abc" {
+		t.Errorf("Target(42, …) = %q, want both", got)
+	}
+}

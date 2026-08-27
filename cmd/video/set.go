@@ -12,6 +12,7 @@ import (
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -256,7 +257,7 @@ Renaming is the exception — it touches no output.`,
 			}
 			if exportInvalidated {
 				payload["next_actions"] = []map[string]string{{
-					"command": fmt.Sprintf("vk video export %d --session-id %s", taskID, sessionID),
+					"command": fmt.Sprintf("vk video export %s", snapshot.Target(taskID, sessionID)),
 					"purpose": "Re-render the MP4 with the change baked in (bills; asks for confirmation first)",
 				}}
 			}
@@ -284,8 +285,8 @@ Renaming is the exception — it touches no output.`,
 		if exportInvalidated {
 			fmt.Fprintf(cmd.ErrOrStderr(),
 				"note: the previously rendered MP4 no longer matches this work and was discarded; "+
-					"the preview and share link still work, run `vk video export %d --session-id %s` to get a file again\n",
-				taskID, sessionID)
+					"the preview and share link still work, run `vk video export %s` to get a file again\n",
+				snapshot.Target(taskID, sessionID))
 		}
 		return nil
 	},

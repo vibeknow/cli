@@ -7,6 +7,7 @@ import (
 
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -53,7 +54,7 @@ healthy scene are untouched, and nothing is billed again.`,
 				"session_id":  sessionID,
 				"retry_count": count,
 				"next_actions": []map[string]string{{
-					"command": fmt.Sprintf("vk video export %d --session-id %s", taskID, sessionID),
+					"command": fmt.Sprintf("vk video export %s", snapshot.Target(taskID, sessionID)),
 					"purpose": "Export the MP4 once the retried scenes finish",
 				}},
 			})

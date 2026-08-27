@@ -12,6 +12,7 @@ import (
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -57,12 +58,12 @@ finished, failed, or been paused cannot.`,
 				"task_id":    taskID,
 				"status":     "paused",
 				"next_actions": []map[string]string{{
-					"command": fmt.Sprintf("vk video resume %d --session-id %s", taskID, sessionID),
+					"command": fmt.Sprintf("vk video resume %s", snapshot.Target(taskID, sessionID)),
 					"purpose": "Continue this run from where it stopped",
 				}},
 			})
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "paused — resume with `vk video resume %d --session-id %s`\n", taskID, sessionID)
+		fmt.Fprintf(cmd.OutOrStdout(), "paused — resume with `vk video resume %s`\n", snapshot.Target(taskID, sessionID))
 		return nil
 	},
 }
@@ -103,7 +104,7 @@ Three refusals are permanent, and no retry can clear them:
 
 		noteJob(taskID, sessionID, func(r *jobs.Record) { r.Status = jobs.StatusRunning })
 
-		waitCmd := fmt.Sprintf("vk video wait %d --session-id %s", taskID, sessionID)
+		waitCmd := fmt.Sprintf("vk video wait %s", snapshot.Target(taskID, sessionID))
 		format, _ := cmd.Flags().GetString("output")
 		if format == "json" || format == "ndjson" {
 			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{

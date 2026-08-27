@@ -230,14 +230,25 @@ func formatDuration(ms int64) string {
 	return fmt.Sprintf("%dm%02ds", total/60, total%60)
 }
 
-func nextActions(s Snapshot, in BuildInput) []Action {
-	// Build the shared argument suffix. task_id is omitted when unknown
-	// (e.g. when the caller came from `list` → `status` with only a
-	// session_id in hand); the video subcommands accept session_id alone.
-	base := "--session-id " + in.SessionID
-	if in.TaskID != 0 {
-		base = fmt.Sprintf("%d --session-id %s", in.TaskID, in.SessionID)
+// Target renders the arguments that address one run, for commands printed
+// back to a caller.
+//
+// task_id is omitted when it is unknown, which happens whenever `--session-id`
+// was passed explicitly: that path returns the session straight away and never
+// consults the ledger, so no task_id is ever resolved. Interpolating the zero
+// produces `vk video export 0 --session-id …`, and while the commands do
+// accept it, a printed command is either something a caller can run as-is or
+// it is nothing — and one carrying an obviously wrong id invites the reader to
+// go and repair it, which is where a wrong id gets substituted.
+func Target(taskID int64, sessionID string) string {
+	if taskID == 0 {
+		return "--session-id " + sessionID
 	}
+	return fmt.Sprintf("%d --session-id %s", taskID, sessionID)
+}
+
+func nextActions(s Snapshot, in BuildInput) []Action {
+	base := Target(in.TaskID, in.SessionID)
 	switch {
 	case !s.Preview.Ready:
 		return []Action{{

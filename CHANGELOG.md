@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Fixed — printed commands carried a task id of zero
+
+`video set`, `video pause` and `video avatar-retry` built their
+`next_actions[].command` by interpolating the task id, which is zero whenever
+`--session-id` was passed explicitly: that path returns the session
+immediately and never resolves a task id, since every `video` subcommand
+addresses a run by session anyway. So a caller was handed
+`vk video export 0 --session-id …`.
+
+The commands do accept it, so nothing was broken — but a printed command is
+either something a caller can run as-is or it is nothing, and one carrying an
+obviously wrong id invites the reader to repair it, which is where a wrong id
+gets substituted. `snapshot` already omitted the zero and documented why; that
+guard is now exported as `snapshot.Target` and used everywhere instead of
+being reimplemented without it.
+
 ### Changed — where the binary is fetched from, and how long that is allowed to take
 
 `scripts/install.js` tried GitHub Releases first and
