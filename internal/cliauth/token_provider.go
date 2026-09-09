@@ -69,7 +69,11 @@ func isSessionDead(err error) bool {
 type OAuthTokenProvider struct {
 	keychainSrc credential.KeychainSource
 	accountURL  string
-	lockDir     string
+	// refreshLock lives on the provider, not in doRefresh: the singleflight
+	// layer inside RefreshLock dedups by instance, so a lock constructed per
+	// call dedups nothing and every concurrent caller queues on the file
+	// lock just to learn from the double-check that the work is done.
+	refreshLock *credential.RefreshLock
 	mu          sync.Mutex
 	cachedToken *credential.StoredToken // in-memory fallback if keychain write fails
 }
@@ -80,7 +84,7 @@ func NewOAuthTokenProvider(keychainSrc credential.KeychainSource, accountURL, lo
 	return &OAuthTokenProvider{
 		keychainSrc: keychainSrc,
 		accountURL:  accountURL,
-		lockDir:     lockDir,
+		refreshLock: credential.NewRefreshLock(lockDir, keychainSrc.Entry),
 	}
 }
 
@@ -183,9 +187,7 @@ func (p *OAuthTokenProvider) loadToken() (credential.StoredToken, error) {
 // stored credential and returns an *errs.Object with code CodeSessionExpired
 // so the user sees a single, clear re-login prompt.
 func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.StoredToken) (string, error) {
-	lock := credential.NewRefreshLock(p.lockDir, p.keychainSrc.Entry)
-
-	tok, err := lock.DoWithDoubleCheck(
+	tok, err := p.refreshLock.DoWithDoubleCheck(
 		ctx,
 		func() bool {
 			// Double-check: re-read the keychain and see if another process
