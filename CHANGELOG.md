@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.9.2 — 2026-09-09
+
+### Fixed — profiles no longer pin the beta test cluster forever
+
+Through v0.6.3, `init` and `auth login` copied the running binary's built-in
+service URLs into the profile they created, and endpoint resolution prefers
+the profile copy. Binaries of that era defaulted to the beta test cluster
+(`beta.lab.shiliu.chat`), so anyone whose first login predates v0.7.0 kept
+creating videos on the test environment through every upgrade since — the
+WorkBuddy connector path included, where `auth status` kept reporting
+"connected" because the credential was perfectly valid, just against beta.
+
+Two changes, one per half of the bug:
+
+- New profiles record no endpoints at all. A profile carries only explicit
+  overrides; the defaults now come from the running binary and move with it.
+- Loading `profiles.yaml` scrubs endpoint entries that exactly match a
+  built-in default any released binary ever shipped (the pre-v0.3.1
+  subdomains, the beta cluster, current production), and writes the healed
+  file back. URLs a user chose themselves never match and are never touched,
+  and profiles with `trust: dev` + `is_production: false` — the sanctioned
+  way to point at a non-production cluster — are skipped entirely.
+
+Healed users hold a beta-issued token, which production rejects; `auth
+status` already surfaces that as unauthenticated, so connector hosts prompt
+for a fresh login and the account lands on production. A consistency test
+fails the build if `CloudDefaults` changes without the old values being
+added to the frozen list.
+
+### Fixed — `auth whoami` refreshes like every other command
+
+`whoami` read the stored access token directly and sent it as-is, so a token
+inside its refresh window surfaced as a bare backend 401 instead of
+refreshing transparently, and an expired one produced the same 401 instead
+of "log in again". It now goes through the profile's real token provider —
+the same path `auth status` and every business command use.
+
+### Changed — the in-process refresh dedup layer actually dedups
+
+The refresh lock's singleflight layer dedups by lock instance, but the lock
+was constructed fresh on every refresh call, so concurrent refreshes in one
+process each queued on the cross-process file lock just to learn from the
+double-check that the work was already done. The lock now lives on the
+token provider; concurrent callers share one in-flight refresh.
+
+### Removed — the encrypted file credential store that nothing used
+
+The spec's third credential level (env > keychain > file) was implemented —
+scrypt key derivation, AES-GCM, the lot — but never wired to any caller,
+and the keychain backends already carry their own on-disk fallback for
+systems without a real keychain. Dead crypto code is an audit burden with
+no offsetting value; it is gone, along with the module's only use of
+golang.org/x/crypto.
+
+Internal: the default-profile literal that `init`, `auth login`, and the
+parked-device fallback each hand-copied is now a single
+`cliauth.DefaultProfile()` — the endpoint-freeze fix above had to be
+applied to the copies separately, which is exactly the failure mode this
+removes.
+
 ## 0.9.1 — 2026-08-27
 
 ### Added — the device page opens with the code already filled in
