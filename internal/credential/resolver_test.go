@@ -2,7 +2,6 @@ package credential
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -44,25 +43,6 @@ func TestResolverKeychainFallback(t *testing.T) {
 	}
 	tok, src, err := r.Resolve()
 	if err != nil || tok != "from-keychain" || src != "keychain" {
-		t.Fatalf("tok=%q src=%q err=%v", tok, src, err)
-	}
-}
-
-func TestResolverFileFallback(t *testing.T) {
-	os.Unsetenv("VIBEKNOW_TOKEN")
-	dir := t.TempDir()
-	path := filepath.Join(dir, "c.enc")
-	fs := NewFileStore(path, "pw")
-	if err := fs.Set([]byte("from-file")); err != nil {
-		t.Fatal(err)
-	}
-	r := Resolver{
-		Env:      EnvSource{Var: "VIBEKNOW_TOKEN"},
-		Keychain: KeychainSource{Keychain: &fakeKC{data: map[string][]byte{}}, Entry: "missing"},
-		File:     FileSource{Store: fs},
-	}
-	tok, src, err := r.Resolve()
-	if err != nil || tok != "from-file" || src != "file" {
 		t.Fatalf("tok=%q src=%q err=%v", tok, src, err)
 	}
 }
