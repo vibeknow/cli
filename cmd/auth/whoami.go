@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/endpoints"
-	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 )
 
@@ -27,16 +25,19 @@ var whoamiCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		tok, _, err := cliauth.ResolverFor(p).Resolve()
-		if err != nil {
+		// The profile's real provider, not a static copy of the stored
+		// token: a whoami on a token inside its refresh window is supposed
+		// to refresh transparently like any other command, and an expired
+		// one to say "log in again" — not surface as a bare backend 401.
+		tp := cliauth.TokenProviderFor(p)
+		if tp == nil {
 			return clerr.Auth(i18n.T("auth.not_logged_in")).WithHint(i18n.T("auth.not_logged_in.hint"))
 		}
 		url, err := endpoints.Resolve(p, "account")
 		if err != nil {
 			return err
 		}
-		c := account.New(url, httpclient.StaticToken(tok))
-		u, err := c.Whoami(context.Background())
+		u, err := account.New(url, tp).Whoami(cmd.Context())
 		if err != nil {
 			return err
 		}
