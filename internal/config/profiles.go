@@ -41,6 +41,12 @@ func LoadProfiles() (ProfilesFile, error) {
 	if err := f.Validate(); err != nil {
 		return f, fmt.Errorf("validate %s: %w", path, err)
 	}
+	if scrubFrozenDefaults(&f) {
+		// Best-effort: a failed write (read-only FS, lock contention) still
+		// leaves the caller with the healed in-memory copy, and the next
+		// load gets another chance.
+		_ = SaveProfiles(f)
+	}
 	return f, nil
 }
 

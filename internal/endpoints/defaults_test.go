@@ -3,7 +3,22 @@ package endpoints
 import (
 	"net/url"
 	"testing"
+
+	"github.com/vibeknow/cli/internal/config"
 )
+
+// Every value CloudDefaults ships must be listed in config's frozen-default
+// set: profiles written by binaries ≤v0.6.3 carry a verbatim copy of the
+// defaults of their day, and config.LoadProfiles can only heal copies it
+// recognizes. Whoever changes CloudDefaults must append the old values to
+// config.frozenDefaultEndpoints — this test is what makes forgetting loud.
+func TestCloudDefaultsAreRegisteredAsFrozen(t *testing.T) {
+	for svc, raw := range CloudDefaults {
+		if !config.IsFrozenDefaultEndpoint(raw) {
+			t.Errorf("CloudDefaults[%q]=%q missing from config.frozenDefaultEndpoints", svc, raw)
+		}
+	}
+}
 
 func TestCloudDefaultsAreValidAbsoluteURLs(t *testing.T) {
 	// Ensure the original four core API services are always present.
