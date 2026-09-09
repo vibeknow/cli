@@ -132,13 +132,7 @@ func ensureDefaultProfile() (config.Profile, string, error) {
 		return p, accountURL, nil
 	}
 
-	p = config.Profile{
-		Name:          "default",
-		CredentialRef: "vibeknow.default",
-		Endpoints:     endpoints.CloudDefaults,
-		Trust:         "user",
-		IsProduction:  true,
-	}
+	p = cliauth.DefaultProfile()
 
 	f, loadErr := config.LoadProfiles()
 	if loadErr != nil {

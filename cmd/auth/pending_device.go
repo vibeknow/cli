@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vibeknow/cli/client/account"
+	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/config"
 	"github.com/vibeknow/cli/internal/credential"
 )
@@ -202,10 +203,5 @@ func pendingProfile(rec pendingDevice) config.Profile {
 	if err == nil {
 		return p
 	}
-	return config.Profile{
-		Name:          "default",
-		CredentialRef: "vibeknow.default",
-		Trust:         "user",
-		IsProduction:  true,
-	}
+	return cliauth.DefaultProfile()
 }

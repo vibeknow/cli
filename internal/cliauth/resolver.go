@@ -31,6 +31,24 @@ func ResolverFor(p config.Profile) credential.Resolver {
 	return r
 }
 
+// DefaultProfile is the profile `init` and `auth login` create when none
+// exists, and the shape a parked device login falls back to when its profile
+// has been removed. One constructor because it used to be three hand-copied
+// literals, and the endpoint-freeze fix had to be applied to each separately.
+//
+// Endpoints stays empty on purpose: a profile records only explicit
+// overrides, and endpoints.Resolve falls back to the binary's CloudDefaults.
+// Copying the defaults in here pinned whatever URLs the first binary shipped
+// — ≤v0.6.3 pinned the beta test cluster for good.
+func DefaultProfile() config.Profile {
+	return config.Profile{
+		Name:          "default",
+		CredentialRef: "vibeknow.default",
+		Trust:         "user",
+		IsProduction:  true,
+	}
+}
+
 // CurrentProfile loads profiles.yaml and returns the active profile, or an
 // error if none is set. Consolidates the profile-lookup loop.
 func CurrentProfile() (config.Profile, error) {

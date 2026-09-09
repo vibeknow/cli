@@ -359,13 +359,7 @@ func resolveAccountURL() (config.Profile, string, error) {
 		var noProfile *cliauth.NoActiveProfileError
 		var notFound *cliauth.ProfileNotFoundError
 		if errors.As(err, &noProfile) || errors.As(err, &notFound) {
-			p = config.Profile{
-				Name:          "default",
-				CredentialRef: "vibeknow.default",
-				Endpoints:     endpoints.CloudDefaults,
-				Trust:         "user",
-				IsProduction:  true,
-			}
+			p = cliauth.DefaultProfile()
 		} else {
 			return config.Profile{}, "", err
 		}
