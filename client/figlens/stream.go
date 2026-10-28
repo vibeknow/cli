@@ -34,8 +34,11 @@ type StreamParams struct {
 	PageCount int `json:"page_count,omitempty"`
 	// Theme is a style catalog ID from `vk theme list` (or a ua_<assetId>
 	// custom-theme token). Empty lets the pipeline auto-select. Suite
-	// membership must match VideoKind — the backend hard-rejects an
-	// image-suite theme outside image mode rather than degrading silently.
+	// membership must match VideoKind, and the backend does not reliably
+	// enforce it: on the standard line an id it does not recognise for the
+	// run's kind is replaced with a fallback theme and the run succeeds
+	// (go-figlens video_theme.go resolveValidDesignThemeIDForVideoKind).
+	// Callers validate through internal/themecat before sending.
 	Theme string `json:"theme,omitempty"`
 	// Language is the output locale for script + TTS (zh-CN, en-US, es-ES,
 	// fr-FR, pt-BR, ja-JP, ko-KR). Only the v=3 pipeline reads it; empty

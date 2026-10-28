@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Fixed — `--theme` can no longer be silently replaced
+
+A user's agent passed their custom 灵活创作 theme as the bare number the web
+displays. The backend does not refuse a theme id it does not recognise for
+the run's mode — on the standard line it substitutes a fallback theme — so
+the run succeeded, billed, and came out in a style nobody picked.
+
+- `vk create --theme` is now checked against the mode's catalog before
+  anything is uploaded. A bare number is refused with the `ua_<id>`
+  spelling; an id from another mode is refused naming that mode; four
+  design themes that freeform would swap for another are refused. A
+  catalog that cannot be fetched fails the run rather than skipping the
+  check.
+- `vk theme list` lists the user's own themes (`ua_<id>`, `source:
+  "custom"`, with the `base` they were derived from) ahead of the official
+  catalog: 我的主题 for freeform and replica, trained styles for image.
+- `--mode` names come from one table shared by `create` and `theme list`.
+  `freeform` is now the explicit name of the default line, and `default`
+  is accepted by both commands (it was rejected by `create`).
+- Snapshots carry `mode`; `create` reports `requested_theme`.
+
 ## 0.9.2 — 2026-09-09
 
 ### Fixed — profiles no longer pin the beta test cluster forever

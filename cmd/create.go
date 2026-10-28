@@ -26,7 +26,9 @@ import (
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/jobs"
+	"github.com/vibeknow/cli/internal/modes"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/themecat"
 	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/video/snapshot"
 )
@@ -210,6 +212,13 @@ var createCmd = &cobra.Command{
 		// Resolved before any upload: a bad voice reference should cost the
 		// user nothing, not a knowledgebase and a parsed document.
 		voiceID, err := resolveVoiceID(ctx, flagCreateVoiceID)
+		if err != nil {
+			return err
+		}
+		// Same reason, higher stakes: the backend does not reject a theme
+		// it does not recognise, it renders in a substitute. The entry is
+		// kept so the result can say what was asked for.
+		requestedTheme, err := resolveTheme(ctx, videoKind, flagCreateTheme)
 		if err != nil {
 			return err
 		}
@@ -665,11 +674,14 @@ var createCmd = &cobra.Command{
 				"task_id":    task.TaskID,
 				"session_id": task.SessionID,
 				"status":     jobs.StatusRunning,
-				"next_actions": []map[string]string{{
-					"command": fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID),
-					"purpose": "Wait for the generation pipeline to finish",
-				}},
 			}
+			if ref := themeRef(requestedTheme); ref != nil {
+				asyncPayload["requested_theme"] = ref
+			}
+			asyncPayload["next_actions"] = []map[string]string{{
+				"command": fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID),
+				"purpose": "Wait for the generation pipeline to finish",
+			}}
 			switch format {
 			case "json":
 				return output.NewJSON(cmd.OutOrStdout()).Object(asyncPayload)
@@ -733,6 +745,7 @@ var createCmd = &cobra.Command{
 			Work:      w,
 			ShareBase: shareBase,
 		})
+		s.RequestedTheme = themeRef(requestedTheme)
 		updateJob(task.TaskID, successSessionID, func(r *jobs.Record) {
 			r.Status = jobs.StatusSucceeded
 			r.WorkID = s.WorkID
@@ -811,6 +824,7 @@ var createCmd = &cobra.Command{
 			ExportTaskID: expID,
 			ShareBase:    shareBase,
 		})
+		finalSnap.RequestedTheme = themeRef(requestedTheme)
 		if format == "text" || format == "" {
 			fmt.Fprintln(stderr)
 		}
@@ -1152,6 +1166,38 @@ func resolveVoiceID(ctx context.Context, flag string) (string, error) {
 	return mapVoiceRef(ref, catalog.Flatten())
 }
 
+// resolveTheme checks a --theme value against the catalog of the mode the
+// run uses and returns the entry it names; nil when no theme was asked for.
+// See internal/themecat for why this cannot be left to the backend.
+func resolveTheme(ctx context.Context, videoKind, flag string) (*themecat.Entry, error) {
+	id := strings.TrimSpace(flag)
+	if id == "" {
+		return nil, nil
+	}
+	m, ok := modes.ForVideoKind(videoKind)
+	if !ok {
+		// resolveMode only produces kinds from the table.
+		return nil, clerr.Internalf("no mode row for video_kind %q", videoKind)
+	}
+	_, url, tp, err := cmdutil.Default().Service("figlens")
+	if err != nil {
+		return nil, err
+	}
+	e, err := themecat.Validate(ctx, figlens.New(url, tp), m, id)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
+// themeRef is the snapshot's view of a resolved --theme; nil for none.
+func themeRef(e *themecat.Entry) *snapshot.ThemeRef {
+	if e == nil {
+		return nil
+	}
+	return &snapshot.ThemeRef{ID: e.ID, Name: e.Name, Source: e.Source}
+}
+
 // voiceRefNeedsLookup reports whether a --voice value is a `vk voice list`
 // reference number that has to be translated, as opposed to a speech_voice_id
 // that can go to the backend as-is.
@@ -1186,25 +1232,19 @@ func mapVoiceRef(ref string, templates []vibeknow.VoiceTemplate) (string, error)
 // alias: it resolves to no video_kind (the standard line) plus script_lock,
 // which is what the old value meant back when the axes were fused.
 //
-// Empty --mode passes through as an empty video_kind (caller omits the
-// field); an unrecognized value is a Validation error.
+// Names come from internal/modes, the table `vk theme list --mode` reads
+// too, so a spelling one command accepts the other accepts. Freeform (and
+// its aliases, empty included) is the empty video_kind: the caller omits
+// the field. An unrecognized value is a Validation error.
 func resolveMode(mode string, scriptLockFlag bool) (videoKind string, scriptLock bool, deprecatedAlias bool, err error) {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "":
-		return "", scriptLockFlag, false, nil
-	case "replica":
-		return figlens.VideoKindReplica, scriptLockFlag, false, nil
-	case "image":
-		// User-facing name for the 讲稿生图 line; the wire value carries
-		// an internal model codename we deliberately do not surface.
-		return figlens.VideoKindImage2, scriptLockFlag, false, nil
-	case "handdraw":
-		return figlens.VideoKindHandDraw, scriptLockFlag, false, nil
-	case "script":
+	if strings.EqualFold(strings.TrimSpace(mode), "script") {
 		return "", true, true, nil
-	default:
-		return "", false, false, clerr.Validation(i18n.T("create.err.mode_invalid", mode))
 	}
+	m, ok := modes.Resolve(mode)
+	if !ok {
+		return "", false, false, clerr.Validation(i18n.T("create.err.mode_invalid", modes.Names(), mode))
+	}
+	return m.VideoKind, scriptLockFlag, false, nil
 }
 
 // resolveImageIndexes parses --images ("1,3,5") into mandatory-image

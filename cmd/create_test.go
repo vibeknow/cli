@@ -20,6 +20,9 @@ func TestResolveMode(t *testing.T) {
 		wantErr        bool
 	}{
 		{desc: "empty is the freeform line", mode: "", wantKind: ""},
+		// Same names as `vk theme list --mode`: both read internal/modes.
+		{desc: "freeform by name", mode: "freeform", wantKind: ""},
+		{desc: "default alias", mode: "default", wantKind: ""},
 		{desc: "replica", mode: "replica", wantKind: figlens.VideoKindReplica},
 		{desc: "image", mode: "image", wantKind: figlens.VideoKindImage2},
 		{desc: "handdraw", mode: "handdraw", wantKind: figlens.VideoKindHandDraw},

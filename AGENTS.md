@@ -348,9 +348,12 @@ command line can express and nothing more.
 
 ## Video kinds
 
-`vk create --mode <kind>` picks which figlens pipeline runs:
+`vk create --mode <kind>` picks which figlens pipeline runs. The names live
+in one table, `internal/modes`, which `vk theme list --mode` reads too — the
+two commands used to keep separate switches and disagreed about `default`.
 
-- **default (no flag)** — generative video from the document.
+- **`freeform`** (default; `default` or no flag) — 灵活创作, generative
+  video from the document.
 - **`--mode replica`** — PPT/PDF page-by-page reproduction. Suited
   for slide decks where the visual structure is the message.
 - **`--mode image`** — one AI-generated illustration per narration
@@ -367,6 +370,33 @@ narration instead of writing a script from it. It is **orthogonal to
 `--mode image --script-lock` illustrates the user's own script.
 
 The doc must pass a quality preflight (length, characters, content)
+## Themes (`--theme`)
+
+A theme belongs to a mode: the mode picks the catalog, `--theme` picks an
+entry in it. 主题 / 风格 / 模板 in a user's request all mean this flag.
+
+`vk theme list --mode X` shows everything mode X accepts — the user's own
+themes first as `ua_<id>` (`source: "custom"`), then the official suite —
+and `vk create` validates `--theme` against that same list (`internal/themecat`)
+before the first upload. The check exists because the backend does not
+refuse an id it does not recognise for the run's kind: on the standard line
+it substitutes a fallback theme, and the canvas line ignores unknown ids by
+design. That is how a user's
+custom theme passed as the bare number the web displays came out in a
+different style, billed, with no error.
+
+- A bare number is refused with the `ua_<id>` spelling in the message.
+- An id from another mode's catalog is refused naming that mode.
+- Four design-suite themes are reserved for a line the CLI does not expose
+  and get swapped in freeform;
+  `/themes` does not mark them, so `themecat.bookIntroOnly` is a copy of a
+  server rule, and the error says so.
+- A catalog that cannot be fetched fails with that fetch's exit code. Unable
+  to check is never treated as checked.
+
+The result reports `requested_theme`, named as a request: the work detail
+response carries no theme, so nothing can confirm what actually rendered.
+
 which runs at task-init time, before any billing. Preflight failures
 exit **2** with a clear message; agents should treat them as
 user-input problems, not retries. The preflight only fires when the

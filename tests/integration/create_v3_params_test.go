@@ -19,6 +19,14 @@ func v3ParamServer(t *testing.T) (*httptest.Server, func() map[string]map[string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/v1/themes":
+			// --theme is checked against the mode's catalog before upload.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": []map[string]any{{"id": "design_minimal", "name": "Minimal"}},
+			})
+
 		case "/v1/tasks/init":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)

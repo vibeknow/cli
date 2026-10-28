@@ -28,6 +28,9 @@ type Work struct {
 	Duration   int64  `json:"duration"`
 	Engine     string `json:"engine,omitempty"`
 	Status     int    `json:"status"`
+	// VideoKind is the backend line the work ran on; empty is the standard
+	// (freeform) line. Reported back as a CLI mode name by the snapshot.
+	VideoKind string `json:"video_kind,omitempty"`
 	// Bgm / Subtitle are "on" / "off", and SubtitleStyle is the stored style
 	// as raw JSON. They are read here so a partial change can be merged onto
 	// what is already set: the style endpoint overwrites wholesale, so

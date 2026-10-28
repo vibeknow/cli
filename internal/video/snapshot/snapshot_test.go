@@ -245,3 +245,29 @@ func TestTargetOmitsAnUnknownTaskID(t *testing.T) {
 		t.Errorf("Target(42, …) = %q, want both", got)
 	}
 }
+
+func TestBuild_ModeFromVideoKind(t *testing.T) {
+	cases := []struct {
+		name, engine, kind, want string
+	}{
+		{"pipeline standard line is freeform", "suite", "", "freeform"},
+		{"image2 reads as the CLI name", "suite", "image2", "image"},
+		{"hand-draw reads as the CLI name", "suite", "hand-draw", "handdraw"},
+		{"unexposed line keeps the backend value", "suite", "stage_craft", "stage_craft"},
+		// An empty kind is freeform only on the pipeline engine.
+		{"agent engine reports no mode", "agent", "", ""},
+		{"unknown engine reports no mode", "", "", ""},
+		{"a kind is unambiguous without an engine", "", "replica", "replica"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := snapshot.Build(snapshot.BuildInput{
+				SessionID: "s",
+				Work:      &figlens.Work{Engine: tc.engine, VideoKind: tc.kind},
+			})
+			if s.Mode != tc.want {
+				t.Errorf("mode = %q, want %q", s.Mode, tc.want)
+			}
+		})
+	}
+}

@@ -47,3 +47,40 @@ func (c *Client) ListThemes(ctx context.Context, suite string) ([]Theme, error) 
 	}
 	return themes, nil
 }
+
+// User asset kinds that stand in for a catalog theme. A theme asset is
+// referenced as "ua_<id>" in the stream request's theme field; the two kinds
+// share the prefix but the backend accepts each only in its own mode.
+const (
+	AssetTypeTheme       = "theme"        // 灵活创作 custom theme (我的主题)
+	AssetTypeImage2Theme = "image2_theme" // 图解视频 trained style
+)
+
+// ThemeAsset is one of the caller's own theme assets from
+// GET /v1/assets?type=theme|image2_theme.
+type ThemeAsset struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Status int    `json:"status"`
+	// Config is the asset's stored config. For a theme asset it names the
+	// catalog theme it was derived from (baseThemeId); image2 styles have
+	// no base.
+	Config struct {
+		BaseThemeID string `json:"baseThemeId"`
+	} `json:"config"`
+}
+
+// Token is the value the stream request's theme field takes for this asset.
+func (a ThemeAsset) Token() string { return fmt.Sprintf("ua_%d", a.ID) }
+
+// ListThemeAssets fetches the caller's own assets of one theme kind, all
+// states. Only UserAssetStatusActive ones are usable: the backend ignores
+// any other without an error.
+func (c *Client) ListThemeAssets(ctx context.Context, assetType string) ([]ThemeAsset, error) {
+	var assets []ThemeAsset
+	path := "/v1/assets?type=" + url.QueryEscape(assetType)
+	if err := c.http.Do(ctx, "GET", path, nil, &assets); err != nil {
+		return nil, fmt.Errorf("list %s assets: %w", assetType, err)
+	}
+	return assets, nil
+}

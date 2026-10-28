@@ -13,28 +13,12 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
+	"github.com/vibeknow/cli/internal/modes"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/themecat"
 )
 
 var flagListMode string
-
-// suiteForMode maps `vk create --mode` vocabulary onto the backend's theme
-// suite: each mode draws from exactly one catalog, and passing a theme from
-// the wrong suite is a hard 400 at the stream entry — so the list command
-// speaks modes, not suite names, and the user can't ask a mismatched
-// question. replica shares the standard line's design catalog.
-func suiteForMode(mode string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", "default", "replica":
-		return figlens.ThemeSuiteDesign, nil
-	case "image":
-		return figlens.ThemeSuiteImage2, nil
-	case "handdraw":
-		return figlens.ThemeSuiteHandDraw, nil
-	default:
-		return "", clerr.Validation(i18n.T("theme.err.mode_invalid", mode))
-	}
-}
 
 var listCmd = &cobra.Command{
 	// Takes no positional arguments. Without this cobra accepts and
@@ -42,13 +26,21 @@ var listCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Use:   "list",
 	Short: "list themes for a creation mode",
+	Long: `List every value ` + "`vk create --theme`" + ` accepts in one mode: your own
+custom themes (SOURCE=custom, ua_<id>) first, then the official catalog.
+
+--mode takes the same values as ` + "`vk create --mode`" + `, and the list is exactly
+what create validates against: an id from here passes, anything else is
+refused before upload. Themes, styles and templates (主题 / 风格 / 模板) are
+all this one thing.`,
 	Example: `  vk theme list
   vk theme list --mode image
   vk theme list --mode handdraw --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		suite, err := suiteForMode(flagListMode)
-		if err != nil {
-			return err
+		// Same table create reads, so a name valid here is valid there.
+		m, ok := modes.Resolve(flagListMode)
+		if !ok {
+			return clerr.Validation(i18n.T("theme.err.mode_invalid", modes.Names(), flagListMode))
 		}
 
 		_, url, tp, err := cmdutil.Default().Service("figlens")
@@ -56,7 +48,7 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		themes, err := figlens.New(url, tp).ListThemes(context.Background(), suite)
+		themes, err := themecat.List(context.Background(), figlens.New(url, tp), m)
 		if err != nil {
 			return err
 		}
@@ -65,11 +57,19 @@ var listCmd = &cobra.Command{
 		if format == "json" {
 			items := make([]map[string]any, 0, len(themes))
 			for _, t := range themes {
+				tags := t.Tags
+				if tags == nil {
+					tags = []string{}
+				}
 				item := map[string]any{
-					"id":   t.ID,
-					"name": t.Name,
-					"desc": t.Desc,
-					"tags": t.Tags,
+					"id":     t.ID,
+					"name":   t.Name,
+					"desc":   t.Desc,
+					"tags":   tags,
+					"source": t.Source,
+				}
+				if t.Base != "" {
+					item["base"] = t.Base
 				}
 				if t.Badge != "" {
 					item["badge"] = t.Badge
@@ -83,15 +83,19 @@ var listCmd = &cobra.Command{
 				items = append(items, item)
 			}
 			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
-				"mode":   flagListMode,
+				"mode":   m.Name,
 				"themes": items,
 			})
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tTAGS\tDESC")
+		fmt.Fprintln(w, "ID\tNAME\tSOURCE\tTAGS\tDESC")
 		for _, t := range themes {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Name, strings.Join(t.Tags, ","), t.Desc)
+			desc := t.Desc
+			if t.Base != "" {
+				desc = "base: " + t.Base
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Source, strings.Join(t.Tags, ","), desc)
 		}
 		if err := w.Flush(); err != nil {
 			return err

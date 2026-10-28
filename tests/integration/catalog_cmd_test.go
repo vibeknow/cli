@@ -10,9 +10,10 @@ import (
 )
 
 // TestThemeList_SuitePerMode pins the mode→suite mapping through the real
-// binary. Passing a theme from the wrong suite is a hard 400 at the stream
-// entry, so `theme list` speaks modes rather than suite names — which only
-// helps if each mode actually queries the catalog it draws from.
+// binary. `vk create --theme` validates against the same per-mode catalog
+// (the backend would silently substitute a theme from the wrong one), so
+// `theme list` speaks modes rather than suite names — which only helps if
+// each mode actually queries the catalog it draws from.
 func TestThemeList_SuitePerMode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -22,6 +23,12 @@ func TestThemeList_SuitePerMode(t *testing.T) {
 	var asked []string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/assets" {
+			// No custom themes: this test is about the official suites.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": []any{}})
+			return
+		}
 		if r.URL.Path != "/v1/themes" {
 			w.WriteHeader(404)
 			return
@@ -42,12 +49,13 @@ func TestThemeList_SuitePerMode(t *testing.T) {
 	bin := build(t)
 	configHome := buildVideoProfile(t, srv.URL)
 
-	cases := []struct{ mode, suite string }{
-		{"", "design-suite"},
-		{"default", "design-suite"},
-		{"replica", "design-suite"}, // PPT walkthrough shares the standard catalog
-		{"image", "image2-suite"},
-		{"handdraw", "hand-draw-suite"},
+	cases := []struct{ mode, suite, echoed string }{
+		{"", "design-suite", "freeform"},
+		{"default", "design-suite", "freeform"},
+		{"freeform", "design-suite", "freeform"},
+		{"replica", "design-suite", "replica"}, // PPT walkthrough shares the standard catalog
+		{"image", "image2-suite", "image"},
+		{"handdraw", "hand-draw-suite", "handdraw"},
 	}
 
 	for _, tc := range cases {
@@ -66,6 +74,9 @@ func TestThemeList_SuitePerMode(t *testing.T) {
 		themes, _ := got["themes"].([]any)
 		if len(themes) != 1 {
 			t.Errorf("--mode %q: themes = %v, want 1 entry", tc.mode, got["themes"])
+		}
+		if got["mode"] != tc.echoed {
+			t.Errorf("--mode %q: echoed mode = %v, want the canonical %q", tc.mode, got["mode"], tc.echoed)
 		}
 	}
 

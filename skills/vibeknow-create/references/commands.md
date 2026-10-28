@@ -61,10 +61,10 @@ vibeknow create [flags]
 | `--from string` | doc_id, URL, local file path, or `-` for stdin. Required unless `--text` is given |
 | `--text string` | Use this text as the source document. Mutually exclusive with `--from`; refused when empty or over 512 KB |
 | `--preset string` | Saved bundle of style options: a name under `<config>/presets/` or a path to a `.yaml` file. Supplies defaults only — anything also given on the command line wins. See **Presets** below. |
-| `--mode string` | `replica` (PPT 讲解, page-by-page; PDF/PPT sources only), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画). Omit for 灵活创作 (the default line). |
+| `--mode string` | `freeform` (灵活创作, the default; `default` and omitting it mean the same), `replica` (PPT 讲解, page-by-page; PDF/PPT sources only), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画). Same values as `theme list --mode`. |
 | `--script-lock` | 原稿锁定: narrate the document verbatim instead of writing a script. Orthogonal to `--mode` — combines with any of them. |
 | `--engine string` | `pipeline` (default, v=3) or `agent` (v=2, 一键成片). The agent engine has no mode/theme/language branches; combining them exits 2. |
-| `--theme string` | Style ID from `vibeknow theme list --mode <mode>` (must match the mode's catalog; default auto-select) |
+| `--theme string` | Theme / style / template ID from `vibeknow theme list --mode <mode>`: an official id or the user's own `ua_<id>`. Checked against that mode's list before anything is uploaded (exit 2 if it is not there); default auto-select |
 | `--language string` | Output language for script + narration: `zh-CN`, `en-US`, `es-ES`, `fr-FR`, `pt-BR`, `ja-JP`, `ko-KR` (default: account locale) |
 | `--voice string` | Voice: a `#` or `speech_voice_id` from `vibeknow voice list`; pick one matching `--language` |
 | `--avatar string` | Talking-head presenter: `sys_<id>` (public, `vibeknow avatar list`) or `ua_<id>` (your own activated avatar). Not with `--mode handdraw` or `--engine agent` (exit 2). |
@@ -162,6 +162,11 @@ vibeknow video status <task_id> [flags]
 the cover exists from the moment the preview does, and the MP4 from the
 moment an export has produced one, but only the process that started the run
 ever held them. Taken mid-render it delivers nothing and costs nothing.
+
+The snapshot carries `mode`, the `create --mode` name of the line the work ran
+on (a backend value for lines this CLI does not expose; absent for
+agent-engine works). `create`'s own snapshot additionally carries
+`requested_theme` when `--theme` was passed.
 
 ## video wait
 
@@ -321,22 +326,57 @@ either a listed `id` or a `speech_voice_id` to `create --voice`.
 
 ## theme list
 
-List visual themes/styles for one creation mode. Theme IDs feed
-`create --theme` and must come from the catalog of the mode you create
-with (the backend rejects cross-mode themes).
+List every value `create --theme` accepts in one creation mode: the user's
+own themes first, then the official catalog. 主题, 风格 and 模板 (theme,
+style, template) all mean this.
 
 ```
-vibeknow theme list [--mode default|image|handdraw|replica] [flags]
+vibeknow theme list [--mode freeform|replica|image|handdraw] [flags]
 ```
 
-`default` and `replica` share one catalog (the design suite); `image` and
-`handdraw` each have their own. Hand-drawn themes include `preview` URLs
-(webp/poster, horizontal + vertical).
+`--mode` takes the same values as `create --mode`, and this list is exactly
+what `create` validates `--theme` against. Validation exists because the
+backend does **not** reject a theme it does not recognise for the run's
+mode — it renders in a substitute and bills normally — so an id that is not
+on this list never leaves the CLI.
+
+| Mode | Official catalog | Own themes (`source: "custom"`) |
+|---|---|---|
+| `freeform` | design suite, minus 4 themes the backend reserves for another line | 我的主题 made on the web |
+| `replica` | design suite | 我的主题 |
+| `image` | image suite | trained 图解 styles |
+| `handdraw` | hand-drawn suite (with `preview` URLs) | — |
+
+Own themes are listed as `ua_<id>`. Pass that token: the web shows the bare
+number, and a bare number is refused with the `ua_` spelling in the error.
+Only usable themes are listed — deleted or still-training ones are left out.
 
 **JSON output shape:**
 ```json
-{"mode": "image", "themes": [{"id": "…", "name": "…", "desc": "…", "tags": ["…"]}]}
+{"mode": "freeform", "themes": [
+  {"id": "ua_1234567", "name": "红薄荷", "source": "custom", "base": "mint", "desc": "", "tags": []},
+  {"id": "mint", "name": "纯白薄荷", "source": "official", "desc": "…", "tags": ["…"]}
+]}
 ```
+
+`base` is the official theme a custom one was derived from.
+
+**What `create --theme` refuses** (all exit 2, before any upload):
+
+| Value | Error names |
+|---|---|
+| a bare number | the `ua_<id>` spelling |
+| an id from another mode's list | the mode it belongs to |
+| a `ua_` that is not one of the user's usable themes | `theme list` for this mode |
+| anything else not on the list | `theme list` for this mode |
+
+If the catalog itself cannot be fetched, `create` stops with that failure's
+own exit code (4 for network/server trouble, 3 for auth) — an unchecked
+theme is never sent on the chance it is right.
+
+The result reports what was asked for as `requested_theme: {id, name,
+source}`. It is a request, not a reading: the backend does not report back
+which theme rendered.
 
 ## subtitle fonts
 

@@ -12,22 +12,31 @@ import (
 	"time"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/modes"
 	"github.com/vibeknow/cli/internal/output"
 )
 
 // Snapshot mirrors the JSON shape documented in
 // docs/superpowers/specs/2026-04-22-two-stage-video-design.md.
 type Snapshot struct {
-	TaskID      int64    `json:"task_id"`
-	SessionID   string   `json:"session_id"`
-	WorkID      int64    `json:"work_id,omitempty"`
-	Engine      string   `json:"engine,omitempty"`
-	Title       string   `json:"title,omitempty"`
-	DurationMs  int64    `json:"duration_ms,omitempty"`
-	CoverURL    string   `json:"cover_url,omitempty"`
-	Preview     Preview  `json:"preview"`
-	Export      Export   `json:"export"`
-	NextActions []Action `json:"next_actions"`
+	TaskID    int64  `json:"task_id"`
+	SessionID string `json:"session_id"`
+	WorkID    int64  `json:"work_id,omitempty"`
+	Engine    string `json:"engine,omitempty"`
+	// Mode is the `vk create --mode` name of the line the work ran on, or
+	// the backend's own value for a line this CLI does not expose.
+	Mode  string `json:"mode,omitempty"`
+	Title string `json:"title,omitempty"`
+	// RequestedTheme is the --theme this invocation sent, set by create
+	// only. It is what was asked for, not a reading of what rendered: the
+	// work detail response does not carry the theme, so nothing here can
+	// confirm it. The name says which of the two it is.
+	RequestedTheme *ThemeRef `json:"requested_theme,omitempty"`
+	DurationMs     int64     `json:"duration_ms,omitempty"`
+	CoverURL       string    `json:"cover_url,omitempty"`
+	Preview        Preview   `json:"preview"`
+	Export         Export    `json:"export"`
+	NextActions    []Action  `json:"next_actions"`
 }
 
 type Preview struct {
@@ -42,6 +51,13 @@ type Export struct {
 	ProgressMsg  string `json:"progress_msg,omitempty"`
 	VideoPath    string `json:"video_path,omitempty"`
 	Error        string `json:"error,omitempty"`
+}
+
+// ThemeRef names a theme as `vk theme list` shows it.
+type ThemeRef struct {
+	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Source string `json:"source"`
 }
 
 type Action struct {
@@ -89,6 +105,7 @@ func Build(in BuildInput) Snapshot {
 		s.WorkID = in.Work.ID
 		s.Title = in.Work.Title
 		s.Engine = figlens.RemapEngineForDisplay(in.Work.Engine)
+		s.Mode = modeName(s.Engine, in.Work.VideoKind)
 		s.DurationMs = in.Work.Duration
 		s.CoverURL = in.Work.CoverURL
 		// Preview is only "ready" once the backend marks the work Active.
@@ -100,6 +117,20 @@ func Build(in BuildInput) Snapshot {
 	s.Export = deriveExport(in)
 	s.NextActions = nextActions(s, in)
 	return s
+}
+
+// modeName maps a work's video_kind onto the --mode vocabulary. A non-empty
+// kind is unambiguous. An empty one means freeform only on the pipeline
+// engine — an agent-engine work, or one whose engine the backend did not
+// report, also has none — so it reports no mode rather than a wrong one.
+func modeName(engine, videoKind string) string {
+	if videoKind == "" && engine != "pipeline" {
+		return ""
+	}
+	if m, ok := modes.ForVideoKind(videoKind); ok {
+		return m.Name
+	}
+	return videoKind
 }
 
 func deriveExport(in BuildInput) Export {
@@ -154,6 +185,12 @@ func RenderText(w, errW io.Writer, s Snapshot) {
 	fmt.Fprintln(w)
 	if s.Title != "" {
 		fmt.Fprintf(w, "title=%s\n", s.Title)
+	}
+	if s.Mode != "" {
+		fmt.Fprintf(w, "mode=%s\n", s.Mode)
+	}
+	if s.RequestedTheme != nil {
+		fmt.Fprintf(w, "requested_theme=%s\n", s.RequestedTheme.ID)
 	}
 	if s.DurationMs > 0 {
 		fmt.Fprintf(w, "duration=%s\n", formatDuration(s.DurationMs))
