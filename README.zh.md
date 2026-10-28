@@ -25,8 +25,9 @@
 |------|------|
 | **创建** | 从文件、URL 或 doc_id 一键生成视频；自定义 prompt；选择音色；异步模式 |
 | **文档** | 上传文件/URL、轮询解析状态、获取文档详情 |
-| **视频** | 查看任务状态、流式实时进度（SSE）、下载已导出视频 |
+| **视频** | 查看任务状态、流式实时进度（SSE）、下载已导出视频；改单幕讲稿、换声音、生成 AI 封面 |
 | **音色** | 列出可用音色模板（分类、标签、预览地址） |
+| **主题** | 按模式浏览主题目录，你自己的主题（`ua_<id>`）排在最前；`--theme` 在上传前就会校验 |
 | **认证** | 基于浏览器的 Device Flow 登录（`vibeknow init` / `vibeknow auth login`）；双阶段 Agent 流程（`--no-wait` / `--device-code`）；通过 stdin 提供 PAT；CI 使用 `VIBEKNOW_TOKEN` 环境变量 |
 | **Profile** | 多环境 profile（prod/staging/dev）、按服务覆盖 endpoint、信任边界 |
 | **配置** | 全局 key-value 配置存储，跨会话持久化 |
@@ -292,6 +293,22 @@ $ vk video edit 42 --scene 3 --script "增长几乎全部来自海外市场。"
 拟改措辞，因为你要同意的是这个差异。**不可撤销**；已渲染的 MP4 也不会被撤下，
 `video download` 在你重新导出之前仍返回旧讲稿的版本。
 
+每支视频有一份免费额度，用于编辑时重生的配音；`vk video quota 42` 查看剩余。
+文本生成和编辑时生成的图片不在额度内，照常计费，确认提示里会写明。
+
+### 换声音、换封面
+
+```bash
+vk video revoice 42 --voice <VOICE_ID>          # 用另一个声音生成新版本，原视频保留
+vk video revoice 42 --voice <VOICE_ID> --async  # 提交后返回，再用 --for 90s 分段跟进
+vk video cover 42 --title "三分钟看懂季度财报"     # 一次 AI 生图
+```
+
+两者都计费，走同一个确认闸门。换声音会在同一任务下生成一个新作品并记入本地
+记录，之后的 `vk video` 命令默认指向新版本；对同一作品、同一声音再次发起时，
+会接上已在进行的那次，不会重复扣费。生成新封面会撤下已导出的 MP4（成片里还是
+旧封面），结果中以 `export_cleared` 标明。
+
 ### 把字幕调到能看清
 
 ```
@@ -312,19 +329,30 @@ $ vk video set 42 --subtitle-preset 2 --subtitle-size 52
 ### 选择视频模式
 
 ```bash
+vk create --from report.pdf                 # 灵活创作（默认）
+vk create --from report.pdf --density dense # …分镜更多（sparse|balanced|dense）
 vk create --from deck.pdf  --mode replica   # PPT 讲解（逐页还原）
 vk create --from post.md   --mode image --pages 8   # 图解视频（讲稿逐页 AI 生图）
 vk create --from notes.md  --mode handdraw  # 手绘动画（中段长时间无进度属正常）
+vk create --from post.md   --mode canvas    # 画布创作（默认竖屏）
 vk create --from <src>     --aspect vertical --bgm
 ```
 
-风格与成片语言可叠加在任意 pipeline 模式上：
+主题从属于模式：模式决定用哪份目录，`--theme` 从中选一项。你在网页端做的主题
+以 `ua_<id>` 排在最前：
 
 ```bash
-vk theme list --mode image                   # 查看该模式的风格目录
-vk create --from post.md --mode image --theme <theme_id>
+vk theme list --mode freeform                # 我的主题 + 官方主题
+vk create --from post.md --theme ua_1234567  # 自定义主题：ua_ 加网页上显示的数字
+vk theme list --mode canvas                  # 画布风格；variants 里的每个配色也是一个 --theme 值
+vk theme list --mode image                   # 图解风格，各带 scenes 供 --theme-scene 使用
+vk ip list                                   # 图解模式的 IP 角色，供 --ip-asset 使用
+vk create --from post.md --mode image --theme <theme_id> --ip-asset <id>
 vk create --from post.md --language en-US    # 讲稿 + 配音语言
 ```
+
+`--theme`、`--theme-scene`、`--ip-asset`、`--density` 都会在上传前校验。否则后端
+会接受错误的值并悄悄换成别的——风格不对、照常扣费、没有任何报错。
 
 ### 加数字人主讲
 
@@ -348,7 +376,7 @@ vk create --from talk.docx --mode image --script-lock    # 用原文做旁白 + 
 ### 选择生成引擎（可选）
 
 ```bash
-vk create --from <src> --engine agent       # v=2 agent 引擎（与前端选项对齐）
+vk create --from <src> --engine agent       # v=2 旧引擎（网页端已不再提供，已弃用）
 vk create --from <src> --engine pipeline    # v=3 pipeline（默认）
 ```
 

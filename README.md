@@ -25,8 +25,9 @@ The official [VibeKnow](https://vibeknow.com) CLI tool — built for humans and 
 |----------|-------------|
 | **Create** | One-command video generation from files, URLs, or doc IDs; custom prompts; voice selection; async mode |
 | **Document** | Upload files/URLs, poll parsing status, fetch document details |
-| **Video** | Check task status, stream live progress (SSE), download exported videos |
+| **Video** | Check task status, stream live progress (SSE), download exported videos; edit a shot's narration, re-voice, generate an AI cover |
 | **Voice** | List available voice templates with category, tags, and preview URLs |
+| **Themes** | Browse each mode's catalog, your own themes (`ua_<id>`) first; `--theme` is checked before anything is uploaded |
 | **Auth** | Browser-based Device Flow login (`vibeknow init` / `vibeknow auth login`); two-phase agent flow (`--no-wait` / `--device-code`); PAT via stdin; `VIBEKNOW_TOKEN` env var for CI |
 | **Profile** | Multi-environment profiles (prod/staging/dev), per-service endpoint overrides, trust boundaries |
 | **Config** | Global key-value config store, persistent across sessions |
@@ -316,6 +317,25 @@ what you are agreeing to. There is no undo, and the previously rendered MP4
 is left in place: `video download` returns the old narration until you
 export again.
 
+Each video has a free allowance for the speech an edit regenerates; `vk video
+quota 42` shows what is left. Text generation and any image an edit draws are
+billed regardless, and the confirmation says so.
+
+### Re-voice or re-cover a finished video
+
+```bash
+vk video revoice 42 --voice <VOICE_ID>          # a new version in another voice; the original stays
+vk video revoice 42 --voice <VOICE_ID> --async  # submit, then follow with --for 90s
+vk video cover 42 --title "三分钟看懂季度财报"     # one AI image generation
+```
+
+Both bill and go through the confirmation gate. Re-voicing creates a new
+work under the same task and records it, so later `vk video` commands
+resolve to the new version; asking again for the same work and voice
+attaches to the run already started instead of paying twice. A new cover
+withdraws the exported MP4 (it shows the old cover) — the result reports
+`export_cleared`.
+
 ### Make the subtitles readable
 
 ```
@@ -339,19 +359,31 @@ no way to be discovered at all.
 ### Choose a video mode
 
 ```bash
+vk create --from report.pdf                 # freeform (default): generative video
+vk create --from report.pdf --density dense # …split into more scenes (sparse|balanced|dense)
 vk create --from deck.pdf  --mode replica   # PPT/PDF page-by-page
 vk create --from post.md   --mode image --pages 8   # one AI illustration per page
 vk create --from notes.md  --mode handdraw  # hand-drawn animation (mid-run silence is normal)
+vk create --from post.md   --mode canvas    # components laid out on a grid (vertical by default)
 vk create --from <src>     --aspect vertical --bgm
 ```
 
-Style and language ride along with any pipeline mode:
+A theme belongs to a mode — the mode picks the catalog, `--theme` picks an
+entry in it. Your own themes from the web are listed first as `ua_<id>`:
 
 ```bash
-vk theme list --mode image                   # browse a mode's style catalog
-vk create --from post.md --mode image --theme <theme_id>
+vk theme list --mode freeform                # your themes, then the official ones
+vk create --from post.md --theme ua_1234567  # a custom theme: ua_ + the number the web shows
+vk theme list --mode canvas                  # art directions; each palette in `variants` is a --theme value too
+vk theme list --mode image                   # styles, each with its `scenes` for --theme-scene
+vk ip list                                   # characters for --ip-asset (image mode)
+vk create --from post.md --mode image --theme <theme_id> --ip-asset <id>
 vk create --from post.md --language en-US    # script + narration language
 ```
+
+`--theme`, `--theme-scene`, `--ip-asset` and `--density` are checked before
+anything is uploaded. The backend would otherwise accept a wrong value and
+quietly use another one — a different style, billed, with no error.
 
 ### Add a talking-head avatar
 
@@ -377,7 +409,7 @@ vk create --from talk.docx --mode image --script-lock    # …illustrated per pa
 ### Pick a generation engine (optional)
 
 ```bash
-vk create --from <src> --engine agent       # v=2 agent engine (frontend toggle parity)
+vk create --from <src> --engine agent       # v=2 legacy engine (no longer offered on the web; deprecated)
 vk create --from <src> --engine pipeline    # v=3 pipeline (default)
 ```
 
