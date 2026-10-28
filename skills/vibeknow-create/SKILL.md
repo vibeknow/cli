@@ -77,7 +77,7 @@ the choice is not yours to make. Relay it and wait.
 
 - **Hero command**: `vibeknow create --from <source>` resolves input → uploads if needed → submits to figlens pipeline → streams progress → returns video URL.
 - **Four ways to name the source**: `--from` takes a `doc_id` (used directly), a URL (auto-uploaded to vectoria), a local file path (auto-uploaded), or `-` to read the text from stdin. `--text` takes the text itself, for a passage the user pasted rather than a file they pointed at. What it cannot do is invent material: a request with no source ("做个讲量子计算的视频") has no command — ask for it.
-- **Creation modes**: `--mode freeform` (灵活创作, the default — omitting `--mode` means this), `--mode image` (图解视频), `--mode replica` (PPT 讲解), `--mode handdraw` (手绘动画). `--engine agent` is the legacy 一键成片 engine, which the web no longer offers. 原稿锁定 is the orthogonal `--script-lock` switch, combinable with any mode. Output language via `--language`.
+- **Creation modes**: `--mode freeform` (灵活创作, the default — omitting `--mode` means this), `--mode image` (图解视频), `--mode replica` (PPT 讲解), `--mode handdraw` (手绘动画), `--mode canvas` (画布创作). `--engine agent` is the legacy 一键成片 engine, which the web no longer offers; do not choose it. 原稿锁定 is the orthogonal `--script-lock` switch, combinable with any mode. Output language via `--language`.
 - **Themes belong to a mode.** The mode decides which catalog `--theme` draws from; `vibeknow theme list --mode <mode>` lists exactly what that mode accepts, and `create` checks `--theme` against the same list **before uploading anything**. When the user says 主题, 风格 or 模板 (theme / style / template), they mean `--theme`. Their own themes made on the web appear in the list as `ua_<id>` with `source: "custom"` — pass that token, never the bare number the web shows. Do not guess ids: a refused `--theme` (exit 2) names the fix.
 - **Sync vs async**: Default is sync (blocks until done). `--async` returns task_id + session_id immediately.
 - **Waiting in bounded steps**: `vibeknow video wait --for 90s` watches the event stream for that long, then reports the stage it reached and exits 6 with `reason: "wait_budget_expired"`. Run it again to keep waiting. Use it when your own tool times out sooner than a render takes — `video status` cannot substitute, since the work row carries no progress until the export stage.
@@ -105,6 +105,7 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow voice list [--language <locale>]` | Voices: public templates grouped by language + your cloned voices |
 | `vibeknow theme list --mode <mode>` | Every `--theme` value that mode accepts: the user's own (`ua_<id>`) and the official catalog |
 | `vibeknow avatar list` | Talking-head presenters (public presets + your trained ones) for `create --avatar` |
+| `vibeknow ip list` | IP characters for an image-mode video, for `create --mode image --ip-asset` |
 | `vibeknow subtitle fonts` | Font families `video set --subtitle-font` accepts (free) |
 | `vibeknow subtitle presets` | Ready-made subtitle looks for `video set --subtitle-preset` (free) |
 | `vibeknow video avatar-retry [task_id]` | Retry failed avatar scenes (unblocks a rejected export; no re-charge) |
@@ -129,6 +130,9 @@ vibeknow create --from slides.pdf
 vibeknow create --from slides.pdf --mode replica     # PPT 讲解: page-by-page replay (PDF/PPT only)
 vibeknow create --from notes.md --mode image --pages 6   # 图解视频: one AI illustration per page
 vibeknow create --from story.md --mode handdraw      # 手绘动画 (silent mid-run is normal)
+vibeknow create --from notes.md --mode canvas        # 画布创作 (vertical by default)
+vibeknow create --from deck.pptx --mode replica --script-lock   # PPT 讲解, speaker notes as the script
+vibeknow create --from notes.md --density dense     # freeform only: more, shorter scenes
 vibeknow create --from script.md --script-lock       # 原稿锁定: narrate the document verbatim
 vibeknow create --from doc.pdf --engine agent        # 一键成片 (v2 agent engine)
 ```
@@ -140,6 +144,8 @@ vibeknow theme list --mode image                 # browse the mode's style catal
 vibeknow create --from notes.md --mode image --theme <theme_id>
 vibeknow theme list --output json                # freeform; the user's own themes come first
 vibeknow create --from notes.md --theme ua_1234567   # a custom theme: always the ua_ token
+vibeknow theme list --mode canvas                # directions, each with its palettes as variants
+vibeknow create --from notes.md --mode image --theme <style> --theme-scene <slug> --ip-asset <ref>
 vibeknow voice list --language en-US             # voices are grouped by language
 vibeknow create --from slides.pdf --voice <speech_voice_id> --language en-US
 ```

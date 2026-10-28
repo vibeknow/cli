@@ -37,6 +37,12 @@ func asset(id int64, name string, status int, base string) figlens.ThemeAsset {
 	return a
 }
 
+func image2Asset(id int64, name, category string) figlens.ThemeAsset {
+	a := figlens.ThemeAsset{ID: id, Name: name, Status: figlens.UserAssetStatusActive}
+	a.Config.Category = category
+	return a
+}
+
 func newFake() *fakeLister {
 	return &fakeLister{
 		suites: map[string][]figlens.Theme{
@@ -44,8 +50,13 @@ func newFake() *fakeLister {
 				{ID: "mint", Name: "纯白薄荷"},
 				{ID: "ember-bronze", Name: "深炭古铜"},
 			},
-			figlens.ThemeSuiteImage2:   {{ID: "ink", Name: "Ink"}},
+			figlens.ThemeSuiteImage2: {{ID: "ink", Name: "Ink", Scenes: []figlens.ThemeScene{
+				{Slug: "office", Name: "Office"}, {Slug: "street", Name: "Street"},
+			}}},
 			figlens.ThemeSuiteHandDraw: {{ID: "crayon", Name: "Crayon"}},
+			figlens.ThemeSuiteStageCraft: {{ID: "riso", Name: "Riso", Palettes: []figlens.ThemePalette{
+				{ID: "riso-aqua", Name: "Aqua"},
+			}}},
 		},
 		assets: map[string][]figlens.ThemeAsset{
 			figlens.AssetTypeTheme: {
@@ -53,7 +64,8 @@ func newFake() *fakeLister {
 				asset(9, "deleted one", 2, "mint"),
 			},
 			figlens.AssetTypeImage2Theme: {
-				asset(77, "my style", figlens.UserAssetStatusActive, ""),
+				image2Asset(77, "my style", figlens.Image2CategoryStyle),
+				image2Asset(78, "my character", figlens.Image2CategoryIP),
 			},
 		},
 	}
@@ -135,6 +147,14 @@ func TestValidate(t *testing.T) {
 		{desc: "book-intro theme in freeform", mode: "freeform", id: "ember-bronze", wantErr: []string{"ember-bronze", "does not offer"}},
 		{desc: "book-intro theme in replica", mode: "replica", id: "ember-bronze", wantID: "ember-bronze"},
 		{desc: "unknown slug", mode: "freeform", id: "nope", wantErr: []string{"nope", "theme list --mode freeform"}},
+
+		// Canvas: a direction and a palette under it are both theme ids.
+		{desc: "canvas direction", mode: "canvas", id: "riso", wantID: "riso"},
+		{desc: "canvas palette", mode: "canvas", id: "riso-aqua", wantID: "riso-aqua"},
+		{desc: "canvas palette outside canvas", mode: "freeform", id: "riso-aqua", wantErr: []string{"--mode canvas"}},
+
+		// The image2 asset type also holds IP characters, which are not styles.
+		{desc: "IP character as theme", mode: "image", id: "ua_78", wantErr: []string{"--ip-asset ua_78"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
@@ -190,5 +210,46 @@ func TestValidate_HitCostsOneRequest(t *testing.T) {
 	}
 	if len(f.calls) != 1 {
 		t.Errorf("calls = %v, want exactly one", f.calls)
+	}
+}
+
+func TestList_ImageDropsIPCharacters(t *testing.T) {
+	got, err := List(context.Background(), newFake(), mode(t, "image"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range got {
+		if e.ID == "ua_78" {
+			t.Error("an IP character was listed as a theme")
+		}
+	}
+}
+
+func TestList_CanvasCarriesVariants(t *testing.T) {
+	got, err := List(context.Background(), newFake(), mode(t, "canvas"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Variants) != 1 || got[0].Variants[0].ID != "riso-aqua" {
+		t.Fatalf("canvas entries = %+v", got)
+	}
+}
+
+func TestValidateScene(t *testing.T) {
+	e, err := Validate(context.Background(), newFake(), mode(t, "image"), "ink")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateScene(e, "office"); err != nil {
+		t.Errorf("known scene refused: %v", err)
+	}
+	err = ValidateScene(e, "beach")
+	var ce *clerr.Error
+	if !errors.As(err, &ce) || ce.Code != clerr.ExitValidation || !strings.Contains(ce.Hint, "office, street") {
+		t.Errorf("unknown scene: err = %v", err)
+	}
+	custom, _ := Validate(context.Background(), newFake(), mode(t, "image"), "ua_77")
+	if err := ValidateScene(custom, "office"); err == nil {
+		t.Error("a style with no scenes accepted a scene")
 	}
 }

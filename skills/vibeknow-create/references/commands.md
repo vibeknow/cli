@@ -61,9 +61,12 @@ vibeknow create [flags]
 | `--from string` | doc_id, URL, local file path, or `-` for stdin. Required unless `--text` is given |
 | `--text string` | Use this text as the source document. Mutually exclusive with `--from`; refused when empty or over 512 KB |
 | `--preset string` | Saved bundle of style options: a name under `<config>/presets/` or a path to a `.yaml` file. Supplies defaults only — anything also given on the command line wins. See **Presets** below. |
-| `--mode string` | `freeform` (灵活创作, the default; `default` and omitting it mean the same), `replica` (PPT 讲解, page-by-page; PDF/PPT sources only), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画). Same values as `theme list --mode`. |
-| `--script-lock` | 原稿锁定: narrate the document verbatim instead of writing a script. Orthogonal to `--mode` — combines with any of them. |
-| `--engine string` | `pipeline` (default, v=3) or `agent` (v=2, 一键成片). The agent engine has no mode/theme/language branches; combining them exits 2. |
+| `--mode string` | `freeform` (灵活创作, the default; `default` and omitting it mean the same), `replica` (PPT 讲解, page-by-page; PDF/PPT sources only, up to 100 pages), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画), `canvas` (画布创作, components laid out on a grid; vertical unless `--aspect` says otherwise). Same values as `theme list --mode`. |
+| `--script-lock` | 原稿锁定: narrate the document verbatim instead of writing a script. Orthogonal to `--mode` — combines with any of them. With `--mode replica` it means **the speaker notes are the script**, page by page, and the source must be a PPT file (a PDF has no notes). |
+| `--engine string` | `pipeline` (default, v=3) or `agent` (v=2, the legacy 一键成片 engine; no longer offered on the web, prints a warning). The agent engine has no mode/theme/language branches; combining them exits 2. |
+| `--density string` | Freeform only: how many scenes, `sparse`, `balanced` (default) or `dense`. Exit 2 with any `--mode` or `--engine agent`, which ignore it. |
+| `--theme-scene string` | `--mode image` only, with `--theme`: one of that style's scenes, as listed under it by `theme list --mode image` |
+| `--ip-asset string` | `--mode image` only: the IP character to feature, a `ref` from `vibeknow ip list`, or `none` to leave out the account default. Checked before upload |
 | `--theme string` | Theme / style / template ID from `vibeknow theme list --mode <mode>`: an official id or the user's own `ua_<id>`. Checked against that mode's list before anything is uploaded (exit 2 if it is not there); default auto-select |
 | `--language string` | Output language for script + narration: `zh-CN`, `en-US`, `es-ES`, `fr-FR`, `pt-BR`, `ja-JP`, `ko-KR` (default: account locale) |
 | `--voice string` | Voice: a `#` or `speech_voice_id` from `vibeknow voice list`; pick one matching `--language` |
@@ -246,10 +249,11 @@ Which nodes actually arrive, per line:
 
 | `--mode` | Reported nodes |
 |---|---|
-| *(default)* and `--script-lock` | `big_director` `script_writing` `storyboard_plan` `tts_generate` `scene_filling` `bg_images` `cover` `bgm` `video_package` |
+| *(default)* and `--script-lock` | `knowledge_prepare` `goal_setting` `beat_director` `beat_script` `cover` `storyboard_plan` `tts_generate` `bg_images` `scene_filling` `bgm` `video_package` |
 | `image` | `style_select` `image_storyboard` `image_gen`, plus `script_writing` `tts_generate` `bgm` `video_package` |
-| `replica` | `doc_dissect` `doc_replica_plan` `doc_replica_shoot`, plus `tts_generate` `bgm` `video_package` |
+| `replica` | `doc_dissect` `doc_replica_director` `doc_replica_plan` `doc_replica_shoot`, plus `tts_generate` `bgm` `video_package` |
 | `handdraw` | `script_writing` `tts_generate` `bgm` `video_package` only. The middle — style, storyboard, drawing, vectorising — emits nothing, and that is where most of the time goes |
+| `canvas` | `knowledge_prepare` `goal_setting` `beat_director` `beat_script` `grid_director` `grid_image_gen` `tts_generate` `cover` `bgm` `video_package` |
 | `--engine agent` | No node names at all; free-form progress lines only |
 
 ## video export
@@ -331,7 +335,7 @@ own themes first, then the official catalog. 主题, 风格 and 模板 (theme,
 style, template) all mean this.
 
 ```
-vibeknow theme list [--mode freeform|replica|image|handdraw] [flags]
+vibeknow theme list [--mode freeform|replica|image|handdraw|canvas] [flags]
 ```
 
 `--mode` takes the same values as `create --mode`, and this list is exactly
@@ -346,6 +350,20 @@ on this list never leaves the CLI.
 | `replica` | design suite | 我的主题 |
 | `image` | image suite | trained 图解 styles |
 | `handdraw` | hand-drawn suite (with `preview` URLs) | — |
+| `canvas` | art directions, each with its palettes as `variants` | — |
+
+Two modes have a second level, listed under each theme rather than in a
+command of its own:
+
+- **canvas** — every art direction carries `variants: [{id, name}]`, its
+  palettes. A variant id is a `--theme` value in its own right: `riso` lets
+  the backend pick the colours, `riso-aqua` fixes them too.
+- **image** — every style carries `scenes: [{slug, name}]`, for
+  `--theme-scene`. Only official styles have scenes.
+
+An image-mode IP character is **not** a theme — who appears, not how it is
+drawn. Those are listed by `vibeknow ip list` and passed as `--ip-asset`; a
+character's `ua_` passed as `--theme` is refused pointing there.
 
 Own themes are listed as `ua_<id>`. Pass that token: the web shows the bare
 number, and a bare number is refused with the `ua_` spelling in the error.
@@ -377,6 +395,25 @@ theme is never sent on the chance it is right.
 The result reports what was asked for as `requested_theme: {id, name,
 source}`. It is a request, not a reading: the backend does not report back
 which theme rendered.
+
+## ip list
+
+List the IP characters an image-mode video can feature, for
+`create --mode image --ip-asset <ref>`. Free.
+
+```
+vibeknow ip list [--output json]
+```
+
+Public characters (`sys_<id>`) come first, then the user's own trained ones
+(`ua_<id>`). The one marked `account_default` is featured when a run names
+none; `--ip-asset none` leaves it out for one run.
+
+**JSON output shape:**
+```json
+{"ips": [{"ref": "sys_5", "name": "…", "image_url": "…", "source": "public"},
+         {"ref": "ua_9", "name": "…", "image_url": "…", "source": "custom", "account_default": true}]}
+```
 
 ## subtitle fonts
 

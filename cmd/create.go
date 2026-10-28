@@ -51,6 +51,10 @@ var (
 	flagCreateTheme   string
 	flagCreateLang    string
 
+	flagCreateDensity    string
+	flagCreateThemeScene string
+	flagCreateIPAsset    string
+
 	flagCreateAvatar    string
 	flagCreateAvatarPos string
 	flagCreateAvatarPx  float64
@@ -140,6 +144,12 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if engine == figlens.EngineAgent {
+			// Still served by the backend, so still accepted; the web has
+			// stopped offering it, so a caller should hear that before it
+			// builds on it.
+			fmt.Fprintln(os.Stderr, i18n.T("create.warn.agent_deprecated"))
+		}
 		if err := validateEngineModeCombo(engine, videoKind); err != nil {
 			return err
 		}
@@ -150,6 +160,25 @@ var createCmd = &cobra.Command{
 		// rejecting locally saves an init round-trip that would 400 anyway.
 		if flagCreatePages < 0 || flagCreatePages > 20 {
 			return clerr.Validation(i18n.T("create.err.pages_invalid", flagCreatePages))
+		}
+		density, err := resolveDensity(flagCreateDensity, engine, videoKind)
+		if err != nil {
+			return err
+		}
+		// Image-mode-only flags. Each is read by the image line alone and
+		// accepted without complaint by every other, so a misplaced one would
+		// cost a run and change nothing.
+		if strings.TrimSpace(flagCreateThemeScene) != "" {
+			if videoKind != figlens.VideoKindImage2 {
+				return clerr.Validation(i18n.T("create.err.theme_scene_needs_image"))
+			}
+			if strings.TrimSpace(flagCreateTheme) == "" {
+				return clerr.Validation(i18n.T("create.err.theme_scene_needs_theme")).
+					WithHint(i18n.T("themecat.hint.list", modes.Image))
+			}
+		}
+		if strings.TrimSpace(flagCreateIPAsset) != "" && videoKind != figlens.VideoKindImage2 {
+			return clerr.Validation(i18n.T("create.err.ip_asset_needs_image"))
 		}
 		// theme and language are read by the v=3 pipeline entry only; the
 		// agent handler ignores both, which would silently drop the user's
@@ -219,6 +248,16 @@ var createCmd = &cobra.Command{
 		// it does not recognise, it renders in a substitute. The entry is
 		// kept so the result can say what was asked for.
 		requestedTheme, err := resolveTheme(ctx, videoKind, flagCreateTheme)
+		if err != nil {
+			return err
+		}
+		themeScene := strings.TrimSpace(flagCreateThemeScene)
+		if themeScene != "" {
+			if err := themecat.ValidateScene(*requestedTheme, themeScene); err != nil {
+				return err
+			}
+		}
+		ipAsset, err := resolveIPAsset(ctx, flagCreateIPAsset)
 		if err != nil {
 			return err
 		}
@@ -368,7 +407,7 @@ var createCmd = &cobra.Command{
 
 		// Step 3: init figlens task.
 		fmt.Fprintln(os.Stderr, i18n.T("create.init_task"))
-		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, ScriptLock: scriptLock, SelectedImageIndexes: imageIndexes, PageCount: flagCreatePages}
+		initParams := figlens.InitTaskParams{Engine: engine, VideoKind: videoKind, ScriptLock: scriptLock, SelectedImageIndexes: imageIndexes, PageCount: flagCreatePages, IPAsset: ipAsset}
 		if (videoKind != "" || scriptLock || len(imageIndexes) > 0) && kbID != "" && docID != "" {
 			// Modes with init-time preflights (script_lock quality check,
 			// replica PPT check, doc-support check) and mandatory-image
@@ -535,6 +574,9 @@ var createCmd = &cobra.Command{
 			VideoKind:            videoKind,
 			ScriptLock:           scriptLock,
 			PageCount:            flagCreatePages,
+			SceneDensity:         density,
+			ThemeScene:           themeScene,
+			IPAsset:              ipAsset,
 			SelectedImageIndexes: imageIndexes,
 			Theme:                strings.TrimSpace(flagCreateTheme),
 			Language:             language,
@@ -863,6 +905,9 @@ func init() {
 	createCmd.Flags().StringVar(&flagCreateImages, "images", "", i18n.T("create.flag.images"))
 	createCmd.Flags().StringVar(&flagCreateTheme, "theme", "", i18n.T("create.flag.theme"))
 	createCmd.Flags().StringVar(&flagCreateLang, "language", "", i18n.T("create.flag.language"))
+	createCmd.Flags().StringVar(&flagCreateDensity, "density", "", i18n.T("create.flag.density"))
+	createCmd.Flags().StringVar(&flagCreateThemeScene, "theme-scene", "", i18n.T("create.flag.theme_scene"))
+	createCmd.Flags().StringVar(&flagCreateIPAsset, "ip-asset", "", i18n.T("create.flag.ip_asset"))
 	createCmd.Flags().StringVar(&flagCreateAvatar, "avatar", "", i18n.T("create.flag.avatar"))
 	createCmd.Flags().StringVar(&flagCreateAvatarPos, "avatar-position", "", i18n.T("create.flag.avatar_position"))
 	createCmd.Flags().Float64Var(&flagCreateAvatarPx, "avatar-size", 0, i18n.T("create.flag.avatar_size"))
@@ -1190,6 +1235,52 @@ func resolveTheme(ctx context.Context, videoKind, flag string) (*themecat.Entry,
 	return &e, nil
 }
 
+// Scene density tiers (页数), freeform only.
+var densities = []string{"sparse", "balanced", "dense"}
+
+// resolveDensity checks --density locally. The backend normalises an
+// unknown tier to balanced and ignores the field on every line but
+// freeform, both without a word — so each mistake is refused here instead.
+func resolveDensity(flag string, engine figlens.Engine, videoKind string) (string, error) {
+	d := strings.ToLower(strings.TrimSpace(flag))
+	if d == "" {
+		return "", nil
+	}
+	if engine == figlens.EngineAgent || videoKind != "" {
+		return "", clerr.Validation(i18n.T("create.err.density_needs_freeform"))
+	}
+	for _, ok := range densities {
+		if d == ok {
+			return d, nil
+		}
+	}
+	return "", clerr.Validation(i18n.T("create.err.density_invalid", strings.Join(densities, ", "), flag))
+}
+
+// resolveIPAsset checks --ip-asset against the characters `vk ip list`
+// shows. "none" needs no lookup: it switches the account default off.
+func resolveIPAsset(ctx context.Context, flag string) (string, error) {
+	ref := strings.TrimSpace(flag)
+	if ref == "" || ref == figlens.IPAssetNone {
+		return ref, nil
+	}
+	_, url, tp, err := cmdutil.Default().Service("figlens")
+	if err != nil {
+		return "", err
+	}
+	items, err := figlens.New(url, tp).ListIPAssets(ctx)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", i18n.T("create.err.ip_lookup_failed"), err)
+	}
+	for _, it := range items {
+		if it.Ref == ref {
+			return ref, nil
+		}
+	}
+	return "", clerr.Validation(i18n.T("create.err.ip_asset_unknown", ref)).
+		WithHint(i18n.T("create.hint.ip_list"))
+}
+
 // themeRef is the snapshot's view of a resolved --theme; nil for none.
 func themeRef(e *themecat.Entry) *snapshot.ThemeRef {
 	if e == nil {
@@ -1369,6 +1460,8 @@ func validateEngineModeCombo(engine figlens.Engine, videoKind string) error {
 		return nil
 	}
 	switch videoKind {
+	case figlens.VideoKindStageCraft:
+		return clerr.Validation(i18n.T("create.err.canvas_needs_pipeline"))
 	case figlens.VideoKindReplica:
 		return clerr.Validation(i18n.T("create.err.replica_needs_pipeline"))
 	case figlens.VideoKindImage2:

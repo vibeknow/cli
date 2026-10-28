@@ -361,14 +361,24 @@ in one table, `internal/modes`, which `vk theme list --mode` reads too — the
 two commands used to keep separate switches and disagreed about `default`.
 
 - **`freeform`** (default; `default` or no flag) — 灵活创作, generative
-  video from the document.
-- **`--mode replica`** — PPT/PDF page-by-page reproduction. Suited
-  for slide decks where the visual structure is the message.
+  video from the document. `--density sparse|balanced|dense` sets how many
+  scenes; it is refused on every other line, all of which ignore it, and
+  locally validated because the backend turns an unknown tier into
+  `balanced` without saying so.
+- **`--mode replica`** — PPT/PDF page-by-page reproduction, up to 100
+  pages. Suited for slide decks where the visual structure is the message.
 - **`--mode image`** — one AI-generated illustration per narration
   page. `--pages N` sets the page count (image-gen cost scales with
-  it); `--pages` is rejected outside this mode.
+  it); `--pages` is rejected outside this mode. `--theme-scene` picks a
+  scene of the `--theme` style and `--ip-asset` the character who appears
+  (`vk ip list`); both are image-only and checked before upload.
 - **`--mode handdraw`** — hand-drawn animation. Runs its own graph
   (illustration → vectorization), so it is pipeline-only.
+- **`--mode canvas`** — 画布创作 (`stage_craft`): components placed on a
+  grid. Defaults to vertical when no `--aspect` is given, unlike every
+  other line. `video_kind` goes on the init request as well as the stream,
+  and that matters here: init is what marks the work as a canvas work.
+  Pipeline-only.
 
 ## Themes (`--theme`)
 
@@ -381,9 +391,17 @@ and `vk create` validates `--theme` against that same list (`internal/themecat`)
 before the first upload. The check exists because the backend does not
 refuse an id it does not recognise for the run's kind: on the standard line
 it substitutes a fallback theme, and the canvas line ignores unknown ids by
-design. That is how a user's
-custom theme passed as the bare number the web displays came out in a
-different style, billed, with no error.
+design. That is how a user's custom theme passed as the bare number the web
+displays came out in a different style, billed, with no error.
+
+Two modes have a second level, carried inside each `theme list` entry so
+there is still one place to look: canvas directions list their palettes as
+`variants` (each a `--theme` value of its own), image styles list `scenes`
+for `--theme-scene`. An image-mode IP character is a separate axis — who
+appears, not how it is drawn — and has its own list, `vk ip list`. The
+image2 asset type holds both styles and characters, so `themecat` keeps
+only styles as themes and refuses a character's token pointing at
+`--ip-asset`.
 
 - A bare number is refused with the `ua_<id>` spelling in the message.
 - An id from another mode's catalog is refused naming that mode.
@@ -411,6 +429,10 @@ user-input problems, not retries. The preflight only fires when the
 kb/doc pair is known, so `--script-lock` requires `--from <file|URL>`
 or `--from <doc_id> --kb-id <kb>`.
 
+On `--mode replica` the lock means **the speaker notes are the script**,
+page by page; the backend then requires the source to be a PPT file, since
+a PDF has no notes.
+
 `--mode script` is a **deprecated alias** for `--script-lock` and
 prints a warning. It dates from when the backend expressed the lock
 as a `video_kind` value rather than a separate boolean; the two axes
@@ -428,8 +450,8 @@ Exit-code summary for new modes:
 ## Engine selection
 
 `vk create --engine <name>` picks which go-figlens engine generates the
-video. Two engines exist and are both actively maintained on the
-backend:
+video. Two engines exist on the backend, but only one is still offered on
+the web:
 
 - **`--engine pipeline`** (default) — v=3, graph-based pipeline. Has
   rich SSE node events (`[parse] prepare started`, `[outline]
@@ -437,8 +459,10 @@ backend:
 - **`--engine agent`** — v=2, agent-driven flow. SSE events are
   free-form progress messages without a node graph; CLI shows them as
   `[agent] <message>` in text mode or `node.progress` in NDJSON.
-  Supports `--script-lock` but **none** of `--mode
-  replica|image|handdraw` — each of those runs a dedicated graph the
+  The legacy 一键成片 engine: the web stopped offering it, so it prints a
+  deprecation warning on stderr (behaviour and exit code unchanged) and
+  may be retired. Supports `--script-lock` but **none** of `--mode
+  replica|image|handdraw|canvas` — each of those runs a dedicated graph the
   agent engine never dispatches to, so the CLI rejects the
   combination with exit 2 rather than letting the backend silently
   render an ordinary video instead.

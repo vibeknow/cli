@@ -6,7 +6,7 @@ import (
 )
 
 // Backend video_kind wire values. The CLI flag names (`replica`, `image`,
-// `handdraw`) map to these via cmd.resolveMode; the wire values are not
+// `handdraw`, `canvas`) map to these via internal/modes; the wire values are not
 // CLI-facing names.
 //
 // VideoKindScriptLock is deliberately absent from the generation path:
@@ -16,9 +16,10 @@ import (
 // endpoint, where `video_kind: "script_lock"` selects a fixed prompt for
 // display; see OptimizeVideoKindScriptLock in optimize.go.
 const (
-	VideoKindReplica  = "replica"
-	VideoKindImage2   = "image2"
-	VideoKindHandDraw = "hand-draw"
+	VideoKindReplica    = "replica"
+	VideoKindImage2     = "image2"
+	VideoKindHandDraw   = "hand-draw"
+	VideoKindStageCraft = "stage_craft"
 )
 
 type Task struct {
@@ -52,6 +53,10 @@ type InitTaskParams struct {
 	// defaulting to 4 when omitted — so omitting it here while streaming a
 	// real page count preflights a different request than the one that runs.
 	PageCount int `json:"page_count,omitempty"`
+	// IPAsset is image-mode-only (see StreamParams.IPAsset). Init is where
+	// an unusable reference is refused with a 400 instead of the run
+	// quietly featuring the account default.
+	IPAsset string `json:"ip_asset,omitempty"`
 }
 
 type initTaskWire struct {

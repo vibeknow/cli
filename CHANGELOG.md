@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added — canvas mode, scene density, image scenes and IP characters
+
+- `--mode canvas` runs 画布创作 (`stage_craft`). `vk theme list --mode
+  canvas` lists its art directions, each with its palettes as `variants`;
+  a palette id is a `--theme` value of its own.
+- `--density sparse|balanced|dense` sets how many scenes a freeform video
+  is split into. Refused on every other line, all of which ignore it.
+- `--theme-scene` picks one scene of an image-mode style; `theme list
+  --mode image` lists each style's `scenes`.
+- `--ip-asset` picks the IP character an image-mode video features, from
+  the new `vk ip list`, or `none` to leave out the account default.
+- All three new values are checked before upload, like `--theme`. The
+  backend accepts a wrong one silently: an unknown density becomes
+  balanced, an unknown scene falls back to the style's own image.
+
+### Changed
+
+- `--engine agent` prints a deprecation warning: the web no longer offers
+  the 一键成片 engine it runs. Behaviour and exit codes are unchanged.
+- `--mode replica --script-lock` is documented for what it does — the
+  speaker notes are the script, and the source must be a PPT file.
+
+### Fixed
+
+- Progress attribution follows the backend's current graphs. The standard
+  line's planning half is now `knowledge_prepare → goal_setting →
+  beat_director → beat_script`; those nodes, the canvas line's and
+  `doc_replica_director` arrived unmapped and reported no stage.
+
 ### Fixed — `--theme` can no longer be silently replaced
 
 A user's agent passed their custom 灵活创作 theme as the bare number the web

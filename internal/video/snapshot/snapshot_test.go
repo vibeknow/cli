@@ -253,7 +253,8 @@ func TestBuild_ModeFromVideoKind(t *testing.T) {
 		{"pipeline standard line is freeform", "suite", "", "freeform"},
 		{"image2 reads as the CLI name", "suite", "image2", "image"},
 		{"hand-draw reads as the CLI name", "suite", "hand-draw", "handdraw"},
-		{"unexposed line keeps the backend value", "suite", "stage_craft", "stage_craft"},
+		{"stage_craft reads as the CLI name", "suite", "stage_craft", "canvas"},
+		{"unexposed line keeps the backend value", "suite", "remake", "remake"},
 		// An empty kind is freeform only on the pipeline engine.
 		{"agent engine reports no mode", "agent", "", ""},
 		{"unknown engine reports no mode", "", "", ""},

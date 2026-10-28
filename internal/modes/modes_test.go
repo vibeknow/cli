@@ -19,6 +19,8 @@ func TestResolve(t *testing.T) {
 		{"replica", Replica, true},
 		{"image", Image, true},
 		{" handdraw ", HandDraw, true},
+		{"canvas", Canvas, true},
+		{"stage_craft", "", false},
 		// Backend wire values are not CLI vocabulary.
 		{"image2", "", false},
 		{"hand-draw", "", false},
@@ -41,6 +43,7 @@ func TestCustomAssetTypePerMode(t *testing.T) {
 		Replica:  figlens.AssetTypeTheme,
 		Image:    figlens.AssetTypeImage2Theme,
 		HandDraw: "",
+		Canvas:   "",
 	}
 	for _, m := range All {
 		if m.CustomAssetType != want[m.Name] {
@@ -56,7 +59,7 @@ func TestForVideoKind(t *testing.T) {
 			t.Errorf("ForVideoKind(%q) = (%q, %v), want %q", m.VideoKind, got.Name, ok, m.Name)
 		}
 	}
-	if _, ok := ForVideoKind("stage_craft"); ok {
+	if _, ok := ForVideoKind("remake"); ok {
 		t.Error("ForVideoKind must not claim a kind this CLI does not expose")
 	}
 }

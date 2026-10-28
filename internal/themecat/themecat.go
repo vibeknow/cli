@@ -42,6 +42,23 @@ type Entry struct {
 	// official entries and for image2 styles, which have none.
 	Base    string
 	Preview *figlens.ThemePreview
+	// Variants are the second level under a canvas art direction: palettes,
+	// each a valid --theme value of its own that also pins the colours.
+	Variants []Variant
+	// Scenes are the scene cards of an image style, for --theme-scene.
+	Scenes []figlens.ThemeScene
+	// Parent is set when this entry is a variant: the direction it is under.
+	Parent string
+
+	// ipCharacter marks an image2_theme asset that is an IP character, not
+	// a style. Kept only so a refusal can point at --ip-asset; never listed.
+	ipCharacter bool
+}
+
+// Variant is one palette under a canvas art direction.
+type Variant struct {
+	ID   string
+	Name string
 }
 
 // Lister is the slice of the figlens client the catalog needs.
@@ -83,7 +100,12 @@ func List(ctx context.Context, l Lister, m modes.Mode) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := custom
+	var out []Entry
+	for _, e := range custom {
+		if !e.ipCharacter {
+			out = append(out, e)
+		}
+	}
 	for _, e := range official {
 		if usableIn(m, e.ID) {
 			out = append(out, e)
@@ -131,6 +153,10 @@ func validateCustom(ctx context.Context, l Lister, m modes.Mode, id string) (Ent
 			return Entry{}, err
 		}
 		if e, ok := find(entries, id); ok {
+			if e.ipCharacter {
+				return Entry{}, clerr.Validation(i18n.T("themecat.err.ip_not_theme", id)).
+					WithHint(i18n.T("themecat.hint.ip_not_theme", id))
+			}
 			return e, nil
 		}
 	}
@@ -144,7 +170,7 @@ func validateCustom(ctx context.Context, l Lister, m modes.Mode, id string) (Ent
 		if err != nil {
 			return Entry{}, err
 		}
-		if _, ok := find(entries, id); ok {
+		if e, ok := find(entries, id); ok && !e.ipCharacter {
 			return Entry{}, wrongMode(id, other, m)
 		}
 	}
@@ -198,17 +224,24 @@ func officialEntries(ctx context.Context, l Lister, suite string) ([]Entry, erro
 	}
 	out := make([]Entry, 0, len(themes))
 	for _, t := range themes {
-		out = append(out, Entry{
+		e := Entry{
 			ID: t.ID, Name: t.Name, Desc: t.Desc, Tags: t.Tags, Badge: t.Badge,
-			Source: SourceOfficial, Preview: t.Preview,
-		})
+			Source: SourceOfficial, Preview: t.Preview, Scenes: t.Scenes,
+		}
+		for _, p := range t.Palettes {
+			e.Variants = append(e.Variants, Variant{ID: p.ID, Name: p.Name})
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
 
 // customEntries lists the active assets of one kind; inactive ones (deleted,
 // still training, failed) are left out because the backend ignores them
-// without an error. An empty kind lists nothing and costs no request.
+// without an error. The image2 kind also holds IP characters, which the
+// backend refuses as a theme; they come back marked so List can drop them
+// and Validate can say where they go instead. An empty kind lists nothing
+// and costs no request.
 func customEntries(ctx context.Context, l Lister, assetType string) ([]Entry, error) {
 	if assetType == "" {
 		return nil, nil
@@ -222,19 +255,55 @@ func customEntries(ctx context.Context, l Lister, assetType string) ([]Entry, er
 		if a.Status != figlens.UserAssetStatusActive {
 			continue
 		}
-		out = append(out, Entry{
+		e := Entry{
 			ID: a.Token(), Name: a.Name, Tags: []string{},
 			Source: SourceCustom, Base: strings.TrimSpace(a.Config.BaseThemeID),
-		})
+		}
+		if assetType == figlens.AssetTypeImage2Theme && a.Config.Category != figlens.Image2CategoryStyle {
+			e.ipCharacter = true
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
 
+// find looks an id up among the entries and the variants under them. A
+// variant comes back as an entry of its own, naming its parent.
 func find(entries []Entry, id string) (Entry, bool) {
 	for _, e := range entries {
 		if e.ID == id {
 			return e, true
 		}
+		for _, v := range e.Variants {
+			if v.ID == id {
+				return Entry{
+					ID: v.ID, Name: e.Name + " · " + v.Name, Tags: []string{},
+					Source: SourceOfficial, Parent: e.ID,
+				}, true
+			}
+		}
 	}
 	return Entry{}, false
+}
+
+// ValidateScene checks a --theme-scene slug against the scenes of the theme
+// it was given with. The backend falls back to the style's own anchor image
+// for a scene it cannot find, so an unchecked slug is another silent
+// substitution.
+func ValidateScene(e Entry, slug string) error {
+	slug = strings.TrimSpace(slug)
+	for _, s := range e.Scenes {
+		if s.Slug == slug {
+			return nil
+		}
+	}
+	if len(e.Scenes) == 0 {
+		return clerr.Validation(i18n.T("themecat.err.no_scenes", e.ID))
+	}
+	slugs := make([]string, len(e.Scenes))
+	for i, s := range e.Scenes {
+		slugs[i] = s.Slug
+	}
+	return clerr.Validation(i18n.T("themecat.err.scene_unknown", slug, e.ID)).
+		WithHint(i18n.T("themecat.hint.scenes", strings.Join(slugs, ", ")))
 }

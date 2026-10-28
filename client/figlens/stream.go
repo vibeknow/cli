@@ -32,6 +32,15 @@ type StreamParams struct {
 	// images (image-generation cost scales with it). 0 lets the
 	// storyboard decide.
 	PageCount int `json:"page_count,omitempty"`
+	// SceneDensity is freeform-only: sparse | balanced | dense, the 页数 tier.
+	// The backend normalises anything else to balanced without an error.
+	SceneDensity string `json:"scene_density,omitempty"`
+	// ThemeScene is image-mode-only: one scene card of the chosen Theme.
+	ThemeScene string `json:"theme_scene,omitempty"`
+	// IPAsset is image-mode-only: "sys_<id>" | "ua_<id>" from `vk ip list`,
+	// or "none". Also sent at init, which is where the backend validates it
+	// and snapshots it onto the work.
+	IPAsset string `json:"ip_asset,omitempty"`
 	// Theme is a style catalog ID from `vk theme list` (or a ua_<assetId>
 	// custom-theme token). Empty lets the pipeline auto-select. Suite
 	// membership must match VideoKind, and the backend does not reliably

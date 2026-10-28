@@ -38,6 +38,7 @@ const (
 	Replica  = "replica"
 	Image    = "image"
 	HandDraw = "handdraw"
+	Canvas   = "canvas"
 )
 
 // All lists the modes in the order help text and errors name them.
@@ -48,6 +49,9 @@ var All = []Mode{
 	{Name: Replica, VideoKind: figlens.VideoKindReplica, Suite: figlens.ThemeSuiteDesign, CustomAssetType: figlens.AssetTypeTheme},
 	{Name: Image, VideoKind: figlens.VideoKindImage2, Suite: figlens.ThemeSuiteImage2, CustomAssetType: figlens.AssetTypeImage2Theme},
 	{Name: HandDraw, VideoKind: figlens.VideoKindHandDraw, Suite: figlens.ThemeSuiteHandDraw},
+	// 画布创作. Both aspects; the backend defaults it to vertical when none
+	// is given, unlike every other line.
+	{Name: Canvas, VideoKind: figlens.VideoKindStageCraft, Suite: figlens.ThemeSuiteStageCraft},
 }
 
 // aliases are accepted spellings that are not the canonical name. Empty is

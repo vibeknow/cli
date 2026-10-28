@@ -9,11 +9,13 @@ import (
 // Theme suites accepted by GET /v1/themes?type=. Each creation mode draws
 // from exactly one suite: the standard line (and replica, and 原稿锁定)
 // from design-suite, image mode from image2-suite, hand-drawn mode from
-// hand-draw-suite. Suite names are backend wire values.
+// hand-draw-suite, canvas mode from stage-craft-suite. Suite names are
+// backend wire values.
 const (
-	ThemeSuiteDesign   = "design-suite"
-	ThemeSuiteImage2   = "image2-suite"
-	ThemeSuiteHandDraw = "hand-draw-suite"
+	ThemeSuiteDesign     = "design-suite"
+	ThemeSuiteImage2     = "image2-suite"
+	ThemeSuiteHandDraw   = "hand-draw-suite"
+	ThemeSuiteStageCraft = "stage-craft-suite"
 )
 
 // Theme is one style catalog entry. ID is what `vk create --theme` sends;
@@ -27,6 +29,30 @@ type Theme struct {
 	// Preview is populated for hand-draw-suite only: CDN URLs for the
 	// style's horizontal/vertical webp + poster previews.
 	Preview *ThemePreview `json:"preview,omitempty"`
+	// Scenes is populated for image2-suite only: the scene cards a style
+	// unfolds into, selected with the stream request's theme_scene.
+	Scenes []ThemeScene `json:"scenes,omitempty"`
+	// Palettes is populated for stage-craft-suite only. An entry there is
+	// an art direction; each palette under it is itself a valid theme id
+	// that pins the colours as well as the direction.
+	Palettes []ThemePalette `json:"themes,omitempty"`
+}
+
+// ThemeScene is one scene card of an image2 style.
+type ThemeScene struct {
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	Domain string `json:"domain,omitempty"`
+}
+
+// ThemePalette is one colour scheme of a canvas art direction.
+type ThemePalette struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Colors struct {
+		Bg     string `json:"bg"`
+		Accent string `json:"accent"`
+	} `json:"colors"`
 }
 
 type ThemePreview struct {
@@ -63,12 +89,20 @@ type ThemeAsset struct {
 	Name   string `json:"name"`
 	Status int    `json:"status"`
 	// Config is the asset's stored config. For a theme asset it names the
-	// catalog theme it was derived from (baseThemeId); image2 styles have
-	// no base.
+	// catalog theme it was derived from (baseThemeId). An image2_theme
+	// asset is either a style or an IP character (Category); only a style
+	// can stand in for a theme — characters go to --ip-asset.
 	Config struct {
 		BaseThemeID string `json:"baseThemeId"`
+		Category    string `json:"category"`
 	} `json:"config"`
 }
+
+// Image2 asset categories (config.category of an image2_theme asset).
+const (
+	Image2CategoryStyle = "style"
+	Image2CategoryIP    = "ip"
+)
 
 // Token is the value the stream request's theme field takes for this asset.
 func (a ThemeAsset) Token() string { return fmt.Sprintf("ua_%d", a.ID) }
@@ -83,4 +117,35 @@ func (c *Client) ListThemeAssets(ctx context.Context, assetType string) ([]Theme
 		return nil, fmt.Errorf("list %s assets: %w", assetType, err)
 	}
 	return assets, nil
+}
+
+// IPAsset is one character from GET /v1/assets/image2Theme/ipCatalog: the
+// public ones first, then the caller's own trained ones. Ref is the value
+// the init and stream requests' ip_asset field takes.
+type IPAsset struct {
+	Ref      string `json:"ref"`
+	Name     string `json:"name"`
+	ImageURL string `json:"image_url"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Public   bool   `json:"public"`
+	// Enabled marks the caller's account default among their own; the
+	// backend uses it when a run names no IP. Always 0 on public rows.
+	Enabled int `json:"enabled"`
+}
+
+// IPAssetNone is the ip_asset value that turns the account default off for
+// one run.
+const IPAssetNone = "none"
+
+// ListIPAssets fetches the characters an image-mode run can feature. Only
+// usable ones are listed: the backend leaves out any without a reference
+// image.
+func (c *Client) ListIPAssets(ctx context.Context) ([]IPAsset, error) {
+	var resp struct {
+		Items []IPAsset `json:"items"`
+	}
+	if err := c.http.Do(ctx, "GET", "/v1/assets/image2Theme/ipCatalog", nil, &resp); err != nil {
+		return nil, fmt.Errorf("list ip assets: %w", err)
+	}
+	return resp.Items, nil
 }
