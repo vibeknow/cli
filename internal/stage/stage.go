@@ -18,8 +18,17 @@
 package stage
 
 var nodeToStage = map[string]string{
-	// Standard line (灵活创作 / 原稿锁定).
-	"big_director":    "outline", // pre-script planning, the longest LLM node (1–2 min)
+	// Planning front half, shared by the standard line (灵活创作 / 原稿锁定)
+	// and the canvas line since the backend replaced big_director /
+	// script_writing with it there. beat_director is the longest LLM node.
+	"knowledge_prepare": "outline",
+	"goal_setting":      "outline",
+	"beat_director":     "outline",
+	"beat_script":       "outline",
+
+	// Standard line back half. big_director and script_writing are still
+	// registered and still run on the image and hand-drawn lines.
+	"big_director":    "outline",
 	"script_writing":  "outline",
 	"storyboard_plan": "outline",
 	"tts_generate":    "tts",
@@ -33,9 +42,21 @@ var nodeToStage = map[string]string{
 	// text and emits its own staged progress messages from inside the node;
 	// doc_replica_shoot events are likewise hand-emitted. Both still carry
 	// their step_id, so they map here.
-	"doc_dissect":       "outline",
-	"doc_replica_plan":  "outline",
-	"doc_replica_shoot": "render",
+	"doc_dissect":          "outline",
+	"doc_replica_director": "outline",
+	"doc_replica_plan":     "outline",
+	"doc_replica_shoot":    "render",
+
+	// Canvas line (画布创作): grid_director lays out every scene, then
+	// grid_image_gen draws the stickers it placed.
+	"grid_director":  "outline",
+	"grid_image_gen": "render",
+
+	// Beat-line back half, registered by the backend for same-template
+	// runs: component selection is planning, filling and art are render.
+	"beat_select":    "outline",
+	"beat_image_gen": "render",
+	"beat_fill":      "render",
 
 	// Image line (图解视频). The image2_* prefix is the backend's wire
 	// naming; DisplayName sanitizes it before any user-facing output.
@@ -57,12 +78,13 @@ var nodeDisplayName = map[string]string{
 var orderedStages = []string{"outline", "tts", "render", "publish"}
 
 // orderedNodes lists the emitting nodes of the standard line in graph
-// order. Mode-specific nodes (doc_*, image2_*) branch off this spine and
-// are not part of the canonical ordering.
+// order. Mode-specific nodes (doc_*, image2_*, grid_*) branch off this
+// spine and are not part of the canonical ordering.
 var orderedNodes = []string{
-	"big_director", "script_writing", "storyboard_plan",
-	"tts_generate",
-	"scene_filling", "bg_images", "cover", "bgm",
+	"knowledge_prepare", "goal_setting", "beat_director", "beat_script",
+	"cover", "storyboard_plan",
+	"tts_generate", "bg_images",
+	"scene_filling", "bgm",
 	"video_package",
 }
 

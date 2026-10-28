@@ -15,6 +15,11 @@ func TestNodeToStage(t *testing.T) {
 		node string
 		want string
 	}{
+		// shared planning front half
+		{"knowledge_prepare", "outline"},
+		{"goal_setting", "outline"},
+		{"beat_director", "outline"},
+		{"beat_script", "outline"},
 		// standard line
 		{"big_director", "outline"},
 		{"script_writing", "outline"},
@@ -27,12 +32,20 @@ func TestNodeToStage(t *testing.T) {
 		{"video_package", "publish"},
 		// replica line
 		{"doc_dissect", "outline"},
+		{"doc_replica_director", "outline"},
 		{"doc_replica_plan", "outline"},
 		{"doc_replica_shoot", "render"},
 		// image line
 		{"image2_theme_select", "outline"},
 		{"image2_storyboard", "outline"},
 		{"image2_gen", "render"},
+		// canvas line
+		{"grid_director", "outline"},
+		{"grid_image_gen", "render"},
+		// beat-line back half
+		{"beat_select", "outline"},
+		{"beat_image_gen", "render"},
+		{"beat_fill", "render"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.node, func(t *testing.T) {
@@ -91,8 +104,8 @@ func TestStageOrder(t *testing.T) {
 
 func TestAllNodes(t *testing.T) {
 	nodes := stage.AllNodes()
-	if len(nodes) != 9 {
-		t.Fatalf("expected 9 standard-line nodes, got %d: %v", len(nodes), nodes)
+	if len(nodes) != 11 {
+		t.Fatalf("expected 11 standard-line nodes, got %d: %v", len(nodes), nodes)
 	}
 	for _, n := range nodes {
 		if !stage.IsKnownNode(n) {
