@@ -334,7 +334,9 @@ func editPrompt(sceneIndex int, scriptOnly bool, q *figlens.EditQuota) string {
 		line = i18n.T("edit.quota_full", q.TTS.Remaining, q.TTS.Total,
 			q.Layout.Remaining, q.Layout.Total, q.Background.Remaining, q.Background.Total)
 	}
-	return p + " " + line
+	// The question goes last: the reader should have the terms in front of
+	// them before being asked to agree to them.
+	return p + " " + line + " " + i18n.T("edit.confirm_question")
 }
 
 // editGateContext puts the quota reading next to the blocked action, outside

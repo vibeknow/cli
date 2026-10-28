@@ -549,8 +549,8 @@ func TestVideoEdit_QuotaShownButNotPartOfTheConsent(t *testing.T) {
 	if bg, _ := quota["background"].(map[string]any); bg["exhausted"] != true {
 		t.Errorf("background quota = %v, want exhausted", quota["background"])
 	}
-	if msg, _ := action["message"].(string); !strings.Contains(msg, "90") {
-		t.Errorf("message does not state the quota: %q", msg)
+	if msg, _ := action["message"].(string); !strings.Contains(msg, "90") || !strings.HasSuffix(msg, "Continue?") {
+		t.Errorf("message must state the quota, then ask: %q", msg)
 	}
 	if _, inPayload := action["payload"].(map[string]any)["free_quota"]; inPayload {
 		t.Error("quota is in the hashed payload; a token would expire whenever any edit used quota")

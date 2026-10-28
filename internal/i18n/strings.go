@@ -239,11 +239,12 @@ func init() {
 		"export.reattach_hint":   "re-attach with: vk video export-status %d --session-id %s",
 
 		// scene edit
-		"edit.confirm_prompt":             "About to replace the narration of shot %d and regenerate the whole shot — voice-over, layout and background image. Text generation is billed; speech, layout and background are free within this work's daily free quota and billed beyond it. This cannot be undone. `--script-only` regenerates the voice-over alone and costs less. Continue?",
-		"edit.confirm_prompt_script_only": "About to replace the narration of shot %d and regenerate its voice-over. Layout and background image stay as they are. Text generation is billed; speech is free within this work's daily free quota and billed beyond it. This cannot be undone. Continue?",
+		"edit.confirm_prompt":             "About to replace the narration of shot %d and regenerate the whole shot — voice-over, layout and background image. Text generation is billed; speech, layout and background are free within this work's daily free quota and billed beyond it. This cannot be undone. `--script-only` regenerates the voice-over alone and costs less.",
+		"edit.confirm_prompt_script_only": "About to replace the narration of shot %d and regenerate its voice-over. Layout and background image stay as they are. Text generation is billed; speech is free within this work's daily free quota and billed beyond it. This cannot be undone.",
 		"edit.quota_full":                 "Free quota left now: %ds of %ds speech, %d of %d layouts, %d of %d backgrounds.",
 		"edit.quota_script_only":          "Free quota left now: %ds of %ds speech.",
 		"edit.quota_unavailable":          "The free quota could not be read; assume all of it is billed.",
+		"edit.confirm_question":           "Continue?",
 		"quota.line.tts":                  "tts         %ds of %ds free left",
 		"quota.line.layout":               "layout      %d of %d free left",
 		"quota.line.background":           "background  %d of %d free left",
@@ -527,11 +528,12 @@ func init() {
 		"export.reattach_hint":   "重新连接: vk video export-status %d --session-id %s",
 
 		// scene edit
-		"edit.confirm_prompt":             "即将替换第 %d 幕的讲稿并重新生成整幕——配音、版式、背景图。文本生成计费；配音、版式、背景图在本作品每日免费额度内不计费，超出部分计费。不可撤销。加 `--script-only` 只重生配音，更便宜。继续？",
-		"edit.confirm_prompt_script_only": "即将替换第 %d 幕的讲稿并重新生成配音，版式与背景图保持不变。文本生成计费；配音在本作品每日免费额度内不计费，超出部分计费。不可撤销。继续？",
+		"edit.confirm_prompt":             "即将替换第 %d 幕的讲稿并重新生成整幕——配音、版式、背景图。文本生成计费；配音、版式、背景图在本作品每日免费额度内不计费，超出部分计费。不可撤销。加 `--script-only` 只重生配音，更便宜。",
+		"edit.confirm_prompt_script_only": "即将替换第 %d 幕的讲稿并重新生成配音，版式与背景图保持不变。文本生成计费；配音在本作品每日免费额度内不计费，超出部分计费。不可撤销。",
 		"edit.quota_full":                 "当前剩余免费额度：配音 %d/%d 秒，版式 %d/%d 次，背景 %d/%d 次。",
 		"edit.quota_script_only":          "当前剩余免费额度：配音 %d/%d 秒。",
 		"edit.quota_unavailable":          "无法读取免费额度，请按全部计费考虑。",
+		"edit.confirm_question":           "继续？",
 		"quota.line.tts":                  "配音    剩余 %d / %d 秒",
 		"quota.line.layout":               "版式    剩余 %d / %d 次",
 		"quota.line.background":           "背景    剩余 %d / %d 次",
