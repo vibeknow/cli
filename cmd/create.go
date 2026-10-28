@@ -622,8 +622,10 @@ conversation rather than saved to a file.`,
 				}
 			case "node.progress":
 				if !routeEvent(ev) {
-					// [agent] prefix keeps output scannable alongside v=3's [<stage>] lines.
-					fmt.Fprintf(os.Stderr, "[agent] %s\n", ev.Message)
+					// A bracketed prefix keeps output scannable alongside the
+					// [<stage>] lines; the pipeline also sends messages that
+					// belong to no stage, which are not the agent engine's.
+					fmt.Fprintf(os.Stderr, "[%s] %s\n", engine, ev.Message)
 				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
