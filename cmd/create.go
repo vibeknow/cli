@@ -197,6 +197,9 @@ conversation rather than saved to a file.`,
 		if engine == figlens.EngineAgent && language != "" {
 			return clerr.Validation(i18n.T("create.err.language_needs_pipeline"))
 		}
+		if language == "" && engine != figlens.EngineAgent {
+			language = defaultCreateLanguage
+		}
 		avatarRef, err := resolveAvatar(flagCreateAvatar, flagCreateAvatarPos, flagCreateAvatarPx)
 		if err != nil {
 			return err
@@ -1334,8 +1337,17 @@ func resolveAspect(flag string) (string, error) {
 // instead of letting an explicit choice quietly not happen.
 var createLanguages = []string{"zh-CN", "en-US", "es-ES", "fr-FR", "pt-BR", "ja-JP", "ko-KR"}
 
+// defaultCreateLanguage is sent when --language is not given. Leaving the
+// field empty renders the same video — the backend falls back to its
+// deployment locale, zh-CN — but that fallback is never written to the
+// work, and re-voicing reads the language off the work: a CLI-made video
+// without one is refused ("原作品缺少语言信息"). The web always sends its
+// selected language, so only CLI runs were affected.
+const defaultCreateLanguage = "zh-CN"
+
 // resolveLanguage normalizes --language case-insensitively to the backend's
-// canonical locale spelling. Empty passes through (deployment default).
+// canonical locale spelling. Empty passes through; the caller fills in
+// defaultCreateLanguage.
 func resolveLanguage(flag string) (string, error) {
 	flag = strings.TrimSpace(flag)
 	if flag == "" {

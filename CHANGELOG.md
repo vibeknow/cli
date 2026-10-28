@@ -81,6 +81,16 @@ the run succeeded, billed, and came out in a style nobody picked.
   line's planning half is now `knowledge_prepare → goal_setting →
   beat_director → beat_script`; those nodes, the canvas line's and
   `doc_replica_director` arrived unmapped and reported no stage.
+- `create` without `--language` now sends `zh-CN`. An empty field rendered
+  the same video, but the backend never wrote its fallback to the work, and
+  it refuses to re-voice a work with no language — so no CLI-made video
+  could be re-voiced unless `--language` had been passed. Videos made before
+  this release stay that way.
+- Command lines the CLI hands back (resume, re-export, re-attach) no longer
+  carry `task_id` 0 for a run reached by `--session-id` alone; `cover` fills
+  the task from the work, and `quota` omits the field instead of reporting 0.
+- Stage-less progress lines from the pipeline engine were labelled
+  `[agent]`; they now carry the engine that ran.
 
 ## 0.9.2 — 2026-09-09
 

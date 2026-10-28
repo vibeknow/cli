@@ -242,3 +242,34 @@ func TestCreate_V3Params_LocalRejections(t *testing.T) {
 		t.Errorf("a rejected flag combination still hit the backend; validation must run before init")
 	}
 }
+
+// TestCreate_LanguageDefaultsOnTheWire pins the default --language. An
+// empty field rendered the same video but left the work without a
+// language, and the backend refuses to re-voice such a work — so every
+// CLI-made video without --language could never be re-voiced.
+func TestCreate_LanguageDefaultsOnTheWire(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	srv, bodies := v3ParamServer(t)
+	defer srv.Close()
+
+	bin := build(t)
+	configHome := buildVideoProfile(t, srv.URL)
+
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"create", "--from", "doc_v3params01", "--kb-id", "kb_test",
+		"--prompt", "make it",
+	)
+	if code != 0 {
+		t.Fatalf("create exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	stream := bodies()["stream"]
+	if stream == nil {
+		t.Fatal("stream body never captured")
+	}
+	if stream["language"] != "zh-CN" {
+		t.Errorf("stream body language = %#v, want \"zh-CN\"\nfull body: %+v", stream["language"], stream)
+	}
+}

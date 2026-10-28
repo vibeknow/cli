@@ -69,7 +69,7 @@ vibeknow create [flags]
 | `--theme-scene string` | `--mode image` only, with `--theme`: one of that style's scenes, as listed under it by `theme list --mode image`. All it changes is the reference image the illustrations are drawn from — and only for a scene that has one of its own; most do not yet, and those use the style's own image. Do not promise the user a visible difference |
 | `--ip-asset string` | `--mode image` only: the IP character to feature, a `ref` from `vibeknow ip list`, or `none` to leave out the account default. Checked before upload |
 | `--theme string` | Theme / style / template ID from `vibeknow theme list --mode <mode>`: an official id or the user's own `ua_<id>`. Checked against that mode's list before anything is uploaded (exit 2 if it is not there); default auto-select |
-| `--language string` | Output language for script + narration: `zh-CN`, `en-US`, `es-ES`, `fr-FR`, `pt-BR`, `ja-JP`, `ko-KR` (default: account locale) |
+| `--language string` | Output language for script + narration: `zh-CN`, `en-US`, `es-ES`, `fr-FR`, `pt-BR`, `ja-JP`, `ko-KR` (default: `zh-CN`) |
 | `--voice string` | Voice: a `#` or `speech_voice_id` from `vibeknow voice list`; pick one matching `--language` |
 | `--avatar string` | Talking-head presenter: `sys_<id>` (public, `vibeknow avatar list`) or `ua_<id>` (your own activated avatar). Not with `--mode handdraw` or `--engine agent` (exit 2). |
 | `--avatar-position string` | Corner: `top-left`, `top-right`, `bottom-left`, `bottom-right` (default: saved preference, else top-left) |
