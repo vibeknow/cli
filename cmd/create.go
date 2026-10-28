@@ -93,13 +93,17 @@ var createCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Use:   "create",
 	Short: "turn a document, URL, or file into a video",
-	Long: `create resolves --from to a document, then generates a video via the figlens pipeline.
+	Long: `create resolves --from to a document in a knowledge base, then generates a video from it.
 
 --from accepts:
   - a doc_id (e.g. doc_abc12345) — reused directly, and requires --kb-id
     (the backend only accepts a document together with its knowledge base)
-  - a URL (http:// or https://) — uploaded to vectoria
-  - a local file path — uploaded to vectoria`,
+  - a URL (http:// or https://) — uploaded to a new knowledge base
+  - a local file path — uploaded to a new knowledge base
+  - - (a dash) — the text on standard input, uploaded the same way
+
+--text "<text>" passes the text itself instead, for a passage pasted into a
+conversation rather than saved to a file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Expanded first, so everything below — validation included — sees
 		// one flag set and cannot tell a preset value from a typed one.

@@ -21,7 +21,7 @@ var Cmd = &cobra.Command{
 	Short: "inspect the local ledger of video runs",
 	Long: `jobs reads the local record of every run started by ` + "`vk create`" + `.
 
-Each figlens run is addressed by a (task_id, session_id) pair. The ledger
+Each video run is addressed by a (task_id, session_id) pair. The ledger
 remembers that pair so a disconnected or restarted caller can find a run
 that is still in flight instead of starting a second one, and so the video
 subcommands can resolve --session-id on their own.

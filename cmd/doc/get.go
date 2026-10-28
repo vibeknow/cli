@@ -15,7 +15,7 @@ var flagGetKBID string
 
 var getCmd = &cobra.Command{
 	Use:   "get <doc_id>",
-	Short: "fetch document status from vectoria",
+	Short: "fetch a document's processing status",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docID := args[0]

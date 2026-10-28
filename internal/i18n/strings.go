@@ -170,7 +170,7 @@ func init() {
 		"create.err.async_with_export":       "--async and --export cannot be combined: export can only start once the preview is finished, which --async does not wait for. Run `vk create --async`, then `vk video wait <task_id> --session-id <sid>` and `vk video export <task_id> --session-id <sid>` when it succeeds",
 
 		// kb
-		"kb.short":                  "manage vectoria knowledgebases",
+		"kb.short":                  "manage knowledge bases (where uploaded documents are kept)",
 		"kb.list.short":             "list your knowledgebases",
 		"kb.list.empty":             "no knowledgebases",
 		"kb.list.footer":            "Showing %d of %d (page %d)",
@@ -460,7 +460,7 @@ func init() {
 		"create.err.async_with_export":       "--async 与 --export 不能同时使用：导出必须等预览生成完成才能开始，而 --async 不会等待。请先 `vk create --async`，再用 `vk video wait <task_id> --session-id <sid>`，成功后执行 `vk video export <task_id> --session-id <sid>`",
 
 		// kb
-		"kb.short":                  "管理 vectoria 知识库",
+		"kb.short":                  "管理知识库（上传的文档存放在这里）",
 		"kb.list.short":             "列出你的知识库",
 		"kb.list.empty":             "没有知识库",
 		"kb.list.footer":            "显示 %d / %d（第 %d 页）",

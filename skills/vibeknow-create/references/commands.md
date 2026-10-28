@@ -25,8 +25,8 @@ Resolve the source to a document, then generate a video via the figlens pipeline
 
 `--from` accepts:
 - A `doc_id` (e.g. `doc_abc12345`) — used directly
-- A URL (`http://` or `https://`) — uploaded to vectoria first
-- A local file path — uploaded to vectoria first
+- A URL (`http://` or `https://`) — uploaded to a new knowledge base first
+- A local file path — uploaded to a new knowledge base first
 - `-` — read the source text from stdin
 
 `--text` supplies the text itself, for the case where the user pasted a

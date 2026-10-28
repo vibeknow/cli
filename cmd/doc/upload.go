@@ -15,7 +15,7 @@ import (
 
 var uploadCmd = &cobra.Command{
 	Use:   "upload <file>",
-	Short: "upload a document to vectoria (creates KB, polls until completed)",
+	Short: "upload a document (creates a knowledge base, waits until it is processed)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath := args[0]

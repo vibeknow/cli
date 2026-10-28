@@ -14,7 +14,7 @@ var Cmd = &cobra.Command{
 	// is how `vk <group> <typo>` used to exit 0. With this, NoArgs runs
 	// first and a bare `vk <group>` still prints help.
 	RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
-	Short: "manage documents in vectoria",
+	Short: "manage the documents videos are made from",
 }
 
 func init() {
