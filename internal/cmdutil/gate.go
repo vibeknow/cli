@@ -97,6 +97,10 @@ type GateOptions struct {
 	// and hashed into the action_id, so anything that changes what is being
 	// agreed to belongs here.
 	Payload map[string]any
+	// Context is shown with the payload but not hashed: a reading such as a
+	// remaining free quota, which can change between block and resume for
+	// reasons unrelated to this decision. See pending.Action.Context.
+	Context map[string]any
 	// Prompt is the human sentence: what is about to happen and what it costs.
 	Prompt string
 	// Yes is the --yes flag: the caller states it already has authority.
@@ -176,6 +180,7 @@ func block(cmd *cobra.Command, opts GateOptions) error {
 		Blocking: true,
 		Message:  opts.Prompt,
 		Payload:  opts.Payload,
+		Context:  opts.Context,
 		Options: []pending.Option{
 			{ID: "confirm", Effect: pending.EffectResume, Label: "Proceed and spend the credits"},
 			{ID: "cancel", Effect: pending.EffectNone, Label: "Do not proceed; run nothing"},

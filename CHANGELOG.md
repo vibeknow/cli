@@ -23,6 +23,18 @@ the run succeeded, billed, and came out in a style nobody picked.
   is accepted by both commands (it was rejected by `create`).
 - Snapshots carry `mode`; `create` reports `requested_theme`.
 
+### Changed — `video edit` states the free quota
+
+The backend now makes post-edit speech, layout and background free within a
+per-work rolling 24-hour quota and bills them beyond it; text generation is
+always billed. The confirmation used to say speech was
+billed outright.
+
+- New `vk video quota [task_id]` reads the quota (free).
+- The edit confirmation states what is left, and the blocked action carries
+  it as `context.free_quota`. `context` is new on pending actions: shown,
+  not hashed, so a consent survives quota being used elsewhere.
+
 ## 0.9.2 — 2026-09-09
 
 ### Fixed — profiles no longer pin the beta test cluster forever

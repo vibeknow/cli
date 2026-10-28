@@ -595,6 +595,27 @@ The `action_id` is bound to that exact diff, plus `script_only`. So:
 
 Re-run without `--confirm` to get current terms and a current token.
 
+**The free quota.** Each work has a rolling 24-hour free quota (doubled on a
+subscription). Within it, speech synthesis, layout and background images are
+free; beyond it they are billed when the edit saves. Text generation is
+billed either way. The blocked action carries the reading next to the
+payload:
+
+```json
+"context": {"free_quota": {
+  "tts": {"used_sec": 30, "total_sec": 120, "remaining_sec": 90, "exhausted": false, "resets_at": "…"},
+  "layout": {"used": 1, "total": 3, "remaining": 2, "exhausted": false},
+  "background": {"used": 3, "total": 3, "remaining": 0, "exhausted": true},
+  "free_within_quota": ["speech_synthesis", "layout", "background_image"],
+  "always_billed": ["text_generation"]}}
+```
+
+Tell the user what is left. `context` is not hashed into the `action_id`:
+the quota is a reading that other edits — including ones on the web — move,
+not a term of this edit, so a token survives it changing. When the quota
+cannot be read the context says `"free_quota": "unavailable"`; treat the
+edit as fully billed.
+
 **The rendered MP4 is not withdrawn.** Unlike `video set`, the backend
 leaves the old file in place, so `video download` keeps returning a video of
 the *previous* narration until the next `video export`. The JSON response
@@ -616,6 +637,19 @@ identical to what the shot already says, empty narration, and a missing
 **Not covered by this command.** Changing images, swapping a layout,
 deleting a shot, and editing several shots in one charge all exist on the
 backend and are not wired up yet.
+
+## video quota
+
+Read a work's free post-edit quota. Free and read-only.
+
+```
+vibeknow video quota [task_id] [--session-id <sid>] [--output json]
+```
+
+Same shape as `context.free_quota` above, plus `task_id` and `session_id`.
+Units are in the key names: `tts` counts seconds of speech (`*_sec`),
+`layout` and `background` count generated results. The figures are a
+reading, not a reservation.
 
 ## video set
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/vibeknow/cli/internal/errs"
@@ -234,4 +235,39 @@ func sceneEditMessage(data json.RawMessage) string {
 		}
 	}
 	return "scene edit failed"
+}
+
+// EditQuotaUsage is one free post-edit quota of a work: a rolling 24-hour
+// window, counted per work. TTS is in seconds of speech; layout and
+// background are counts of generated results.
+type EditQuotaUsage struct {
+	Used      int64 `json:"used"`
+	Total     int64 `json:"total"`
+	Remaining int64 `json:"remaining"`
+	Exhausted bool  `json:"exhausted"`
+	// ResetAt is Unix milliseconds: when the oldest usage in the window
+	// expires. 0 when nothing is in use.
+	ResetAt int64 `json:"reset_at"`
+}
+
+// EditQuota is GET /v1/scene/editQuota. Within these quotas a post-edit's
+// speech synthesis, layout and background images are free; beyond them they
+// are billed when the result is saved. Text generation is billed either way.
+type EditQuota struct {
+	Subscribed bool           `json:"subscribed"`
+	Multiplier int64          `json:"multiplier"`
+	TTS        EditQuotaUsage `json:"tts"`
+	Layout     EditQuotaUsage `json:"layout"`
+	Background EditQuotaUsage `json:"background"`
+}
+
+// GetEditQuota reads a work's free post-edit quotas. Read-only: it reserves
+// nothing and bills nothing.
+func (c *Client) GetEditQuota(ctx context.Context, sessionID string) (*EditQuota, error) {
+	var q EditQuota
+	path := "/v1/scene/editQuota?session_id=" + url.QueryEscape(sessionID)
+	if err := c.http.Do(ctx, "GET", path, nil, &q); err != nil {
+		return nil, fmt.Errorf("get edit quota: %w", err)
+	}
+	return &q, nil
 }

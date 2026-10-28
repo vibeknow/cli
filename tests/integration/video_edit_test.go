@@ -25,6 +25,9 @@ type editStub struct {
 	// calls counts edit submissions, so "was anything spent" is answerable
 	// even for a body that failed to decode.
 	calls atomic.Int64
+	// ttsRemaining is what /v1/scene/editQuota reports, when served. A test
+	// can change it between block and resume, as other edits would.
+	ttsRemaining atomic.Int64
 }
 
 type editStubOptions struct {
@@ -35,6 +38,9 @@ type editStubOptions struct {
 	// envelope on HTTP 200 instead of an event stream — the shape the
 	// backend actually uses for the edit lock and the credit precheck.
 	busyCode int
+	// serveQuota answers /v1/scene/editQuota; without it the endpoint 404s,
+	// as a backend older than the free quota does.
+	serveQuota bool
 }
 
 func newEditStub(t *testing.T, opts editStubOptions) *editStub {
@@ -55,6 +61,20 @@ func newEditStub(t *testing.T, opts editStubOptions) *editStub {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code": 0, "data": map[string]any{"work_id": 77, "scenes": opts.scenes},
 			})
+
+		case r.URL.Path == "/v1/scene/editQuota" && opts.serveQuota:
+			w.Header().Set("Content-Type", "application/json")
+			usage := func(used, total int64) map[string]any {
+				return map[string]any{"used": used, "total": total, "remaining": total - used,
+					"exhausted": used >= total, "reset_at": 1761700000000}
+			}
+			rem := s.ttsRemaining.Load()
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+				"subscribed": false, "multiplier": 1,
+				"tts":        usage(120-rem, 120),
+				"layout":     usage(1, 3),
+				"background": usage(3, 3),
+			}})
 
 		case r.URL.Path == "/v1/scene/edit":
 			s.calls.Add(1)
@@ -494,5 +514,112 @@ func TestVideoEdit_ProgressStaysOffStdout(t *testing.T) {
 	second, _ := scenes[1].(map[string]any)
 	if second["edit"] != float64(1) || second["scriptText"] != "先看整体结构。" {
 		t.Errorf("the edit did not land on shot 2: %v", scenes)
+	}
+}
+
+// The free quota decides whether most of an edit costs anything, so the
+// decision handed back carries it — outside the hashed payload, because it
+// is a reading that other edits move, not a term of this one.
+func TestVideoEdit_QuotaShownButNotPartOfTheConsent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	stub := newEditStub(t, editStubOptions{scenes: editScenes(), serveQuota: true})
+	stub.ttsRemaining.Store(90)
+	bin := build(t)
+	configHome := buildVideoProfile(t, stub.server.URL)
+
+	args := []string{"video", "edit", "42", "--session-id", "s_run",
+		"--scene", "3", "--script", "增长几乎全部来自海外市场。", "--output", "json"}
+	stdout, stderr, code := runVideoCmd(t, bin, configHome, args...)
+	if code != 8 {
+		t.Fatalf("exit %d, want 8\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode %q: %v", stdout, err)
+	}
+	action := got["pending_actions"].([]any)[0].(map[string]any)
+	ctx, _ := action["context"].(map[string]any)
+	quota, _ := ctx["free_quota"].(map[string]any)
+	tts, _ := quota["tts"].(map[string]any)
+	if tts["remaining_sec"] != float64(90) {
+		t.Fatalf("context.free_quota.tts = %v, want remaining_sec 90", quota["tts"])
+	}
+	if bg, _ := quota["background"].(map[string]any); bg["exhausted"] != true {
+		t.Errorf("background quota = %v, want exhausted", quota["background"])
+	}
+	if msg, _ := action["message"].(string); !strings.Contains(msg, "90") {
+		t.Errorf("message does not state the quota: %q", msg)
+	}
+	if _, inPayload := action["payload"].(map[string]any)["free_quota"]; inPayload {
+		t.Error("quota is in the hashed payload; a token would expire whenever any edit used quota")
+	}
+
+	// Other activity uses quota between block and resume. The consent was
+	// to this diff on this shot, which has not changed, so it still holds.
+	token := actionIDRe.FindString(stdout)
+	stub.ttsRemaining.Store(10)
+	stdout, stderr, code = runVideoCmd(t, bin, configHome, append(args, "--confirm", token)...)
+	if code != 0 {
+		t.Fatalf("resume after a quota change: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if n := stub.calls.Load(); n != 1 {
+		t.Errorf("edit submissions = %d, want 1", n)
+	}
+}
+
+// A backend that cannot report the quota must not stop the edit, and must
+// not let the confirmation imply it is free either.
+func TestVideoEdit_QuotaUnavailableSaysSo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	stub := newEditStub(t, editStubOptions{scenes: editScenes()})
+	bin := build(t)
+	configHome := buildVideoProfile(t, stub.server.URL)
+
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"video", "edit", "42", "--session-id", "s_run",
+		"--scene", "3", "--script", "增长几乎全部来自海外市场。", "--output", "json")
+	if code != 8 {
+		t.Fatalf("exit %d, want 8\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	var got map[string]any
+	_ = json.Unmarshal([]byte(stdout), &got)
+	action := got["pending_actions"].([]any)[0].(map[string]any)
+	if ctx, _ := action["context"].(map[string]any); ctx["free_quota"] != "unavailable" {
+		t.Errorf("context = %v, want free_quota unavailable", action["context"])
+	}
+}
+
+func TestVideoQuota_ReportsUnitsInKeys(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	stub := newEditStub(t, editStubOptions{scenes: editScenes(), serveQuota: true})
+	stub.ttsRemaining.Store(42)
+	bin := build(t)
+	configHome := buildVideoProfile(t, stub.server.URL)
+
+	stdout, stderr, code := runVideoCmd(t, bin, configHome,
+		"video", "quota", "42", "--session-id", "s_run", "--output", "json")
+	if code != 0 {
+		t.Fatalf("exit %d\nstderr: %s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode %q: %v", stdout, err)
+	}
+	tts, _ := got["tts"].(map[string]any)
+	if tts["remaining_sec"] != float64(42) || tts["total_sec"] != float64(120) {
+		t.Errorf("tts = %v", got["tts"])
+	}
+	layout, _ := got["layout"].(map[string]any)
+	if layout["remaining"] != float64(2) {
+		t.Errorf("layout = %v", got["layout"])
+	}
+	if billed, _ := got["always_billed"].([]any); len(billed) != 1 || billed[0] != "text_generation" {
+		t.Errorf("always_billed = %v", got["always_billed"])
 	}
 }

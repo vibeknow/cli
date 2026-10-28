@@ -65,7 +65,13 @@ type Action struct {
 	Blocking bool           `json:"blocking"`
 	Message  string         `json:"message"`
 	Payload  map[string]any `json:"payload,omitempty"`
-	Options  []Option       `json:"options"`
+	// Context is shown alongside the payload but is not part of the token.
+	// It holds readings that bear on the decision without being terms of
+	// it — a free quota that other activity can use up between the block
+	// and the resume. Hashing those would expire a consent for reasons that
+	// have nothing to do with what the user agreed to.
+	Context map[string]any `json:"context,omitempty"`
+	Options []Option       `json:"options"`
 	// ResumeCommand is the exact command line that proceeds. It is spelled
 	// out rather than described because the caller reconstructing it from
 	// prose is the step that goes wrong.
@@ -88,6 +94,9 @@ func (a Action) Map() map[string]any {
 	}
 	if len(a.Payload) > 0 {
 		m["payload"] = a.Payload
+	}
+	if len(a.Context) > 0 {
+		m["context"] = a.Context
 	}
 	return m
 }

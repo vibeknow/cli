@@ -125,6 +125,12 @@ and how long the resulting speech runs, and the backend does not quote it in
 advance. The `message` names the *kinds* of work being billed instead.
 Do not invent a figure for the user.
 
+What it does carry is the work's free quota, under `context.free_quota`
+next to the payload: within it, speech, layout and background cost nothing.
+`context` is shown but **not** hashed — the quota is a reading other edits
+move, not a term of this one — so a token survives it changing. `"free_quota":
+"unavailable"` means it could not be read; treat the edit as fully billed.
+
 Because `from`, `to` and `script_only` are all part of what was agreed to,
 a token is invalidated by editing the proposed text at all, by adding or
 dropping `--script-only`, or by the shot changing underneath between the

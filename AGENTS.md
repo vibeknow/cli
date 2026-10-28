@@ -148,6 +148,14 @@ advance. Naming the *kinds* of billed work is what the CLI can say without
 inventing a figure — and inventing one would undermine the only thing the
 gate rests on, which is that the user saw real terms.
 
+It also carries, under `context` rather than `payload`, the work's free
+post-edit quota (`GET /scene/editQuota`; `vk video quota` reads it alone).
+Within it speech, layout and background are free and only text generation
+bills. `context` is shown with the action but not hashed into the token: the
+quota is moved by other edits, the web's included, and a consent that expired
+whenever anyone used quota would expire for reasons unrelated to what was
+agreed to.
+
 It carries `from` as well as `to` for two reasons. The user is approving a
 diff, so both halves have to be visible. And since the payload is hashed,
 a shot that changed underneath between the block and the resume mints a
@@ -362,14 +370,6 @@ two commands used to keep separate switches and disagreed about `default`.
 - **`--mode handdraw`** — hand-drawn animation. Runs its own graph
   (illustration → vectorization), so it is pipeline-only.
 
-## Script lock
-
-`--script-lock` uses the uploaded document text *verbatim* as the
-narration instead of writing a script from it. It is **orthogonal to
-`--mode`** — it rides on top of whichever line was picked, so
-`--mode image --script-lock` illustrates the user's own script.
-
-The doc must pass a quality preflight (length, characters, content)
 ## Themes (`--theme`)
 
 A theme belongs to a mode: the mode picks the catalog, `--theme` picks an
@@ -397,6 +397,14 @@ different style, billed, with no error.
 The result reports `requested_theme`, named as a request: the work detail
 response carries no theme, so nothing can confirm what actually rendered.
 
+## Script lock
+
+`--script-lock` uses the uploaded document text *verbatim* as the
+narration instead of writing a script from it. It is **orthogonal to
+`--mode`** — it rides on top of whichever line was picked, so
+`--mode image --script-lock` illustrates the user's own script.
+
+The doc must pass a quality preflight (length, characters, content)
 which runs at task-init time, before any billing. Preflight failures
 exit **2** with a clear message; agents should treat them as
 user-input problems, not retries. The preflight only fires when the

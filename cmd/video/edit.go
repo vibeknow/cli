@@ -38,11 +38,11 @@ everything else about the video that was already right.
 One shot per call. ` + "`--scene`" + ` takes the number
 ` + "`vk video script`" + ` prints, counting from 1.
 
-**This bills.** Everything chargeable on this path is downstream of the
-narration actually changing, so the cost is knowable before the request goes
-out — which is why the confirmation names it. Without a terminal the
-decision is handed back as exit 8 rather than made on your behalf; see
-` + "`vk video export`" + ` for the same gate.
+**This bills.** Text generation always does. Speech synthesis, layout and
+background images are free within the work's daily free quota and billed
+beyond it — ` + "`vk video quota`" + ` shows what is left, and the confirmation
+repeats it. Without a terminal the decision is handed back as exit 8 rather
+than made on your behalf; see ` + "`vk video export`" + ` for the same gate.
 
   --script-only   regenerate the voice-over, timeline and presenter only.
                   Layout, cards and background image stay as they are.
@@ -138,10 +138,19 @@ func runEdit(cmd *cobra.Command, args []string) error {
 			WithHint("nothing would change; compare against `vk video script` before editing")
 	}
 
+	// A reading for the confirmation, not a precondition: the backend
+	// enforces the quota at save time either way, so failing to read it is
+	// said out loud rather than allowed to block the edit.
+	quota, quotaErr := c.GetEditQuota(cmd.Context(), sessionID)
+	if quotaErr != nil {
+		quota = nil
+	}
+
 	ok, err = cmdutil.Gate(cmd, cmdutil.GateOptions{
 		Type:    cmdutil.SceneEditActionType,
 		Payload: cmdutil.SceneEditActionPayload(sessionID, flagEditScene, prev, next, flagEditScriptOnly),
-		Prompt:  editPrompt(flagEditScene, flagEditScriptOnly),
+		Context: editGateContext(quota),
+		Prompt:  editPrompt(flagEditScene, flagEditScriptOnly, quota),
 		Yes:     flagEditYes,
 		Token:   flagEditConfirm,
 		ResumeCommand: func(token string) string {
@@ -304,11 +313,37 @@ func sceneRange(scenes []figlens.WorkScene) string {
 // not quote it in advance. Naming the *kinds* of work being billed is what
 // the CLI can say truthfully, and inventing a number would be worse than
 // saying none — the whole gate rests on the user having seen real terms.
-func editPrompt(sceneIndex int, scriptOnly bool) string {
-	if scriptOnly {
-		return i18n.T("edit.confirm_prompt_script_only", sceneIndex)
+//
+// What it can add is the free quota, which decides whether the speech and
+// image halves cost anything at all. Only the quotas this edit draws on are
+// named: a --script-only edit makes no layout or background.
+func editPrompt(sceneIndex int, scriptOnly bool, q *figlens.EditQuota) string {
+	var p, line string
+	switch {
+	case scriptOnly:
+		p = i18n.T("edit.confirm_prompt_script_only", sceneIndex)
+	default:
+		p = i18n.T("edit.confirm_prompt", sceneIndex)
 	}
-	return i18n.T("edit.confirm_prompt", sceneIndex)
+	switch {
+	case q == nil:
+		line = i18n.T("edit.quota_unavailable")
+	case scriptOnly:
+		line = i18n.T("edit.quota_script_only", q.TTS.Remaining, q.TTS.Total)
+	default:
+		line = i18n.T("edit.quota_full", q.TTS.Remaining, q.TTS.Total,
+			q.Layout.Remaining, q.Layout.Total, q.Background.Remaining, q.Background.Total)
+	}
+	return p + " " + line
+}
+
+// editGateContext puts the quota reading next to the blocked action, outside
+// the hashed payload; see cmdutil.GateOptions.Context.
+func editGateContext(q *figlens.EditQuota) map[string]any {
+	if q == nil {
+		return map[string]any{"free_quota": "unavailable"}
+	}
+	return map[string]any{"free_quota": quotaMap(q)}
 }
 
 // editResumeCommand spells out the line that proceeds, with the script

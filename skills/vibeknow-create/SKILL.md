@@ -110,6 +110,7 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow video avatar-retry [task_id]` | Retry failed avatar scenes (unblocks a rejected export; no re-charge) |
 | `vibeknow video script [task_id]` | Read what the video says, shot by shot (free) |
 | `vibeknow video edit [task_id] --scene N --script "…"` | Rewrite one shot's narration (**bills**; confirmation gate) |
+| `vibeknow video quota [task_id]` | Free post-edit quota left on a work (free) |
 
 For full flags and output examples, see [commands.md](references/commands.md).
 
@@ -137,9 +138,9 @@ vibeknow create --from doc.pdf --engine agent        # 一键成片 (v2 agent en
 ```bash
 vibeknow theme list --mode image                 # browse the mode's style catalog
 vibeknow create --from notes.md --mode image --theme <theme_id>
-vibeknow voice list --language en-US             # voices are grouped by language
 vibeknow theme list --output json                # freeform; the user's own themes come first
 vibeknow create --from notes.md --theme ua_1234567   # a custom theme: always the ua_ token
+vibeknow voice list --language en-US             # voices are grouped by language
 vibeknow create --from slides.pdf --voice <speech_voice_id> --language en-US
 ```
 
@@ -177,6 +178,14 @@ vibeknow video edit 42 --scene 3 --script "…" --confirm act_…   # after the 
 The only content edit there is. One shot per call — three shots is three
 confirmations and three charges. `--scene` uses the numbers `video script`
 prints, counting from 1.
+
+Each work has a rolling 24-hour **free quota** for edits: within it, speech,
+layout and background images cost nothing; beyond it they are billed when the
+edit saves. Text generation is billed either way. `vibeknow video quota`
+reads it for free, and a blocked edit carries the same reading under
+`pending_actions[].context.free_quota` — tell the user what is left. It is a
+reading, not a term of the consent: the token stays valid if other edits use
+quota in between.
 
 Add `--script-only` to regenerate just the voice-over (cheaper, layout
 untouched). Leave it off — the default — to rebuild the shot's layout and
