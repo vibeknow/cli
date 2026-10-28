@@ -107,7 +107,7 @@ func List(ctx context.Context, l Lister, m modes.Mode) ([]Entry, error) {
 	}
 	var out []Entry
 	for _, e := range custom {
-		if !e.ipCharacter && usableIn(m, e) {
+		if !e.ipCharacter && usableIn(m, e) && baseKnown(e, official) {
 			out = append(out, e)
 		}
 	}
@@ -165,6 +165,16 @@ func validateCustom(ctx context.Context, l Lister, m modes.Mode, id string) (Ent
 			if !usableIn(m, e) {
 				return Entry{}, clerr.Validation(i18n.T("themecat.err.book_intro_base", id, e.Base)).
 					WithHint(i18n.T("themecat.hint.list", m.Name))
+			}
+			if e.Base != "" {
+				official, err := officialEntries(ctx, l, m.Suite)
+				if err != nil {
+					return Entry{}, err
+				}
+				if !baseKnown(e, official) {
+					return Entry{}, clerr.Validation(i18n.T("themecat.err.base_missing", id, e.Base)).
+						WithHint(i18n.T("themecat.hint.list", m.Name))
+				}
 			}
 			return e, nil
 		}
@@ -278,6 +288,19 @@ func customEntries(ctx context.Context, l Lister, assetType string) ([]Entry, er
 
 // find looks an id up among the entries and the variants under them. A
 // variant comes back as an entry of its own, naming its parent.
+// baseKnown reports whether a custom theme's base still exists in the
+// official catalog. The backend resolves a custom theme through its base and,
+// when the base is gone, drops the custom theme altogether and treats the
+// ua_ token as an unknown theme — the fallback substitution again. An empty
+// base is fine: the backend uses its default theme.
+func baseKnown(e Entry, official []Entry) bool {
+	if e.Source != SourceCustom || e.Base == "" {
+		return true
+	}
+	_, ok := find(official, e.Base)
+	return ok
+}
+
 func find(entries []Entry, id string) (Entry, bool) {
 	for _, e := range entries {
 		if e.ID == id {

@@ -63,6 +63,8 @@ func newFake() *fakeLister {
 				asset(1234567, "红薄荷", figlens.UserAssetStatusActive, "mint"),
 				asset(9, "deleted one", 2, "mint"),
 				asset(11, "古铜改", figlens.UserAssetStatusActive, "ember-bronze"),
+				asset(12, "旧主题改", figlens.UserAssetStatusActive, "retired-theme"),
+				asset(13, "无底主题", figlens.UserAssetStatusActive, ""),
 			},
 			figlens.AssetTypeImage2Theme: {
 				image2Asset(77, "my style", figlens.Image2CategoryStyle),
@@ -90,7 +92,7 @@ func TestList_FreeformHasCustomFirstAndDropsBookIntro(t *testing.T) {
 	for _, e := range got {
 		ids = append(ids, e.ID)
 	}
-	if strings.Join(ids, ",") != "ua_1234567,mint" {
+	if strings.Join(ids, ",") != "ua_1234567,ua_13,mint" {
 		t.Fatalf("ids = %v; want the active custom theme first, the inactive one and the book-intro theme absent", ids)
 	}
 	if got[0].Source != SourceCustom || got[0].Base != "mint" {
@@ -150,6 +152,9 @@ func TestValidate(t *testing.T) {
 		// Custom themes resolve through their base, so they inherit its fate.
 		{desc: "custom on a book-intro base in freeform", mode: "freeform", id: "ua_11", wantErr: []string{"ua_11", "ember-bronze"}},
 		{desc: "custom on a book-intro base in replica", mode: "replica", id: "ua_11", wantID: "ua_11"},
+		// The backend drops a custom theme whose base left the catalog.
+		{desc: "custom on a retired base", mode: "freeform", id: "ua_12", wantErr: []string{"ua_12", "retired-theme"}},
+		{desc: "custom with no base uses the default", mode: "freeform", id: "ua_13", wantID: "ua_13"},
 		{desc: "unknown slug", mode: "freeform", id: "nope", wantErr: []string{"nope", "theme list --mode freeform"}},
 
 		// Canvas: a direction and a palette under it are both theme ids.

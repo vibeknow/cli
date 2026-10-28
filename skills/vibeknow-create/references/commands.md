@@ -66,7 +66,7 @@ vibeknow create [flags]
 | `--script-lock` | 原稿锁定: the source *is* the narration — it is voiced word for word and visuals are matched to it; no script is written. Only for narration the user wrote themselves (several complete sentences). Never for a request, a topic or production notes ("帮我生成一段视频，关于…", "60 秒黑金极简"): those are not narration, and a one-sentence source cannot be split into the 2 scenes the pipeline requires. Orthogonal to `--mode` — combines with any of them. With `--mode replica` it means **the speaker notes are the script**, page by page, and the source must be a PPT file (a PDF has no notes). |
 | `--engine string` | `pipeline` (default, v=3) or `agent` (v=2, the legacy 一键成片 engine; no longer offered on the web, prints a warning). The agent engine has no mode/theme/language branches; combining them exits 2. |
 | `--density string` | Freeform only: how many scenes, `sparse`, `balanced` (default) or `dense`. Exit 2 with any `--mode` or `--engine agent`, which ignore it. |
-| `--theme-scene string` | `--mode image` only, with `--theme`: one of that style's scenes, as listed under it by `theme list --mode image` |
+| `--theme-scene string` | `--mode image` only, with `--theme`: one of that style's scenes, as listed under it by `theme list --mode image`. All it changes is the reference image the illustrations are drawn from — and only for a scene that has one of its own; most do not yet, and those use the style's own image. Do not promise the user a visible difference |
 | `--ip-asset string` | `--mode image` only: the IP character to feature, a `ref` from `vibeknow ip list`, or `none` to leave out the account default. Checked before upload |
 | `--theme string` | Theme / style / template ID from `vibeknow theme list --mode <mode>`: an official id or the user's own `ua_<id>`. Checked against that mode's list before anything is uploaded (exit 2 if it is not there); default auto-select |
 | `--language string` | Output language for script + narration: `zh-CN`, `en-US`, `es-ES`, `fr-FR`, `pt-BR`, `ja-JP`, `ko-KR` (default: account locale) |
@@ -77,7 +77,7 @@ vibeknow create [flags]
 | `--aspect string` | `horizontal` (16:9) or `vertical` (9:16); `16:9` / `9:16` accepted as aliases. Default horizontal, except `--mode canvas`, which the backend defaults to vertical |
 | `--bgm` | Enable background music (default off) |
 | `--pages int` | `--mode image` only: exact page count, 1–20 (image-gen cost scales with it; omit for auto) |
-| `--images string` | Mandatory image_index picks from `vibeknow doc images`, e.g. `1,3,5` (not for `--mode replica`) |
+| `--images string` | image_index picks from `vibeknow doc images` to feature, e.g. `1,3,5` (not for `--mode replica`). `--mode image` places each one on a page. Freeform and canvas only ask the director to prefer them: one that does not fit the storyboard is left out, and the backend does not force it in. Do not promise the user every picked image will appear |
 | `--kb-id string` | Knowledge base owning `--from <doc_id>` (printed by `vibeknow doc upload`) |
 | `--async` | Print task_id/session_id and exit without waiting |
 | `--preview-dir string` | Write cover/MP4 artifacts here and announce each as a `resource_ready` event |

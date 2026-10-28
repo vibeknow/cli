@@ -410,7 +410,10 @@ two commands used to keep separate switches and disagreed about `default`.
   page. `--pages N` sets the page count (image-gen cost scales with
   it); `--pages` is rejected outside this mode. `--theme-scene` picks a
   scene of the `--theme` style and `--ip-asset` the character who appears
-  (`vk ip list`); both are image-only and checked before upload.
+  (`vk ip list`); both are image-only and checked before upload. A scene
+  only swaps in its own reference image, and most scenes have none yet —
+  the backend then uses the style's image, by design — so help and docs
+  promise no visible difference.
 - **`--mode handdraw`** — hand-drawn animation. Runs its own graph
   (illustration → vectorization), so it is pipeline-only.
 - **`--mode canvas`** — 画布创作 (`stage_craft`): components placed on a
@@ -418,6 +421,13 @@ two commands used to keep separate switches and disagreed about `default`.
   other line. `video_kind` goes on the init request as well as the stream,
   and that matters here: init is what marks the work as a canvas work.
   Pipeline-only.
+
+`--images` is a preference outside image mode. On freeform and canvas the
+director is told to prefer the picked images, and the judge only *reports*
+one it left out (`beatline/judge.go`, "只记录,不强塞") — forcing an image into
+a scene designed without it reads worse than omitting it. Only image mode
+assigns every picked image to a page. Docs and help say "feature", never
+"mandatory".
 
 ## Themes (`--theme`)
 

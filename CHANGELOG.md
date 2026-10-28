@@ -32,7 +32,8 @@ the run succeeded, billed, and came out in a style nobody picked.
 - `--density sparse|balanced|dense` sets how many scenes a freeform video
   is split into. Refused on every other line, all of which ignore it.
 - `--theme-scene` picks one scene of an image-mode style; `theme list
-  --mode image` lists each style's `scenes`.
+  --mode image` lists each style's `scenes`. It swaps in that scene's own
+  reference image, which most scenes do not have yet.
 - `--ip-asset` picks the IP character an image-mode video features, from
   the new `vk ip list`, or `none` to leave out the account default.
 - All three new values are checked before upload, like `--theme`. The
@@ -71,6 +72,8 @@ the run succeeded, billed, and came out in a style nobody picked.
   the 一键成片 engine it runs. Behaviour and exit codes are unchanged.
 - `--mode replica --script-lock` is documented for what it does — the
   speaker notes are the script, and the source must be a PPT file.
+- `--images` is no longer described as "mandatory". Outside image mode the
+  backend treats picked images as a preference and may leave some out.
 
 ### Fixed
 
