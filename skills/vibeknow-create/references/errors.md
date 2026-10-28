@@ -128,7 +128,9 @@ advance. The `message` names the *kinds* of work being billed instead.
 Do not invent a figure for the user.
 
 What it does carry is the work's free quota, under `context.free_quota`
-next to the payload: within it, speech, layout and background cost nothing.
+next to the payload: within it an edit's speech costs nothing, while text
+generation and any image it draws are billed regardless (listed under
+`context.billed_outside_quota`).
 `context` is shown but **not** hashed — the quota is a reading other edits
 move, not a term of this one — so a token survives it changing. `"free_quota":
 "unavailable"` means it could not be read; treat the edit as fully billed.

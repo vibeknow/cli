@@ -158,8 +158,13 @@ gate rests on, which is that the user saw real terms.
 
 It also carries, under `context` rather than `payload`, the work's free
 post-edit quota (`GET /scene/editQuota`; `vk video quota` reads it alone).
-Within it speech, layout and background are free and only text generation
-bills. `context` is shown with the action but not hashed into the token: the
+Only the tts part applies: an edit saved through `/scene/edit` takes its
+speech through the tts quota, while text generation and every image it
+draws (a background on the standard line, illustrations on a canvas page)
+are billed regardless. The layout and background quotas are reserved only
+by the web editor's preview endpoints, which the CLI does not call, so the
+gate shows tts alone and lists the rest under `billed_outside_quota`.
+`context` is shown with the action but not hashed into the token: the
 quota is moved by other edits, the web's included, and a consent that expired
 whenever anyone used quota would expire for reasons unrelated to what was
 agreed to.

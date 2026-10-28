@@ -150,7 +150,7 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		Type:    cmdutil.SceneEditActionType,
 		Payload: cmdutil.SceneEditActionPayload(sessionID, flagEditScene, prev, next, flagEditScriptOnly),
 		Context: editGateContext(quota),
-		Prompt:  editPrompt(flagEditScene, flagEditScriptOnly, quota),
+		Prompt:  editPrompt(flagEditScene, flagEditScriptOnly, work.VideoKind == figlens.VideoKindStageCraft, quota),
 		Yes:     flagEditYes,
 		Token:   flagEditConfirm,
 		ResumeCommand: func(token string) string {
@@ -314,25 +314,29 @@ func sceneRange(scenes []figlens.WorkScene) string {
 // the CLI can say truthfully, and inventing a number would be worse than
 // saying none — the whole gate rests on the user having seen real terms.
 //
-// What it can add is the free quota, which decides whether the speech and
-// image halves cost anything at all. Only the quotas this edit draws on are
-// named: a --script-only edit makes no layout or background.
-func editPrompt(sceneIndex int, scriptOnly bool, q *figlens.EditQuota) string {
+// What it can add is the free quota, and only the one this path draws on.
+// A saved edit takes its speech through the tts quota; the images it draws —
+// a background on the standard line, illustrations on a canvas page — are
+// billed per image whatever the quota says. The layout and background quotas
+// belong to the web editor's preview tools, which this command does not use,
+// so naming them here would suggest images are free when they are not.
+//
+// A canvas page has no background image: its full regeneration re-plans the
+// page's elements and draws their illustrations, so it gets its own wording.
+func editPrompt(sceneIndex int, scriptOnly, canvas bool, q *figlens.EditQuota) string {
 	var p, line string
 	switch {
 	case scriptOnly:
 		p = i18n.T("edit.confirm_prompt_script_only", sceneIndex)
+	case canvas:
+		p = i18n.T("edit.confirm_prompt_canvas", sceneIndex)
 	default:
 		p = i18n.T("edit.confirm_prompt", sceneIndex)
 	}
-	switch {
-	case q == nil:
+	if q == nil {
 		line = i18n.T("edit.quota_unavailable")
-	case scriptOnly:
-		line = i18n.T("edit.quota_script_only", q.TTS.Remaining, q.TTS.Total)
-	default:
-		line = i18n.T("edit.quota_full", q.TTS.Remaining, q.TTS.Total,
-			q.Layout.Remaining, q.Layout.Total, q.Background.Remaining, q.Background.Total)
+	} else {
+		line = i18n.T("edit.quota_tts", q.TTS.Remaining, q.TTS.Total)
 	}
 	// The question goes last: the reader should have the terms in front of
 	// them before being asked to agree to them.
@@ -342,10 +346,13 @@ func editPrompt(sceneIndex int, scriptOnly bool, q *figlens.EditQuota) string {
 // editGateContext puts the quota reading next to the blocked action, outside
 // the hashed payload; see cmdutil.GateOptions.Context.
 func editGateContext(q *figlens.EditQuota) map[string]any {
+	ctx := map[string]any{"billed_outside_quota": []string{"text_generation", "image_generation"}}
 	if q == nil {
-		return map[string]any{"free_quota": "unavailable"}
+		ctx["free_quota"] = "unavailable"
+		return ctx
 	}
-	return map[string]any{"free_quota": quotaMap(q)}
+	ctx["free_quota"] = map[string]any{"tts": usageMap(q.TTS, "_sec")}
+	return ctx
 }
 
 // editResumeCommand spells out the line that proceeds, with the script

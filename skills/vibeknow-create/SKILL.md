@@ -187,9 +187,10 @@ The only content edit there is. One shot per call — three shots is three
 confirmations and three charges. `--scene` uses the numbers `video script`
 prints, counting from 1.
 
-Each work has a rolling 24-hour **free quota** for edits: within it, speech,
-layout and background images cost nothing; beyond it they are billed when the
-edit saves. Text generation is billed either way. `vibeknow video quota`
+Each work has a rolling 24-hour **free speech quota**: within it an edit's
+voice-over costs nothing; beyond it, it is billed when the edit saves. Text
+generation, and every image a full regeneration draws, are billed either way
+— do not tell the user an edit is free because quota is left. `vibeknow video quota`
 reads it for free, and a blocked edit carries the same reading under
 `pending_actions[].context.free_quota` — tell the user what is left. It is a
 reading, not a term of the consent: the token stays valid if other edits use

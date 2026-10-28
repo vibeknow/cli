@@ -634,20 +634,21 @@ The `action_id` is bound to that exact diff, plus `script_only`. So:
 
 Re-run without `--confirm` to get current terms and a current token.
 
-**The free quota.** Each work has a rolling 24-hour free quota (doubled on a
-subscription). Within it, speech synthesis, layout and background images are
-free; beyond it they are billed when the edit saves. Text generation is
-billed either way. The blocked action carries the reading next to the
-payload:
+**The free quota.** Each work has a rolling 24-hour free speech quota
+(doubled on a subscription). Within it an edit's voice-over is free; beyond
+it, it is billed when the edit saves. Text generation, and every image a
+full regeneration draws, are billed either way. The blocked action carries
+the reading next to the payload:
 
 ```json
-"context": {"free_quota": {
-  "tts": {"used_sec": 30, "total_sec": 120, "remaining_sec": 90, "exhausted": false, "resets_at": "…"},
-  "layout": {"used": 1, "total": 3, "remaining": 2, "exhausted": false},
-  "background": {"used": 3, "total": 3, "remaining": 0, "exhausted": true},
-  "free_within_quota": ["speech_synthesis", "layout", "background_image"],
-  "always_billed": ["text_generation"]}}
+"context": {
+  "free_quota": {"tts": {"used_sec": 30, "total_sec": 120, "remaining_sec": 90, "exhausted": false, "resets_at": "…"}},
+  "billed_outside_quota": ["text_generation", "image_generation"]}
 ```
+
+**On a canvas work** (`--mode canvas`) the full regeneration re-plans the
+page's elements and draws their illustrations — there is no background
+image — and the confirmation says so. `--script-only` keeps the page as it is.
 
 Tell the user what is left. `context` is not hashed into the `action_id`:
 the quota is a reading that other edits — including ones on the web — move,
@@ -675,7 +676,9 @@ identical to what the shot already says, empty narration, and a missing
 
 **Not covered by this command.** Changing images, swapping a layout,
 deleting a shot, and editing several shots in one charge all exist on the
-backend and are not wired up yet.
+backend and are not wired up yet. Neither is the canvas editor — moving an
+element on the grid, or swapping one element's picture: it is a drag-and-drop
+tool on the web.
 
 ## video quota
 
@@ -685,10 +688,12 @@ Read a work's free post-edit quota. Free and read-only.
 vibeknow video quota [task_id] [--session-id <sid>] [--output json]
 ```
 
-Same shape as `context.free_quota` above, plus `task_id` and `session_id`.
-Units are in the key names: `tts` counts seconds of speech (`*_sec`),
-`layout` and `background` count generated results. The figures are a
-reading, not a reservation.
+All three parts of the quota, plus `task_id` and `session_id`. Units are in
+the key names: `tts` counts seconds of speech (`*_sec`), `layout` and
+`background` count generated results. Only `tts` applies to `video edit`
+(`video_edit_uses: ["tts"]`); layout and background are the web editor's
+preview quotas. `billed_outside_quota_by_edit` names what an edit bills
+regardless. The figures are a reading, not a reservation.
 
 ## video revoice
 

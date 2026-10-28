@@ -41,6 +41,8 @@ type editStubOptions struct {
 	// serveQuota answers /v1/scene/editQuota; without it the endpoint 404s,
 	// as a backend older than the free quota does.
 	serveQuota bool
+	// videoKind is the work's backend line; "stage_craft" is a canvas work.
+	videoKind string
 }
 
 func newEditStub(t *testing.T, opts editStubOptions) *editStub {
@@ -50,7 +52,7 @@ func newEditStub(t *testing.T, opts editStubOptions) *editStub {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/v1/works/detailBySession"):
 			w.Header().Set("Content-Type", "application/json")
-			work := map[string]any{"id": 77, "session_id": "s_run", "title": "季度报告解读", "status": 1}
+			work := map[string]any{"id": 77, "session_id": "s_run", "title": "季度报告解读", "status": 1, "video_kind": opts.videoKind}
 			if opts.videoPath != "" {
 				work["video_path"] = opts.videoPath
 			}
@@ -546,8 +548,15 @@ func TestVideoEdit_QuotaShownButNotPartOfTheConsent(t *testing.T) {
 	if tts["remaining_sec"] != float64(90) {
 		t.Fatalf("context.free_quota.tts = %v, want remaining_sec 90", quota["tts"])
 	}
-	if bg, _ := quota["background"].(map[string]any); bg["exhausted"] != true {
-		t.Errorf("background quota = %v, want exhausted", quota["background"])
+	// An edit saves directly: only speech goes through the quota. The layout
+	// and background quotas belong to the web editor's previews, so showing
+	// them here would imply images are free.
+	if _, shown := quota["background"]; shown {
+		t.Errorf("context shows the background quota, which video edit does not draw on: %v", quota)
+	}
+	billed, _ := ctx["billed_outside_quota"].([]any)
+	if len(billed) != 2 || billed[1] != "image_generation" {
+		t.Errorf("billed_outside_quota = %v, want text and image generation", ctx["billed_outside_quota"])
 	}
 	if msg, _ := action["message"].(string); !strings.Contains(msg, "90") || !strings.HasSuffix(msg, "Continue?") {
 		t.Errorf("message must state the quota, then ask: %q", msg)
@@ -619,7 +628,42 @@ func TestVideoQuota_ReportsUnitsInKeys(t *testing.T) {
 	if layout["remaining"] != float64(2) {
 		t.Errorf("layout = %v", got["layout"])
 	}
-	if billed, _ := got["always_billed"].([]any); len(billed) != 1 || billed[0] != "text_generation" {
-		t.Errorf("always_billed = %v", got["always_billed"])
+	if uses, _ := got["video_edit_uses"].([]any); len(uses) != 1 || uses[0] != "tts" {
+		t.Errorf("video_edit_uses = %v", got["video_edit_uses"])
+	}
+	if billed, _ := got["billed_outside_quota_by_edit"].([]any); len(billed) != 2 {
+		t.Errorf("billed_outside_quota_by_edit = %v", got["billed_outside_quota_by_edit"])
+	}
+}
+
+// The confirmation has to describe what this work's regeneration actually
+// does and bills. A canvas page has no background image; its full
+// regeneration redraws illustrations, billed per image like any other.
+func TestVideoEdit_PromptMatchesTheWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	bin := build(t)
+	for _, tc := range []struct {
+		kind      string
+		want, not string
+	}{
+		{"", "newly generated image are billed", "speech, layout and background are free"},
+		{"stage_craft", "illustration", "background image"},
+	} {
+		stub := newEditStub(t, editStubOptions{scenes: editScenes(), serveQuota: true, videoKind: tc.kind})
+		stub.ttsRemaining.Store(90)
+		configHome := buildVideoProfile(t, stub.server.URL)
+		stdout, stderr, code := runVideoCmd(t, bin, configHome,
+			"video", "edit", "42", "--session-id", "s_run", "--scene", "3", "--script", "换一种说法。", "--output", "json")
+		if code != 8 {
+			t.Fatalf("kind %q: exit %d\nstderr: %s", tc.kind, code, stderr)
+		}
+		var got map[string]any
+		_ = json.Unmarshal([]byte(stdout), &got)
+		msg, _ := got["pending_actions"].([]any)[0].(map[string]any)["message"].(string)
+		if !strings.Contains(msg, tc.want) || strings.Contains(msg, tc.not) {
+			t.Errorf("kind %q: message %q should say %q and not %q", tc.kind, msg, tc.want, tc.not)
+		}
 	}
 }

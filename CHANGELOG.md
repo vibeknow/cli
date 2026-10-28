@@ -56,11 +56,14 @@ the run succeeded, billed, and came out in a style nobody picked.
 
 ### Changed
 
-- `video edit` states the free quota. The backend now makes post-edit
-  speech, layout and background free within a per-work rolling 24-hour
-  quota and bills them beyond it; text generation is always billed. The
-  confirmation used to say speech was billed outright. It now states what
-  is left, and the blocked action carries it as `context.free_quota`.
+- `video edit` states the free speech quota. The backend now makes
+  post-edit speech free within a per-work rolling 24-hour quota and bills
+  it beyond; text generation and any image an edit draws are billed either
+  way. The confirmation used to say speech was billed outright. It now
+  states what is left, and the blocked action carries it as
+  `context.free_quota`, with the rest under `billed_outside_quota`.
+- `video edit` on a canvas work describes what its regeneration does:
+  re-plan the page and redraw its illustrations, not a background image.
 - Pending actions gain `context`: shown with the payload but not hashed
   into the `action_id`, so a consent survives a reading — such as a quota
   used up elsewhere — changing between block and resume.

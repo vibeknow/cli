@@ -19,14 +19,18 @@ var quotaCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	Long: `Show how much of a work's free post-edit quota is left.
 
-Each work gets a rolling 24-hour quota (twice as much on a subscription).
-Within it, a ` + "`vk video edit`" + `'s speech synthesis, layout and background
-images are free; beyond it they are billed when the edit is saved. Text
-generation is billed either way.
+Each work gets a rolling 24-hour quota (twice as much on a subscription),
+in three parts:
 
-  tts          seconds of regenerated speech
-  layout       regenerated layouts / illustrations
-  background   regenerated background images
+  tts          seconds of regenerated speech — what ` + "`vk video edit`" + ` draws on
+  layout       layout and image previews in the web editor
+  background   background-image previews in the web editor
+
+Within the tts quota an edit's speech is free; beyond it, it is billed when
+the edit is saved. Text generation, and every image an edit draws, are
+billed either way: ` + "`vk video edit`" + ` saves directly and does not go
+through the web editor's preview tools, which are what the layout and
+background quotas cover.
 
 Read-only and free. The figures are a reading, not a reservation: another
 edit — including one made on the web — can use them up before yours runs.`,
@@ -72,10 +76,11 @@ func quotaMap(q *figlens.EditQuota) map[string]any {
 		"tts":        usageMap(q.TTS, "_sec"),
 		"layout":     usageMap(q.Layout, ""),
 		"background": usageMap(q.Background, ""),
-		// What the quota does and does not cover, stated with the numbers
-		// so the reading cannot be mistaken for "edits are free".
-		"free_within_quota": []string{"speech_synthesis", "layout", "background_image"},
-		"always_billed":     []string{"text_generation"},
+		// Which quota this CLI's edit actually draws on, stated with the
+		// numbers so the reading cannot be mistaken for "edits are free":
+		// layout and background cover the web editor's preview tools only.
+		"video_edit_uses":              []string{"tts"},
+		"billed_outside_quota_by_edit": []string{"text_generation", "image_generation"},
 	}
 }
 
