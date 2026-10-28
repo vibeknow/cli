@@ -688,6 +688,78 @@ Units are in the key names: `tts` counts seconds of speech (`*_sec`),
 `layout` and `background` count generated results. The figures are a
 reading, not a reservation.
 
+## video revoice
+
+Make a new version of a finished video narrated by another voice. Script,
+storyboard and visuals are kept. **Costs credits.**
+
+```
+vibeknow video revoice [task_id] --voice <# | speech_voice_id> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--voice string` | The new voice, a `#` or `speech_voice_id` from `voice list`. Must speak the video's language |
+| `--yes`, `-y` / `--confirm string` | Authority for the spend, as for `video export` |
+| `--async` | Return once the run has started |
+| `--session-id string` | The work to re-voice (default: resolved from the local run ledger) |
+| `--preview-dir string` | Write the new work's cover here |
+
+The result is a **new work** in a new session under the same task:
+
+```json
+{"task_id": 42, "session_id": "s_new", "work_id": 99, "preview": {…}, "export": {…},
+ "revoice": {"source_session_id": "s_src", "source_work_id": 77, "voice_id": "…", "voice_name": "…",
+             "language": "zh-CN", "status": "completed"}}
+```
+
+The new pair is recorded in the run ledger, so afterwards `video status 42`
+with no `--session-id` resolves to the new version. Address the original
+with its `--session-id`.
+
+**Billing.** By actual use — speech for the whole narration, plus lip-sync
+again when the video has a presenter (`payload.has_avatar`). Nothing is
+quoted in advance; `context.duration_sec` shows the narration length the
+speech is billed against.
+
+**Re-running is safe.** The request is keyed on the work, its current
+version and the voice. Running the same command again attaches to that run:
+still going → watched; finished → reported; neither starts or bills
+anything, and neither asks. Failed, paused or out of credits → retried,
+which bills again and therefore goes through the gate.
+
+**Exit codes.** `0` new version ready; `8` blocked on the spend; `5` failed,
+out of credits (`needs_budget`), or not possible for this work (the message
+is the backend's reason); `6` paused; `2` the command line is wrong — no
+`--voice`, or the voice it already has.
+
+## video cover
+
+Generate an AI cover for a finished video and apply it. **Costs credits.**
+
+```
+vibeknow video cover [task_id] [--title "…"] [--subtitle "…"] [flags]
+```
+
+`--title` is the text drawn on the cover (default: the video's title).
+Earlier covers stay on the work as candidates (`cover_urls`).
+
+**Billing.** One image generation, charged only after the cover is saved; a
+generation that fails costs nothing. The payload names the billed item
+(`billed: "image_generation x1"`) because the backend does not expose the
+unit price.
+
+**The exported MP4 is withdrawn.** It shows the old cover, so the backend
+clears it; the result says `export_cleared: true` with a `next_actions`
+entry for `video export`, and the confirmation warns about it first.
+
+**Exit 6 means "unknown", not "failed".** Generation takes 30–60 s and the
+backend finishes and bills it even if the client has gone. If the stream
+ends without a result the command exits 6 with `resend_safe: false`: check
+`video status` for a new `cover_url` before generating again. An explicit
+failure from the backend exits non-zero with its reason, and nothing was
+billed.
+
 ## video set
 
 Change what a finished video *presents* — music, subtitles, title — without

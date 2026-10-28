@@ -28,6 +28,8 @@ func init() {
 	Cmd.AddCommand(scriptCmd)
 	Cmd.AddCommand(editCmd)
 	Cmd.AddCommand(quotaCmd)
+	Cmd.AddCommand(revoiceCmd)
+	Cmd.AddCommand(coverCmd)
 	Cmd.AddCommand(setCmd)
 	Cmd.AddCommand(pauseCmd)
 	Cmd.AddCommand(resumeCmd)

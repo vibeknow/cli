@@ -89,6 +89,41 @@ func SceneEditActionPayload(sessionID string, sceneIndex int, from, to string, s
 	}
 }
 
+// RevoiceActionType names the boundary for re-voicing a whole work.
+const RevoiceActionType = "revoice_confirmation"
+
+// RevoiceActionPayload is what the user is being asked to agree to. Like a
+// scene edit it carries no credit count: the backend prices a re-voice by
+// actual use — seconds of speech, and of lip-sync when there is a presenter
+// — and quotes nothing in advance. source_revision pins the version of the
+// work the user looked at; a token stops verifying if the work changes.
+func RevoiceActionPayload(sessionID, revision, voiceID string, hasAvatar bool) map[string]any {
+	return map[string]any{
+		"session_id":      sessionID,
+		"source_revision": revision,
+		"voice_id":        voiceID,
+		"has_avatar":      hasAvatar,
+		"operation":       "revoice",
+	}
+}
+
+// CoverActionType names the boundary for generating an AI cover.
+const CoverActionType = "cover_confirmation"
+
+// CoverActionPayload is what the user is being asked to agree to: one
+// image generation, billed after the cover is saved. The backend does not
+// expose the unit price, so the payload names the billed item rather than
+// a figure. Title and subtitle are hashed because they are what gets drawn.
+func CoverActionPayload(sessionID, title, subtitle string) map[string]any {
+	return map[string]any{
+		"session_id": sessionID,
+		"title":      title,
+		"subtitle":   subtitle,
+		"billed":     "image_generation x1",
+		"operation":  "generate_cover",
+	}
+}
+
 // GateOptions describes a spend the user has to authorise.
 type GateOptions struct {
 	// Type is the stable boundary token, e.g. "export_confirmation".

@@ -133,13 +133,21 @@ export` exiting 0 states that the MP4 exists; at this boundary it does not.
 Not 2 either — the command line is fine, and sending an agent to look for
 an argument mistake it did not make wastes a turn.
 
-Two boundaries exist, and a token verifies only against the one it was
+Four boundaries exist, and a token verifies only against the one it was
 minted for:
 
 | Type | Raised by | Payload |
 |------|-----------|---------|
 | `export_confirmation` | `vk video export`, `vk create --export` | `session_id`, `credits`, `operation` |
 | `scene_edit_confirmation` | `vk video edit` | `session_id`, `scene_index`, `script_only`, `from`, `to` |
+| `revoice_confirmation` | `vk video revoice` | `session_id`, `source_revision`, `voice_id`, `has_avatar`, `operation` |
+| `cover_confirmation` | `vk video cover` | `session_id`, `title`, `subtitle`, `billed`, `operation` |
+
+Neither new boundary carries a credit count either. A re-voice is priced by
+actual use (speech, and lip-sync when there is a presenter) and quoted by
+nobody; a cover is one image generation whose unit price the backend does
+not expose. `source_revision` is the backend's fingerprint of the work, so a
+work edited after the block mints a different token.
 
 `scene_edit_confirmation` carries no credit count, and that is the honest
 answer rather than a gap: the price depends on how much text the model
@@ -203,6 +211,32 @@ resolved remotely: the backend's work list is keyed by `work_id` and
 `session_id` and carries no `task_id`, so `vk video status 12345` with an
 empty ledger exits 2 pointing at `vk video list`, rather than pretending to
 look something up it cannot.
+
+## Re-voice and cover (`vk video revoice`, `vk video cover`)
+
+**Re-voice makes a new work.** The backend copies the work into a new
+session under the same task and re-narrates it; the source is untouched.
+The CLI records the new pair in the ledger, which means `vk video status
+<task_id>` without `--session-id` resolves to the new version afterwards —
+the result names both so neither is lost.
+
+**Re-voice is idempotent by construction.** The idempotency key is a hash
+of (work, source_revision, voice), so the same request always sends the
+same key and the backend hands back the run it already started. Before
+creating anything the CLI looks for that run in `/works/revoiceJobs`:
+running or finished, it attaches with no gate (nothing is spent); failed,
+paused or out of credits, re-running retries it — a new spend, so it goes
+through the gate. The job row, not the event stream, is what the command
+waits on: it is what the backend retries from and where the failure reason
+lives.
+
+**Cover uses the streaming endpoint.** The synchronous one takes 30–60 s,
+past the 30 s client timeout, and the backend completes and bills a
+generation even after the client leaves — so a timeout there would invite a
+second paid attempt. A stream that ends with no result exits **6** with
+`resend_safe: false`; an explicit error frame means nothing was saved and
+nothing billed. Generating a cover clears the work's exported MP4, reported
+as `export_cleared`.
 
 ## Async submission
 

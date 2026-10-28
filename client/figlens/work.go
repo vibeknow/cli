@@ -28,6 +28,8 @@ type Work struct {
 	Duration   int64  `json:"duration"`
 	Engine     string `json:"engine,omitempty"`
 	Status     int    `json:"status"`
+	// TaskID is the task the work belongs to; 0 on some historical rows.
+	TaskID int64 `json:"task_id,omitempty"`
 	// VideoKind is the backend line the work ran on; empty is the standard
 	// (freeform) line. Reported back as a CLI mode name by the snapshot.
 	VideoKind string `json:"video_kind,omitempty"`

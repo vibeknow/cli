@@ -107,12 +107,14 @@ Rules:
   `--confirm`, show the new terms, ask again.
 - Do not reach for `--yes` to get past a block you just received.
 
-### The two boundaries
+### The four boundaries
 
 | `type` | Raised by | What is being agreed to |
 |--------|-----------|-------------------------|
 | `export_confirmation` | `video export`, `create --export` | Rendering the MP4: `{session_id, credits, operation}` |
 | `scene_edit_confirmation` | `video edit` | Rewriting one shot: `{session_id, scene_index, script_only, from, to}` |
+| `revoice_confirmation` | `video revoice` | A new version in another voice: `{session_id, source_revision, voice_id, has_avatar, operation}` |
+| `cover_confirmation` | `video cover` | One AI cover, applied: `{session_id, title, subtitle, billed, operation}` |
 
 A token verifies only against the boundary it was minted for, so one is
 never usable for the other.

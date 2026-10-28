@@ -112,6 +112,8 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow video script [task_id]` | Read what the video says, shot by shot (free) |
 | `vibeknow video edit [task_id] --scene N --script "…"` | Rewrite one shot's narration (**bills**; confirmation gate) |
 | `vibeknow video quota [task_id]` | Free post-edit quota left on a work (free) |
+| `vibeknow video revoice [task_id] --voice <id>` | New version of the video in another voice (**bills**; confirmation gate) |
+| `vibeknow video cover [task_id] [--title …]` | Generate an AI cover and apply it (**bills**; confirmation gate) |
 
 For full flags and output examples, see [commands.md](references/commands.md).
 
@@ -210,6 +212,28 @@ flags this as `export_stale`.
 
 Exit 4 means another edit holds the lock on this work — wait a moment and
 retry the same command.
+
+### Another voice, or a new cover (`video revoice`, `video cover`)
+
+```bash
+vibeknow voice list --language zh-CN                    # the new voice must speak the video's language
+vibeknow video revoice 42 --voice 3                      # exit 8: asks first
+vibeknow video revoice 42 --voice 3 --confirm act_…      # after the user agrees
+vibeknow video cover 42 --title "三分钟看懂季度财报"       # exit 8, then --confirm
+```
+
+`video revoice` keeps the script and visuals and makes a **new work** in a
+new session; the original stays. The result's `session_id` is the new one
+and `revoice.source_session_id` the original — tell the user both. It bills
+by actual use with no quote. **Re-running the exact same command is always
+safe**: it attaches to the run it already started (no new spend, no prompt)
+and only asks again when that run failed and needs a retry.
+
+`video cover` bills one image generation, only once the cover is saved. It
+withdraws an exported MP4 (`export_cleared: true`) — say so, and offer
+`video export`. Exit **6** from `video cover` means the connection dropped
+before the result: the cover may already exist and be billed, so check
+`video status` (`cover_url`) before ever generating again.
 
 ### Make the subtitles readable (`video set`)
 

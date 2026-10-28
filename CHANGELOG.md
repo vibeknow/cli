@@ -17,6 +17,21 @@
   backend accepts a wrong one silently: an unknown density becomes
   balanced, an unknown scene falls back to the style's own image.
 
+### Added — `vk video revoice` and `vk video cover`
+
+- `vk video revoice --voice` makes a new version of a finished video in
+  another voice, as a new work in a new session under the same task; the
+  original is untouched and the new pair is recorded in the run ledger. It
+  goes through a new `revoice_confirmation` gate. Re-running the same
+  command is safe: it attaches to the run it already started, and retries a
+  failed one only after asking again.
+- `vk video cover` generates an AI cover and applies it, through a new
+  `cover_confirmation` gate. It reports `export_cleared` when the backend
+  withdraws an exported MP4, and exits 6 with `resend_safe: false` when the
+  stream drops before the result, since the cover may already be billed.
+- `--voice` resolution moved to `internal/voiceref`, shared by `create` and
+  `revoice`.
+
 ### Changed
 
 - `--engine agent` prints a deprecation warning: the web no longer offers

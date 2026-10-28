@@ -113,7 +113,7 @@ func (c *Client) StreamSceneEdit(ctx context.Context, params SceneEditParams, on
 	defer resp.Body.Close()
 
 	if !isEventStream(resp) {
-		return decodeSceneEditRefusal(resp)
+		return decodeStreamRefusal(resp, "scene edit")
 	}
 
 	reader := sse.NewReader(resp.Body)
@@ -195,21 +195,25 @@ func isEventStream(resp *http.Response) bool {
 	return strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
 }
 
-// decodeSceneEditRefusal turns the pre-stream JSON envelope into the same
+// decodeStreamRefusal turns the pre-stream JSON envelope into the same
 // error shape every other backend call produces, so `work_edit_busy` reaches
 // the exit-code table (4, retryable) and `insufficient_credits` reaches it
 // as 5 — rather than both surfacing as a stream that carried no events.
-func decodeSceneEditRefusal(resp *http.Response) error {
+//
+// what names the request in the two fallback messages. Shared by every
+// endpoint that answers with an event stream on success and a plain JSON
+// envelope when it refuses up front.
+func decodeStreamRefusal(resp *http.Response, what string) error {
 	var body struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		TraceID string `json:"trace_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return fmt.Errorf("scene edit: backend returned %s, not an event stream", resp.Header.Get("Content-Type"))
+		return fmt.Errorf("%s: backend returned %s, not an event stream", what, resp.Header.Get("Content-Type"))
 	}
 	if body.Code == 0 || body.Code == 200 {
-		return fmt.Errorf("scene edit: backend accepted the request but sent no event stream")
+		return fmt.Errorf("%s: backend accepted the request but sent no event stream", what)
 	}
 	code, ok := httpclient.MapBusinessCode(body.Code)
 	if !ok {
