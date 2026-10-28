@@ -200,8 +200,8 @@ var waitCmd = &cobra.Command{
 				r.Status = jobs.StatusPaused
 			})
 			return clerr.Newf(
-				"task paused; resume it with: vk video resume %d --session-id %s",
-				taskID, flagWaitSessionID).WithCode(6)
+				"task paused; resume it with: vk video resume %s",
+				targetArgs(taskID, flagWaitSessionID)).WithCode(6)
 		}
 		if !taskSucceeded {
 			// The stream closed without a terminal event. Exiting 0 here

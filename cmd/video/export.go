@@ -68,7 +68,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 		Yes:     flagExportYes,
 		Token:   flagExportConfirm,
 		ResumeCommand: func(token string) string {
-			return fmt.Sprintf("vk video export %d --session-id %s --confirm %s", taskID, flagExportSessionID, token)
+			return fmt.Sprintf("vk video export %s --confirm %s", targetArgs(taskID, flagExportSessionID), token)
 		},
 	})
 	if err != nil {

@@ -277,10 +277,10 @@ func init() {
 		"cover.cancelled":                 "cancelled; nothing was generated",
 		"cover.generating":                "generating the cover (30–60s)…",
 		"cover.err.outcome_unknown":       "the connection ended before the cover result arrived; it may have been generated and billed",
-		"cover.export_cleared":            "the exported MP4 was withdrawn (it showed the old cover); run `vk video export %d --session-id %s` for a new one",
+		"cover.export_cleared":            "the exported MP4 was withdrawn (it showed the old cover); run `vk video export %s` for a new one",
 		"edit.cancelled":                  "cancelled by user",
 		"edit.succeeded":                  "shot %d updated",
-		"edit.export_stale":               "note: the rendered MP4 was made from the old narration and has not been withdrawn — `vk video download` will still return it. Run `vk video export %d --session-id %s` to re-render (bills). The preview and share link already show the edit.",
+		"edit.export_stale":               "note: the rendered MP4 was made from the old narration and has not been withdrawn — `vk video download` will still return it. Run `vk video export %s` to re-render (bills). The preview and share link already show the edit.",
 
 		// update / upgrade notice
 		"update.available":  "A newer version %s is available (you have %s). Run `npm update -g vibeknow-cli` to upgrade.",
@@ -567,10 +567,10 @@ func init() {
 		"cover.cancelled":                 "已取消，未生成任何内容",
 		"cover.generating":                "正在生成封面（30–60 秒）…",
 		"cover.err.outcome_unknown":       "封面结果返回前连接已断开；封面可能已经生成并扣费",
-		"cover.export_cleared":            "已导出的 MP4 已作废（它用的是旧封面）；运行 `vk video export %d --session-id %s` 重新导出",
+		"cover.export_cleared":            "已导出的 MP4 已作废（它用的是旧封面）；运行 `vk video export %s` 重新导出",
 		"edit.cancelled":                  "已取消",
 		"edit.succeeded":                  "第 %d 幕已更新",
-		"edit.export_stale":               "注意：已渲染的 MP4 出自旧讲稿，且并未被撤下——`vk video download` 仍会返回它。跑 `vk video export %d --session-id %s` 重新渲染（计费）。预览与分享链接已是新内容。",
+		"edit.export_stale":               "注意：已渲染的 MP4 出自旧讲稿，且并未被撤下——`vk video download` 仍会返回它。跑 `vk video export %s` 重新渲染（计费）。预览与分享链接已是新内容。",
 
 		// update / upgrade notice
 		"update.available":  "新版本 %s 可用（当前 %s），运行 `npm update -g vibeknow-cli` 升级。",

@@ -199,7 +199,7 @@ func revoiceGate(cmd *cobra.Command, taskID int64, sessionID, voice string, cap 
 		Yes:     flagRevoiceYes,
 		Token:   flagRevoiceConfirm,
 		ResumeCommand: func(token string) string {
-			return fmt.Sprintf("vk video revoice %d --session-id %s --voice %s --confirm %s", taskID, sessionID, shellQuote(voice), token)
+			return fmt.Sprintf("vk video revoice %s --voice %s --confirm %s", targetArgs(taskID, sessionID), shellQuote(voice), token)
 		},
 	})
 	if err == nil && !ok {

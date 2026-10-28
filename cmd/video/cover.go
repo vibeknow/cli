@@ -74,6 +74,9 @@ func runCover(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if taskID == 0 {
+		taskID = work.TaskID
+	}
 	switch work.Status {
 	case figlens.WorkStatusActive:
 	case figlens.WorkStatusFailed, figlens.WorkStatusDeleted:
@@ -106,7 +109,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		Yes:     flagCoverYes,
 		Token:   flagCoverConfirm,
 		ResumeCommand: func(token string) string {
-			cmdline := fmt.Sprintf("vk video cover %d --session-id %s --title %s", taskID, sessionID, shellQuote(title))
+			cmdline := fmt.Sprintf("vk video cover %s --title %s", targetArgs(taskID, sessionID), shellQuote(title))
 			if subtitle != "" {
 				cmdline += " --subtitle " + shellQuote(subtitle)
 			}
@@ -130,7 +133,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		// have made and billed the cover after the connection went.
 		return clerr.New(i18n.T("cover.err.outcome_unknown")).WithCode(6).
 			WithDetail(map[string]any{"resend_safe": false}).
-			WithHintf("run `vk video status %d --session-id %s` and compare cover_url before generating again", taskID, sessionID)
+			WithHintf("run `vk video status %s` and compare cover_url before generating again", targetArgs(taskID, sessionID))
 	}
 	if err != nil {
 		return err
@@ -162,7 +165,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		}
 		if exportCleared {
 			payload["next_actions"] = []map[string]string{{
-				"command": fmt.Sprintf("vk video export %d --session-id %s", taskID, sessionID),
+				"command": "vk video export " + targetArgs(taskID, sessionID),
 				"purpose": "Re-render the MP4 with the new cover (bills; asks for confirmation first)",
 			}}
 		}
@@ -170,7 +173,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "cover_url=%s\n", res.CoverURL)
 	if exportCleared {
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("cover.export_cleared", taskID, sessionID))
+		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("cover.export_cleared", targetArgs(taskID, sessionID)))
 	}
 	return nil
 }

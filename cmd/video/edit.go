@@ -244,7 +244,7 @@ func renderEditResult(cmd *cobra.Command, r editResult) error {
 		}
 		if r.StaleExport {
 			payload["next_actions"] = []map[string]string{{
-				"command": fmt.Sprintf("vk video export %d --session-id %s", r.TaskID, r.SessionID),
+				"command": "vk video export " + targetArgs(r.TaskID, r.SessionID),
 				"purpose": "Re-render the MP4 with the new narration (bills; asks for confirmation first)",
 			}}
 		}
@@ -257,7 +257,7 @@ func renderEditResult(cmd *cobra.Command, r editResult) error {
 		fmt.Fprintf(out, "preview_url=%s\n", r.PreviewURL)
 	}
 	if r.StaleExport {
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("edit.export_stale", r.TaskID, r.SessionID))
+		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("edit.export_stale", targetArgs(r.TaskID, r.SessionID)))
 	}
 	return nil
 }
@@ -359,7 +359,7 @@ func editGateContext(q *figlens.EditQuota) map[string]any {
 // quoted so it survives being copied into a shell.
 func editResumeCommand(taskID int64, sessionID string, sceneIndex int, script string, scriptOnly bool, token string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "vk video edit %d --session-id %s --scene %d --script %s", taskID, sessionID, sceneIndex, shellQuote(script))
+	fmt.Fprintf(&b, "vk video edit %s --scene %d --script %s", targetArgs(taskID, sessionID), sceneIndex, shellQuote(script))
 	if scriptOnly {
 		b.WriteString(" --script-only")
 	}

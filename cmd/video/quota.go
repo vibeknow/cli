@@ -53,7 +53,9 @@ edit — including one made on the web — can use them up before yours runs.`,
 		format, _ := cmd.Flags().GetString("output")
 		if format == output.FormatJSON || format == output.FormatNDJSON {
 			payload := quotaMap(q)
-			payload["task_id"] = taskID
+			if taskID != 0 {
+				payload["task_id"] = taskID
+			}
 			payload["session_id"] = sessionID
 			return output.NewJSON(cmd.OutOrStdout()).Object(payload)
 		}
