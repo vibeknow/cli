@@ -440,7 +440,8 @@ only styles as themes and refuses a character's token pointing at
 - A bare number is refused with the `ua_<id>` spelling in the message.
 - An id from another mode's catalog is refused naming that mode.
 - Four design-suite themes are reserved for a line the CLI does not expose
-  and get swapped in freeform;
+  and get swapped in freeform — and so does a custom theme built on one,
+  since the backend selects through a custom theme's base;
   `/themes` does not mark them, so `themecat.bookIntroOnly` is a copy of a
   server rule, and the error says so.
 - A catalog that cannot be fetched fails with that fetch's exit code. Unable

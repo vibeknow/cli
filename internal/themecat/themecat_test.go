@@ -62,6 +62,7 @@ func newFake() *fakeLister {
 			figlens.AssetTypeTheme: {
 				asset(1234567, "红薄荷", figlens.UserAssetStatusActive, "mint"),
 				asset(9, "deleted one", 2, "mint"),
+				asset(11, "古铜改", figlens.UserAssetStatusActive, "ember-bronze"),
 			},
 			figlens.AssetTypeImage2Theme: {
 				image2Asset(77, "my style", figlens.Image2CategoryStyle),
@@ -146,6 +147,9 @@ func TestValidate(t *testing.T) {
 		{desc: "other mode's official", mode: "freeform", id: "ink", wantErr: []string{"--mode image"}},
 		{desc: "book-intro theme in freeform", mode: "freeform", id: "ember-bronze", wantErr: []string{"ember-bronze", "does not offer"}},
 		{desc: "book-intro theme in replica", mode: "replica", id: "ember-bronze", wantID: "ember-bronze"},
+		// Custom themes resolve through their base, so they inherit its fate.
+		{desc: "custom on a book-intro base in freeform", mode: "freeform", id: "ua_11", wantErr: []string{"ua_11", "ember-bronze"}},
+		{desc: "custom on a book-intro base in replica", mode: "replica", id: "ua_11", wantID: "ua_11"},
 		{desc: "unknown slug", mode: "freeform", id: "nope", wantErr: []string{"nope", "theme list --mode freeform"}},
 
 		// Canvas: a direction and a palette under it are both theme ids.

@@ -66,7 +66,7 @@ func (s *revoiceStub) serve(w http.ResponseWriter, r *http.Request) {
 		s.job["status"] = "completed"
 		ok(s.job)
 	case "/v1/works/revoiceJobs":
-		if s.job == nil {
+		if s.job == nil || s.finalAs == "vanish" {
 			ok([]any{})
 			return
 		}
@@ -381,5 +381,20 @@ func TestVideoCover_WorkStateExitCodes(t *testing.T) {
 		if calls, _ := stub.seen(); code != tc.want || calls != 0 {
 			t.Errorf("work status %d: exit %d, calls %d (want %d, 0)\nstderr: %s", tc.status, code, calls, tc.want, stderr)
 		}
+	}
+}
+
+// A job that stops being listed must end the wait, not leave it polling a
+// status it can no longer see change.
+func TestVideoRevoice_VanishedJobDoesNotHang(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	stub := newRevoiceStub(t, "vanish")
+	bin := build(t)
+	configHome := buildVideoProfile(t, stub.server.URL)
+	_, stderr, code := runVideoCmd(t, bin, configHome, revoiceArgs("--yes")...)
+	if code != 6 || !strings.Contains(stderr, "s_new") {
+		t.Fatalf("exit %d, want 6 naming the new session\nstderr: %s", code, stderr)
 	}
 }

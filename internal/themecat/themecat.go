@@ -81,10 +81,15 @@ var bookIntroOnly = map[string]bool{
 	"moonlight":    true,
 }
 
-// usableIn reports whether an official id survives the backend's per-kind
-// filter. Replica is exempt: it has no theme_select node, and its packaging
+// usableIn reports whether an entry survives the backend's per-kind filter.
+// A custom theme is resolved through its base, so it fails when its base
+// does. Replica is exempt: it has no theme_select node, and its packaging
 // step renders work.theme as given.
-func usableIn(m modes.Mode, id string) bool {
+func usableIn(m modes.Mode, e Entry) bool {
+	id := e.ID
+	if e.Source == SourceCustom {
+		id = e.Base
+	}
 	return m.Name != modes.Freeform || !bookIntroOnly[id]
 }
 
@@ -102,12 +107,12 @@ func List(ctx context.Context, l Lister, m modes.Mode) ([]Entry, error) {
 	}
 	var out []Entry
 	for _, e := range custom {
-		if !e.ipCharacter {
+		if !e.ipCharacter && usableIn(m, e) {
 			out = append(out, e)
 		}
 	}
 	for _, e := range official {
-		if usableIn(m, e.ID) {
+		if usableIn(m, e) {
 			out = append(out, e)
 		}
 	}
@@ -157,6 +162,10 @@ func validateCustom(ctx context.Context, l Lister, m modes.Mode, id string) (Ent
 				return Entry{}, clerr.Validation(i18n.T("themecat.err.ip_not_theme", id)).
 					WithHint(i18n.T("themecat.hint.ip_not_theme", id))
 			}
+			if !usableIn(m, e) {
+				return Entry{}, clerr.Validation(i18n.T("themecat.err.book_intro_base", id, e.Base)).
+					WithHint(i18n.T("themecat.hint.list", m.Name))
+			}
 			return e, nil
 		}
 	}
@@ -188,7 +197,7 @@ func validateOfficial(ctx context.Context, l Lister, m modes.Mode, id string) (E
 		return Entry{}, err
 	}
 	if e, ok := find(entries, id); ok {
-		if !usableIn(m, id) {
+		if !usableIn(m, e) {
 			return Entry{}, clerr.Validation(i18n.T("themecat.err.book_intro_only", id)).
 				WithHint(i18n.T("themecat.hint.list", m.Name))
 		}

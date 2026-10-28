@@ -229,10 +229,17 @@ func waitRevoice(ctx context.Context, cmd *cobra.Command, ch *cmdutil.RunChannel
 		if err != nil {
 			return job, err
 		}
+		found := false
 		for _, j := range all {
 			if j.ID == job.ID {
-				job = j
+				job, found = j, true
 			}
+		}
+		if !found {
+			// Without this the loop would keep re-reading a status it can no
+			// longer see change, silently and for ever.
+			return job, clerr.New(i18n.T("revoice.err.job_missing", job.SessionID)).WithCode(6).
+				WithDetail(map[string]any{"resend_safe": false})
 		}
 		if job.Stage != lastStage && job.Stage != "" {
 			lastStage = job.Stage
@@ -264,6 +271,7 @@ func finishRevoice(ctx context.Context, cmd *cobra.Command, ch *cmdutil.RunChann
 		noteJob(job.TaskID, job.SessionID, func(r *jobs.Record) { r.Status = jobs.StatusFailed; r.Error = job.Error })
 		return clerr.New(revoiceMessage(job)).WithCode(5).WithHint(i18n.T("revoice.hint.needs_budget"))
 	case figlens.RevoicePaused:
+		noteJob(job.TaskID, job.SessionID, func(r *jobs.Record) { r.Status = jobs.StatusPaused })
 		return clerr.New(revoiceMessage(job)).WithCode(6).WithHint(i18n.T("revoice.hint.rerun"))
 	default:
 		noteJob(job.TaskID, job.SessionID, func(r *jobs.Record) { r.Status = jobs.StatusFailed; r.Error = job.Error })
@@ -356,10 +364,24 @@ func recordRevoiceJob(j *figlens.RevoiceJob) {
 	}
 	if err := jobs.Append(jobs.Record{
 		TaskID: j.TaskID, SessionID: j.SessionID, WorkID: j.WorkID,
-		Status: jobs.StatusRunning, Source: "revoice", Engine: "pipeline",
+		Status: ledgerStatus(j.Status), Source: "revoice",
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not write the local run ledger (%v); keep the task_id/session_id printed below\n", err)
 	}
+}
+
+// ledgerStatus maps a job state onto the ledger's vocabulary. A re-run can
+// attach to a job that has already settled, so "running" cannot be assumed.
+func ledgerStatus(s string) string {
+	switch s {
+	case figlens.RevoiceCompleted:
+		return jobs.StatusSucceeded
+	case figlens.RevoiceFailed, figlens.RevoiceNeedsBudget, figlens.RevoiceCanceled:
+		return jobs.StatusFailed
+	case figlens.RevoicePaused:
+		return jobs.StatusPaused
+	}
+	return jobs.StatusRunning
 }
 
 func init() {

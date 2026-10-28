@@ -12,7 +12,8 @@ the run succeeded, billed, and came out in a style nobody picked.
 - `vk create --theme` is now checked against the mode's catalog before
   anything is uploaded. A bare number is refused with the `ua_<id>`
   spelling; an id from another mode is refused naming that mode; four
-  design themes that freeform would swap for another are refused. A
+  design themes that freeform would swap for another are refused, as are
+  custom themes built on them. A
   catalog that cannot be fetched fails the run rather than skipping the
   check.
 - `vk theme list` lists the user's own themes (`ua_<id>`, `source:

@@ -73,7 +73,7 @@ vibeknow create [flags]
 | `--avatar string` | Talking-head presenter: `sys_<id>` (public, `vibeknow avatar list`) or `ua_<id>` (your own activated avatar). Not with `--mode handdraw` or `--engine agent` (exit 2). |
 | `--avatar-position string` | Corner: `top-left`, `top-right`, `bottom-left`, `bottom-right` (default: saved preference, else top-left) |
 | `--avatar-size float` | Circle diameter in px at 1080p base, 120–480 (default: saved preference, else 240) |
-| `--aspect string` | `horizontal` (16:9, default) or `vertical` (9:16); `16:9` / `9:16` accepted as aliases |
+| `--aspect string` | `horizontal` (16:9) or `vertical` (9:16); `16:9` / `9:16` accepted as aliases. Default horizontal, except `--mode canvas`, which the backend defaults to vertical |
 | `--bgm` | Enable background music (default off) |
 | `--pages int` | `--mode image` only: exact page count, 1–20 (image-gen cost scales with it; omit for auto) |
 | `--images string` | Mandatory image_index picks from `vibeknow doc images`, e.g. `1,3,5` (not for `--mode replica`) |
@@ -386,6 +386,7 @@ Only usable themes are listed — deleted or still-training ones are left out.
 | a bare number | the `ua_<id>` spelling |
 | an id from another mode's list | the mode it belongs to |
 | a `ua_` that is not one of the user's usable themes | `theme list` for this mode |
+| in freeform, one of the 4 reserved themes, or a custom theme built on one | the theme it is built on |
 | anything else not on the list | `theme list` for this mode |
 
 If the catalog itself cannot be fetched, `create` stops with that failure's
