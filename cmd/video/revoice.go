@@ -28,8 +28,13 @@ var (
 	flagRevoiceYes        bool
 	flagRevoiceConfirm    string
 	flagRevoiceAsync      bool
+	flagRevoiceFor        time.Duration
 	flagRevoicePreviewDir string
 )
+
+// revoiceWatchHint is the budget suggested in next_actions: inside a typical
+// two-minute agent tool timeout with room to spare, as for `video wait`.
+const revoiceWatchHint = 90 * time.Second
 
 // revoicePollInterval is how often the job is re-read while it runs.
 const revoicePollInterval = 3 * time.Second
@@ -56,6 +61,11 @@ advance, so the confirmation names what is billed rather than a figure.
 Without a terminal the decision is handed back as exit 8; see
 ` + "`vk video export`" + ` for the same gate.
 
+A re-voice takes minutes. --for bounds how long this call watches it: when
+the budget runs out the command exits 6 with reason "wait_budget_expired",
+the stage reached, and the command that keeps watching — the same contract
+as ` + "`vk video wait --for`" + `. --async returns as soon as the run starts.
+
 **Re-running the same command is safe.** A request is keyed on the work, its
 current version and the voice, so a resend attaches to the run it already
 started instead of starting a second one. A run that is still going is
@@ -64,7 +74,8 @@ of credits is retried — which bills again, so that case asks first.`,
 	Example: `  vk voice list --language zh-CN
   vk video revoice 42 --voice 3
   vk video revoice 42 --voice <speech_voice_id> --confirm act_9f2c...
-  vk video revoice 42 --voice 3 --yes --async`,
+  vk video revoice 42 --voice 3 --yes --async
+  vk video revoice 42 --voice 3 --for 90s --output json`,
 	RunE: runRevoice,
 }
 
@@ -72,6 +83,13 @@ func runRevoice(cmd *cobra.Command, args []string) error {
 	if strings.TrimSpace(flagRevoiceVoice) == "" {
 		return clerr.Validation(i18n.T("revoice.err.voice_required")).
 			WithHint(i18n.T("revoice.hint.voice_list"))
+	}
+	if cmd.Flags().Changed("for") && flagRevoiceFor <= 0 {
+		return clerr.Validation("--for must be a positive duration, e.g. 90s")
+	}
+	if flagRevoiceAsync && flagRevoiceFor > 0 {
+		// One says "do not watch", the other "watch for this long".
+		return clerr.Validation("--async and --for cannot be combined: --async does not watch the run at all")
 	}
 	ctx := cmd.Context()
 	taskID, sessionID, err := resolveTarget(ctx, args, flagRevoiceSessionID)
@@ -153,7 +171,7 @@ func runRevoice(cmd *cobra.Command, args []string) error {
 		return renderRevoiceSubmitted(cmd, *job, sessionID)
 	}
 
-	final, err := waitRevoice(ctx, cmd, ch, c, *job)
+	final, err := waitRevoice(ctx, cmd, ch, c, *job, sessionID, flagRevoiceFor)
 	if err != nil {
 		return err
 	}
@@ -222,8 +240,9 @@ func findRevoiceJob(ctx context.Context, c *figlens.Client, taskID, workID int64
 // waitRevoice re-reads the job until it settles. The job row, not the event
 // stream, is the record of how a re-voice ended: it is what the backend
 // retries from and what carries the failure reason.
-func waitRevoice(ctx context.Context, cmd *cobra.Command, ch *cmdutil.RunChannel, c *figlens.Client, job figlens.RevoiceJob) (figlens.RevoiceJob, error) {
+func waitRevoice(ctx context.Context, cmd *cobra.Command, ch *cmdutil.RunChannel, c *figlens.Client, job figlens.RevoiceJob, sourceSession string, budget time.Duration) (figlens.RevoiceJob, error) {
 	lastStage := ""
+	start := time.Now()
 	for {
 		all, err := c.ListRevoiceJobs(ctx, job.TaskID)
 		if err != nil {
@@ -254,12 +273,54 @@ func waitRevoice(ctx context.Context, cmd *cobra.Command, ch *cmdutil.RunChannel
 		default:
 			return job, nil
 		}
+		// With a budget, never sleep past it: the last poll lands on the
+		// deadline and the call comes back inside the caller's own timeout.
+		wait := revoicePollInterval
+		if budget > 0 {
+			remaining := budget - time.Since(start)
+			if remaining <= 0 {
+				return job, revoiceBudgetError(job, sourceSession, time.Since(start), budget)
+			}
+			wait = min(wait, remaining)
+		}
 		select {
 		case <-ctx.Done():
 			return job, ctx.Err()
-		case <-time.After(revoicePollInterval):
+		case <-time.After(wait):
 		}
 	}
+}
+
+// revoiceBudgetError reports a watch that ended because its --for budget ran
+// out, in the same shape `vk video wait --for` uses, so a caller handles both
+// with one rule: exit 6 + wait_budget_expired means run next_actions again.
+func revoiceBudgetError(j figlens.RevoiceJob, sourceSession string, waited, budget time.Duration) *clerr.Error {
+	stage := j.Stage
+	if stage == "" {
+		stage = j.Status
+	}
+	return clerr.Newf("re-voice still %s (%s) after %s — run again to keep watching", j.Status, stage, waited.Round(time.Second)).
+		WithCode(6).
+		WithDetail(map[string]any{
+			"status":     "running",
+			"reason":     "wait_budget_expired",
+			"task_id":    j.TaskID,
+			"session_id": j.SessionID,
+			"stage":      stage,
+			"waited_ms":  waited.Milliseconds(),
+			"next_actions": []map[string]string{{
+				"command": revoiceWatchCommand(j, sourceSession, budget),
+				"purpose": "Keep watching; the re-voice is still going and re-running starts nothing new",
+			}},
+		}).
+		WithHint("nothing failed and nothing was lost; this watch simply reached its --for budget")
+}
+
+// revoiceWatchCommand is the line that re-attaches to a re-voice. It needs
+// no --confirm: attaching to a run that is going spends nothing.
+func revoiceWatchCommand(j figlens.RevoiceJob, sourceSession string, budget time.Duration) string {
+	return fmt.Sprintf("vk video revoice %d --session-id %s --voice %s --for %s",
+		j.TaskID, sourceSession, shellQuote(j.VoiceID), budget)
 }
 
 // finishRevoice turns a settled job into an exit code and, on success, the
@@ -332,7 +393,7 @@ func revoiceInfo(j figlens.RevoiceJob, sourceSession string) map[string]any {
 }
 
 func renderRevoiceSubmitted(cmd *cobra.Command, j figlens.RevoiceJob, sourceSession string) error {
-	resume := fmt.Sprintf("vk video revoice %d --session-id %s --voice %s", j.TaskID, sourceSession, shellQuote(j.VoiceID))
+	resume := revoiceWatchCommand(j, sourceSession, revoiceWatchHint)
 	format, _ := cmd.Flags().GetString("output")
 	if format == output.FormatJSON || format == output.FormatNDJSON {
 		return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
@@ -390,5 +451,6 @@ func init() {
 	revoiceCmd.Flags().BoolVarP(&flagRevoiceYes, "yes", "y", false, "skip the confirmation: only when the user has already authorised this spend")
 	revoiceCmd.Flags().StringVar(&flagRevoiceConfirm, "confirm", "", "action_id from a previously blocked run, once the user has agreed")
 	revoiceCmd.Flags().BoolVar(&flagRevoiceAsync, "async", false, "return once the run has started instead of waiting for it")
+	revoiceCmd.Flags().DurationVar(&flagRevoiceFor, "for", 0, "stop watching after this long and report the stage reached (e.g. 90s); default watches until it finishes")
 	revoiceCmd.Flags().StringVar(&flagRevoicePreviewDir, "preview-dir", "", "write the new work's cover here and announce it as a resource_ready event")
 }

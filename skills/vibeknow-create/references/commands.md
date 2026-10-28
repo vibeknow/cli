@@ -45,7 +45,8 @@ EOF
 
 The text is uploaded as a document named after its opening line, and
 everything downstream behaves exactly as it would for a file — `--script-lock`
-included, which is how "照着我这段话念" is expressed.
+included, which is how "照着我这段话念" is expressed when the pasted text is
+narration the user wrote (not a request like "帮我做个…的视频").
 
 **This is not a way to generate a video from a topic.** The content has to be
 the user's; nothing here invents any, and `--prompt` only steers how the
@@ -62,7 +63,7 @@ vibeknow create [flags]
 | `--text string` | Use this text as the source document. Mutually exclusive with `--from`; refused when empty or over 512 KB |
 | `--preset string` | Saved bundle of style options: a name under `<config>/presets/` or a path to a `.yaml` file. Supplies defaults only — anything also given on the command line wins. See **Presets** below. |
 | `--mode string` | `freeform` (灵活创作, the default; `default` and omitting it mean the same), `replica` (PPT 讲解, page-by-page; PDF/PPT sources only, up to 100 pages), `image` (图解视频, AI illustration per page), `handdraw` (手绘动画), `canvas` (画布创作, components laid out on a grid; vertical unless `--aspect` says otherwise). Same values as `theme list --mode`. |
-| `--script-lock` | 原稿锁定: narrate the document verbatim instead of writing a script. Orthogonal to `--mode` — combines with any of them. With `--mode replica` it means **the speaker notes are the script**, page by page, and the source must be a PPT file (a PDF has no notes). |
+| `--script-lock` | 原稿锁定: the source *is* the narration — it is voiced word for word and visuals are matched to it; no script is written. Only for narration the user wrote themselves (several complete sentences). Never for a request, a topic or production notes ("帮我生成一段视频，关于…", "60 秒黑金极简"): those are not narration, and a one-sentence source cannot be split into the 2 scenes the pipeline requires. Orthogonal to `--mode` — combines with any of them. With `--mode replica` it means **the speaker notes are the script**, page by page, and the source must be a PPT file (a PDF has no notes). |
 | `--engine string` | `pipeline` (default, v=3) or `agent` (v=2, the legacy 一键成片 engine; no longer offered on the web, prints a warning). The agent engine has no mode/theme/language branches; combining them exits 2. |
 | `--density string` | Freeform only: how many scenes, `sparse`, `balanced` (default) or `dense`. Exit 2 with any `--mode` or `--engine agent`, which ignore it. |
 | `--theme-scene string` | `--mode image` only, with `--theme`: one of that style's scenes, as listed under it by `theme list --mode image` |
@@ -702,7 +703,8 @@ vibeknow video revoice [task_id] --voice <# | speech_voice_id> [flags]
 |------|-------------|
 | `--voice string` | The new voice, a `#` or `speech_voice_id` from `voice list`. Must speak the video's language |
 | `--yes`, `-y` / `--confirm string` | Authority for the spend, as for `video export` |
-| `--async` | Return once the run has started |
+| `--async` | Return once the run has started; `next_actions` is the command that watches it |
+| `--for duration` | Watch for at most this long, then exit 6 with `reason: "wait_budget_expired"`, the `stage` reached and the command that keeps watching — the same contract as `video wait --for`. Use `--for 90s` under a 2-minute tool timeout |
 | `--session-id string` | The work to re-voice (default: resolved from the local run ledger) |
 | `--preview-dir string` | Write the new work's cover here |
 
@@ -731,8 +733,10 @@ which bills again and therefore goes through the gate.
 
 **Exit codes.** `0` new version ready; `8` blocked on the spend; `5` failed,
 out of credits (`needs_budget`), or not possible for this work (the message
-is the backend's reason); `6` paused; `2` the command line is wrong — no
-`--voice`, or the voice it already has.
+is the backend's reason); `6` still running when `--for` ran out
+(`reason: "wait_budget_expired"` — run `next_actions` again), paused, or the
+job stopped being listed; `2` the command line is wrong — no `--voice`, the
+voice it already has, or `--async` with `--for`.
 
 ## video cover
 

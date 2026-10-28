@@ -46,7 +46,8 @@ the run succeeded, billed, and came out in a style nobody picked.
   original is untouched and the new pair is recorded in the run ledger. It
   goes through a new `revoice_confirmation` gate. Re-running the same
   command is safe: it attaches to the run it already started, and retries a
-  failed one only after asking again.
+  failed one only after asking again. `--for` bounds a watch the way
+  `video wait --for` does, for agents with a short tool timeout.
 - `vk video cover` generates an AI cover and applies it, through a new
   `cover_confirmation` gate. It reports `export_cleared` when the backend
   withdraws an exported MP4, and exits 6 with `resend_safe: false` when the

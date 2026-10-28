@@ -398,3 +398,53 @@ func TestVideoRevoice_VanishedJobDoesNotHang(t *testing.T) {
 		t.Fatalf("exit %d, want 6 naming the new session\nstderr: %s", code, stderr)
 	}
 }
+
+// Agents in WorkBuddy have a two-minute tool timeout and a re-voice runs
+// for minutes. --for gives them the same bounded watch as `video wait --for`:
+// exit 6, reason wait_budget_expired, and the command that keeps watching.
+func TestVideoRevoice_ForBudgetMatchesVideoWait(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	stub := newRevoiceStub(t, "running")
+	bin := build(t)
+	configHome := buildVideoProfile(t, stub.server.URL)
+
+	_, stderr, code := runVideoCmd(t, bin, configHome, revoiceArgs("--yes", "--for", "1s")...)
+	if code != 6 {
+		t.Fatalf("exit %d, want 6\nstderr: %s", code, stderr)
+	}
+	var env struct {
+		Error struct {
+			Detail map[string]any `json:"detail"`
+		} `json:"error"`
+	}
+	// stderr carries vk_event progress lines ahead of the error document.
+	doc := stderr[strings.Index(stderr, "\n{")+1:]
+	if err := json.Unmarshal([]byte(doc), &env); err != nil {
+		t.Fatalf("decode %q: %v", stderr, err)
+	}
+	d := env.Error.Detail
+	if waited, _ := d["waited_ms"].(float64); waited < 900 {
+		t.Errorf("waited_ms = %v; a 1s budget should be used, not abandoned after the first poll", d["waited_ms"])
+	}
+	if d["reason"] != "wait_budget_expired" || d["session_id"] != "s_new" || d["stage"] == nil {
+		t.Errorf("detail = %v", d)
+	}
+	next, _ := d["next_actions"].([]any)
+	cmdline, _ := next[0].(map[string]any)["command"].(string)
+	if !strings.Contains(cmdline, "--for") || strings.Contains(cmdline, "--confirm") {
+		t.Errorf("next action %q should keep watching without asking again", cmdline)
+	}
+
+	// Following it starts nothing new and needs no consent.
+	_, _, code = runVideoCmd(t, bin, configHome, revoiceArgs("--for", "1s")...)
+	if code != 6 || stub.createCount() != 1 {
+		t.Errorf("re-watch: exit %d, creates %d (want 6, 1)", code, stub.createCount())
+	}
+
+	_, _, code = runVideoCmd(t, bin, configHome, revoiceArgs("--async", "--for", "1s")...)
+	if code != 2 {
+		t.Errorf("--async with --for: exit %d, want 2", code)
+	}
+}

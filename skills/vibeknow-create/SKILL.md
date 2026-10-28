@@ -218,7 +218,7 @@ retry the same command.
 ```bash
 vibeknow voice list --language zh-CN                    # the new voice must speak the video's language
 vibeknow video revoice 42 --voice 3                      # exit 8: asks first
-vibeknow video revoice 42 --voice 3 --confirm act_…      # after the user agrees
+vibeknow video revoice 42 --voice 3 --confirm act_… --for 90s   # after the user agrees; watch 90s at a time
 vibeknow video cover 42 --title "三分钟看懂季度财报"       # exit 8, then --confirm
 ```
 
@@ -227,7 +227,10 @@ new session; the original stays. The result's `session_id` is the new one
 and `revoice.source_session_id` the original — tell the user both. It bills
 by actual use with no quote. **Re-running the exact same command is always
 safe**: it attaches to the run it already started (no new spend, no prompt)
-and only asks again when that run failed and needs a retry.
+and only asks again when that run failed and needs a retry. A re-voice takes
+minutes: pass `--for 90s` and treat exit 6 with `reason: "wait_budget_expired"`
+exactly as for `video wait --for` — tell the user the `stage`, run
+`next_actions` again.
 
 `video cover` bills one image generation, only once the cover is saved. It
 withdraws an exported MP4 (`export_cleared: true`) — say so, and offer
