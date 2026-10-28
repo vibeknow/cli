@@ -18,7 +18,6 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
-	"github.com/vibeknow/cli/client/vibeknow"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
@@ -31,6 +30,7 @@ import (
 	"github.com/vibeknow/cli/internal/themecat"
 	"github.com/vibeknow/cli/internal/video/exportpoll"
 	"github.com/vibeknow/cli/internal/video/snapshot"
+	"github.com/vibeknow/cli/internal/voiceref"
 )
 
 var (
@@ -240,7 +240,7 @@ var createCmd = &cobra.Command{
 
 		// Resolved before any upload: a bad voice reference should cost the
 		// user nothing, not a knowledgebase and a parsed document.
-		voiceID, err := resolveVoiceID(ctx, flagCreateVoiceID)
+		voiceID, err := voiceref.Resolve(ctx, flagCreateVoiceID)
 		if err != nil {
 			return err
 		}
@@ -1175,42 +1175,6 @@ func pollDocReady(ctx context.Context, vc *vectoria.Client, kbID, docID string) 
 	}
 }
 
-// numericRe matches a --voice value given as the reference number printed in
-// the first column of `vk voice list`, rather than a speech_voice_id.
-var numericRe = regexp.MustCompile(`^[0-9]+$`)
-
-// resolveVoiceID turns whatever the user passed to --voice into the value the
-// backend's TTS actually keys on, the speech_voice_id.
-//
-// `vk voice list` prints two identifiers per row and only the long one works;
-// passing the short one used to be accepted silently and blow up minutes
-// later inside the TTS node with "音色不存在" — after cover and background
-// images had already been generated and billed. Rather than making the user
-// learn which column is real, a numeric value is looked up and translated
-// here, before anything is uploaded or spent.
-//
-// Non-numeric values pass through untouched: they are already speech_voice_ids,
-// and cloned voices do not appear in the template list, so a "not in the list"
-// check would reject valid input.
-func resolveVoiceID(ctx context.Context, flag string) (string, error) {
-	ref := strings.TrimSpace(flag)
-	if !voiceRefNeedsLookup(ref) {
-		return ref, nil
-	}
-
-	_, url, tp, err := cmdutil.Default().Service("vibeknow")
-	if err != nil {
-		return "", err
-	}
-	catalog, err := vibeknow.New(url, tp).ListPipelineVoices(ctx)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", i18n.T("create.err.voice_lookup_failed"), err)
-	}
-	// Flatten includes cloned voices, so `--voice <#>` works for the
-	// user's own clones too, not just public templates.
-	return mapVoiceRef(ref, catalog.Flatten())
-}
-
 // resolveTheme checks a --theme value against the catalog of the mode the
 // run uses and returns the entry it names; nil when no theme was asked for.
 // See internal/themecat for why this cannot be left to the backend.
@@ -1287,30 +1251,6 @@ func themeRef(e *themecat.Entry) *snapshot.ThemeRef {
 		return nil
 	}
 	return &snapshot.ThemeRef{ID: e.ID, Name: e.Name, Source: e.Source}
-}
-
-// voiceRefNeedsLookup reports whether a --voice value is a `vk voice list`
-// reference number that has to be translated, as opposed to a speech_voice_id
-// that can go to the backend as-is.
-func voiceRefNeedsLookup(ref string) bool {
-	return ref != "" && numericRe.MatchString(ref)
-}
-
-// mapVoiceRef translates a list reference number into its speech_voice_id.
-func mapVoiceRef(ref string, templates []vibeknow.VoiceTemplate) (string, error) {
-	for _, t := range templates {
-		if strconv.Itoa(t.ID) != ref {
-			continue
-		}
-		if t.SpeechVoiceID == "" {
-			// A listed template with no usable id is a backend data
-			// problem; failing here beats forwarding an empty voice.
-			return "", clerr.Validation(i18n.T("create.err.voice_no_speech_id", ref, t.Name))
-		}
-		fmt.Fprintln(os.Stderr, i18n.T("create.voice_resolved", ref, t.Name, t.SpeechVoiceID))
-		return t.SpeechVoiceID, nil
-	}
-	return "", clerr.Validation(i18n.T("create.err.voice_unknown_ref", ref))
 }
 
 // resolveMode maps --mode and --script-lock onto the two *orthogonal*
