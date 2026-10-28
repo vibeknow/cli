@@ -74,7 +74,12 @@ func runCover(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if work.Status != figlens.WorkStatusActive {
+	switch work.Status {
+	case figlens.WorkStatusActive:
+	case figlens.WorkStatusFailed, figlens.WorkStatusDeleted:
+		// Terminal: waiting will not make a preview appear.
+		return clerr.New(i18n.T("cover.err.no_preview")).WithCode(5)
+	default:
 		return clerr.New(i18n.T("cover.err.not_ready")).WithCode(6).
 			WithHint("check `vk video status`; a cover can be generated once the preview is ready")
 	}

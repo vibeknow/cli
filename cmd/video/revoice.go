@@ -181,7 +181,7 @@ func revoiceGate(cmd *cobra.Command, taskID int64, sessionID, voice string, cap 
 		Yes:     flagRevoiceYes,
 		Token:   flagRevoiceConfirm,
 		ResumeCommand: func(token string) string {
-			return fmt.Sprintf("vk video revoice %d --session-id %s --voice %s --confirm %s", taskID, sessionID, voice, token)
+			return fmt.Sprintf("vk video revoice %d --session-id %s --voice %s --confirm %s", taskID, sessionID, shellQuote(voice), token)
 		},
 	})
 	if err == nil && !ok {
@@ -324,7 +324,7 @@ func revoiceInfo(j figlens.RevoiceJob, sourceSession string) map[string]any {
 }
 
 func renderRevoiceSubmitted(cmd *cobra.Command, j figlens.RevoiceJob, sourceSession string) error {
-	resume := fmt.Sprintf("vk video revoice %d --session-id %s --voice %s", j.TaskID, sourceSession, j.VoiceID)
+	resume := fmt.Sprintf("vk video revoice %d --session-id %s --voice %s", j.TaskID, sourceSession, shellQuote(j.VoiceID))
 	format, _ := cmd.Flags().GetString("output")
 	if format == output.FormatJSON || format == output.FormatNDJSON {
 		return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{

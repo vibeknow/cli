@@ -261,13 +261,17 @@ func (s *coverStub) seen() (int, map[string]any) {
 }
 
 func newCoverStub(t *testing.T, end string, exported bool) *coverStub {
+	return newCoverStubWithStatus(t, end, exported, 1)
+}
+
+func newCoverStubWithStatus(t *testing.T, end string, exported bool, status int) *coverStub {
 	t.Helper()
 	s := &coverStub{}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/works/detailBySession":
 			w.Header().Set("Content-Type", "application/json")
-			work := map[string]any{"id": 77, "task_id": 42, "session_id": "s_src", "title": "季度报告", "status": 1}
+			work := map[string]any{"id": 77, "task_id": 42, "session_id": "s_src", "title": "季度报告", "status": status}
 			if exported {
 				work["video_path"] = "https://cdn.test/old.mp4"
 			}
@@ -360,5 +364,22 @@ func TestVideoCover_GenerationFailureIsNotUnknown(t *testing.T) {
 	_, stderr, code := runVideoCmd(t, bin, configHome, "video", "cover", "42", "--session-id", "s_src", "--yes")
 	if code == 0 || code == 6 || !strings.Contains(stderr, "生图失败") {
 		t.Fatalf("exit %d, want a failure carrying the backend's reason\nstderr: %s", code, stderr)
+	}
+}
+
+// A failed work is terminal: "wait and check again" (exit 6) would send an
+// agent into a loop that can never end.
+func TestVideoCover_WorkStateExitCodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	bin := build(t)
+	for _, tc := range []struct{ status, want int }{{3, 5}, {0, 6}} {
+		stub := newCoverStubWithStatus(t, "ok", false, tc.status)
+		configHome := buildVideoProfile(t, stub.server.URL)
+		_, stderr, code := runVideoCmd(t, bin, configHome, "video", "cover", "42", "--session-id", "s_src", "--yes")
+		if calls, _ := stub.seen(); code != tc.want || calls != 0 {
+			t.Errorf("work status %d: exit %d, calls %d (want %d, 0)\nstderr: %s", tc.status, code, calls, tc.want, stderr)
+		}
 	}
 }

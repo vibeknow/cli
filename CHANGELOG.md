@@ -2,50 +2,6 @@
 
 ## Unreleased
 
-### Added — canvas mode, scene density, image scenes and IP characters
-
-- `--mode canvas` runs 画布创作 (`stage_craft`). `vk theme list --mode
-  canvas` lists its art directions, each with its palettes as `variants`;
-  a palette id is a `--theme` value of its own.
-- `--density sparse|balanced|dense` sets how many scenes a freeform video
-  is split into. Refused on every other line, all of which ignore it.
-- `--theme-scene` picks one scene of an image-mode style; `theme list
-  --mode image` lists each style's `scenes`.
-- `--ip-asset` picks the IP character an image-mode video features, from
-  the new `vk ip list`, or `none` to leave out the account default.
-- All three new values are checked before upload, like `--theme`. The
-  backend accepts a wrong one silently: an unknown density becomes
-  balanced, an unknown scene falls back to the style's own image.
-
-### Added — `vk video revoice` and `vk video cover`
-
-- `vk video revoice --voice` makes a new version of a finished video in
-  another voice, as a new work in a new session under the same task; the
-  original is untouched and the new pair is recorded in the run ledger. It
-  goes through a new `revoice_confirmation` gate. Re-running the same
-  command is safe: it attaches to the run it already started, and retries a
-  failed one only after asking again.
-- `vk video cover` generates an AI cover and applies it, through a new
-  `cover_confirmation` gate. It reports `export_cleared` when the backend
-  withdraws an exported MP4, and exits 6 with `resend_safe: false` when the
-  stream drops before the result, since the cover may already be billed.
-- `--voice` resolution moved to `internal/voiceref`, shared by `create` and
-  `revoice`.
-
-### Changed
-
-- `--engine agent` prints a deprecation warning: the web no longer offers
-  the 一键成片 engine it runs. Behaviour and exit codes are unchanged.
-- `--mode replica --script-lock` is documented for what it does — the
-  speaker notes are the script, and the source must be a PPT file.
-
-### Fixed
-
-- Progress attribution follows the backend's current graphs. The standard
-  line's planning half is now `knowledge_prepare → goal_setting →
-  beat_director → beat_script`; those nodes, the canvas line's and
-  `doc_replica_director` arrived unmapped and reported no stage.
-
 ### Fixed — `--theme` can no longer be silently replaced
 
 A user's agent passed their custom 灵活创作 theme as the bare number the web
@@ -67,17 +23,56 @@ the run succeeded, billed, and came out in a style nobody picked.
   is accepted by both commands (it was rejected by `create`).
 - Snapshots carry `mode`; `create` reports `requested_theme`.
 
-### Changed — `video edit` states the free quota
+### Added — canvas mode, scene density, image scenes and IP characters
 
-The backend now makes post-edit speech, layout and background free within a
-per-work rolling 24-hour quota and bills them beyond it; text generation is
-always billed. The confirmation used to say speech was
-billed outright.
+- `--mode canvas` runs 画布创作 (`stage_craft`). `vk theme list --mode
+  canvas` lists its art directions, each with its palettes as `variants`;
+  a palette id is a `--theme` value of its own.
+- `--density sparse|balanced|dense` sets how many scenes a freeform video
+  is split into. Refused on every other line, all of which ignore it.
+- `--theme-scene` picks one scene of an image-mode style; `theme list
+  --mode image` lists each style's `scenes`.
+- `--ip-asset` picks the IP character an image-mode video features, from
+  the new `vk ip list`, or `none` to leave out the account default.
+- All three new values are checked before upload, like `--theme`. The
+  backend accepts a wrong one silently: an unknown density becomes
+  balanced, an unknown scene falls back to the style's own image.
 
-- New `vk video quota [task_id]` reads the quota (free).
-- The edit confirmation states what is left, and the blocked action carries
-  it as `context.free_quota`. `context` is new on pending actions: shown,
-  not hashed, so a consent survives quota being used elsewhere.
+### Added — `vk video revoice`, `vk video cover`, `vk video quota`
+
+- `vk video revoice --voice` makes a new version of a finished video in
+  another voice, as a new work in a new session under the same task; the
+  original is untouched and the new pair is recorded in the run ledger. It
+  goes through a new `revoice_confirmation` gate. Re-running the same
+  command is safe: it attaches to the run it already started, and retries a
+  failed one only after asking again.
+- `vk video cover` generates an AI cover and applies it, through a new
+  `cover_confirmation` gate. It reports `export_cleared` when the backend
+  withdraws an exported MP4, and exits 6 with `resend_safe: false` when the
+  stream drops before the result, since the cover may already be billed.
+- `vk video quota` reads a work's free post-edit quota (free).
+
+### Changed
+
+- `video edit` states the free quota. The backend now makes post-edit
+  speech, layout and background free within a per-work rolling 24-hour
+  quota and bills them beyond it; text generation is always billed. The
+  confirmation used to say speech was billed outright. It now states what
+  is left, and the blocked action carries it as `context.free_quota`.
+- Pending actions gain `context`: shown with the payload but not hashed
+  into the `action_id`, so a consent survives a reading — such as a quota
+  used up elsewhere — changing between block and resume.
+- `--engine agent` prints a deprecation warning: the web no longer offers
+  the 一键成片 engine it runs. Behaviour and exit codes are unchanged.
+- `--mode replica --script-lock` is documented for what it does — the
+  speaker notes are the script, and the source must be a PPT file.
+
+### Fixed
+
+- Progress attribution follows the backend's current graphs. The standard
+  line's planning half is now `knowledge_prepare → goal_setting →
+  beat_director → beat_script`; those nodes, the canvas line's and
+  `doc_replica_director` arrived unmapped and reported no stage.
 
 ## 0.9.2 — 2026-09-09
 

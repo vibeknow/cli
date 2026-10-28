@@ -407,8 +407,10 @@ Specifically, none of these follow from one another:
 
 ## Spend Decisions
 
-`video export` costs credits. With no terminal attached the CLI will not
-decide for you: it exits **8**, having written the decision to stdout.
+Four commands spend credits: `video export` (and `create --export`),
+`video edit`, `video revoice` and `video cover`. With no terminal attached
+none of them decides for you: each exits **8**, having written the decision
+to stdout.
 
 ```json
 { "status": "blocked",
@@ -423,7 +425,11 @@ decide for you: it exits **8**, having written the decision to stdout.
 
 What to do:
 
-1. Show the user `message` and `payload` — what it does and what it costs.
+1. Show the user `message` and `payload` — what it does and what it costs —
+   and `context` when present (a free quota left, the narration length a
+   re-voice is billed against). Only `export_confirmation` carries a credit
+   figure; the others name what is billed because the backend quotes no
+   price. Do not invent one.
 2. Wait for an actual answer. Do not pick a default.
 3. On **confirm**, run `resume_command` exactly as given.
 4. On **cancel** (`effect: "none"`), run nothing at all.
