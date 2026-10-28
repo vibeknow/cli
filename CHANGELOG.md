@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — 2026-10-28
 
 ### Fixed — `--theme` can no longer be silently replaced
 
