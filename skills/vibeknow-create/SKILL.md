@@ -1,6 +1,6 @@
 ---
 name: vibeknow-create
-description: "Generate videos from documents/URLs/files, track video task progress, download results, list voice templates. Use when: user wants to create a video, check task status, download video, or browse voices."
+description: "Generate videos from documents/URLs/files in a chosen mode and theme (including the user's own 主题/风格/模板 made on the web), track progress, edit, re-voice, download results, list voices. Use when: user wants to create a video, use one of their own themes or templates, check task status, edit or download a video, or browse voices."
 version: 0.10.0
 emoji: "🎬"
 homepage: https://github.com/vibeknow/cli
@@ -78,7 +78,7 @@ the choice is not yours to make. Relay it and wait.
 - **Hero command**: `vibeknow create --from <source>` resolves input → uploads if needed → submits to figlens pipeline → streams progress → returns video URL.
 - **Four ways to name the source**: `--from` takes a `doc_id` (used directly), a URL (auto-uploaded to a new knowledge base), a local file path (auto-uploaded), or `-` to read the text from stdin. `--text` takes the text itself, for a passage the user pasted rather than a file they pointed at. What it cannot do is invent material: a request with no source ("做个讲量子计算的视频") has no command — ask for it.
 - **Creation modes**: `--mode freeform` (灵活创作, the default — omitting `--mode` means this), `--mode image` (图解视频), `--mode replica` (PPT 讲解), `--mode handdraw` (手绘动画), `--mode canvas` (画布创作). `--engine agent` is the legacy 一键成片 engine, which the web no longer offers; do not choose it. 原稿锁定 is the orthogonal `--script-lock` switch, combinable with any mode. Output language via `--language` (default `zh-CN` on the built-in endpoint; a re-voice needs the video to have one).
-- **Themes belong to a mode.** The mode decides which catalog `--theme` draws from; `vibeknow theme list --mode <mode>` lists exactly what that mode accepts, and `create` checks `--theme` against the same list **before uploading anything**. When the user says 主题, 风格 or 模板 (theme / style / template), they mean `--theme`. Their own themes made on the web appear in the list as `ua_<id>` with `source: "custom"` — pass that token, never the bare number the web shows. Do not guess ids: a refused `--theme` (exit 2) names the fix.
+- **Themes belong to a mode.** The mode decides which catalog `--theme` draws from; `vibeknow theme list --mode <mode>` lists exactly what that mode accepts, and `create` checks `--theme` against the same list **before uploading anything**. When the user says 主题, 风格 or 模板 (theme / style / template), they mean `--theme`. Their own themes made on the web appear in the list as `ua_<id>` with `source: "custom"` — pass that token, never the bare number the web shows. When the user names a theme of theirs ("用我的 XX 模板") without a mode, run `vibeknow theme list --mine --output json` first: it lists only their themes, across every mode, and each entry's `modes` says which `--mode` to pass with it. 模板 here is a theme — voices are a separate list (`voice list`). Do not guess ids: a refused `--theme` (exit 2) names the fix, and for a bare number it names the theme it matches.
 - **Sync vs async**: Default is sync (blocks until done). `--async` returns task_id + session_id immediately.
 - **Waiting in bounded steps**: `vibeknow video wait --for 90s` watches the event stream for that long, then reports the stage it reached and exits 6 with `reason: "wait_budget_expired"`. Run it again to keep waiting. Use it when your own tool times out sooner than a render takes — `video status` cannot substitute, since the work row carries no progress until the export stage.
 - **NDJSON event stream**: `--output ndjson` emits structured progress events (schema_version: "1"). See [events.md](references/events.md).
@@ -104,6 +104,7 @@ the choice is not yours to make. Relay it and wait.
 | `vibeknow jobs get [task_id]` | One recorded run (default: most recent) |
 | `vibeknow voice list [--language <locale>]` | Voices: public templates grouped by language + your cloned voices |
 | `vibeknow theme list --mode <mode>` | Every `--theme` value that mode accepts: the user's own (`ua_<id>`) and the official catalog |
+| `vibeknow theme list --mine` | Only the user's own themes, across every mode, each with the `modes` it can be used in |
 | `vibeknow avatar list` | Talking-head presenters (public presets + your trained ones) for `create --avatar` |
 | `vibeknow ip list` | IP characters for an image-mode video, for `create --mode image --ip-asset` |
 | `vibeknow subtitle fonts` | Font families `video set --subtitle-font` accepts (free) |
@@ -145,6 +146,7 @@ vibeknow create --from doc.pdf --engine agent        # 一键成片 (v2 agent en
 vibeknow theme list --mode image                 # browse the mode's style catalog
 vibeknow create --from notes.md --mode image --theme <theme_id>
 vibeknow theme list --output json                # freeform; the user's own themes come first
+vibeknow theme list --mine --output json         # "use my 国风 template": find it by name, read its modes
 vibeknow create --from notes.md --theme ua_1234567   # a custom theme: always the ua_ token
 vibeknow theme list --mode canvas                # directions, each with its palettes as variants
 vibeknow create --from notes.md --mode image --theme <style> --theme-scene <slug> --ip-asset <ref>

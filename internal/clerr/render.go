@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"os"
 
 	"golang.org/x/term"
+
+	"github.com/vibeknow/cli/internal/charcheck"
 )
 
 const (

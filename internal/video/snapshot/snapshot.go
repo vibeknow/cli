@@ -7,12 +7,12 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"strings"
 	"time"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"github.com/vibeknow/cli/internal/modes"
 	"github.com/vibeknow/cli/internal/output"
 )

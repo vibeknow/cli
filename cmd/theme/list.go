@@ -3,7 +3,6 @@ package theme
 import (
 	"context"
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -19,7 +19,10 @@ import (
 	"github.com/vibeknow/cli/internal/themecat"
 )
 
-var flagListMode string
+var (
+	flagListMode string
+	flagListMine bool
+)
 
 var listCmd = &cobra.Command{
 	// Takes no positional arguments. Without this cobra accepts and
@@ -39,11 +42,22 @@ Some modes have a second level under a theme:
 
   canvas   each art direction lists its palettes as variants; a variant id
            is a --theme value of its own that also fixes the colours
-  image    each style lists its scenes, for --theme-scene`,
+  image    each style lists its scenes, for --theme-scene
+
+--mine lists only the user's own themes, across every mode, with the modes
+each one is accepted in. It is the place to start when a user names a theme
+of theirs without saying which mode it was made for.`,
 	Example: `  vk theme list
+  vk theme list --mine --output json
   vk theme list --mode image
   vk theme list --mode handdraw --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if flagListMine {
+			if cmd.Flags().Changed("mode") {
+				return clerr.Validation(i18n.T("theme.err.mine_with_mode"))
+			}
+			return runListMine(cmd)
+		}
 		// Same table create reads, so a name valid here is valid there.
 		m, ok := modes.Resolve(flagListMode)
 		if !ok {
@@ -140,4 +154,50 @@ Some modes have a second level under a theme:
 
 func init() {
 	listCmd.Flags().StringVar(&flagListMode, "mode", "", i18n.T("theme.flag.mode"))
+	listCmd.Flags().BoolVar(&flagListMine, "mine", false, i18n.T("theme.flag.mine"))
+}
+
+func runListMine(cmd *cobra.Command) error {
+	_, url, tp, err := cmdutil.Default().Service("figlens")
+	if err != nil {
+		return err
+	}
+	mine, err := themecat.ListMine(context.Background(), figlens.New(url, tp))
+	if err != nil {
+		return err
+	}
+
+	format, _ := cmd.Flags().GetString("output")
+	if format == "json" {
+		items := make([]map[string]any, 0, len(mine))
+		for _, t := range mine {
+			item := map[string]any{
+				"id":     t.ID,
+				"name":   t.Name,
+				"desc":   t.Desc,
+				"source": t.Source,
+				"modes":  t.Modes,
+			}
+			if t.Base != "" {
+				item["base"] = t.Base
+			}
+			items = append(items, item)
+		}
+		return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{"themes": items})
+	}
+
+	if len(mine) == 0 {
+		fmt.Fprintln(os.Stderr, i18n.T("theme.mine.none"))
+		return nil
+	}
+	w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tMODES\tBASE")
+	for _, t := range mine {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Name, strings.Join(t.Modes, ","), t.Base)
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "\n"+i18n.T("theme.mine.hint"))
+	return nil
 }

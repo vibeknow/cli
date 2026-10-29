@@ -342,6 +342,7 @@ vk create --from <src>     --aspect vertical --bgm
 以 `ua_<id>` 排在最前：
 
 ```bash
+vk theme list --mine                         # 只列我的主题，并标明各自可用的模式
 vk theme list --mode freeform                # 我的主题 + 官方主题
 vk create --from post.md --theme ua_1234567  # 自定义主题：ua_ 加网页上显示的数字
 vk theme list --mode canvas                  # 画布风格；variants 里的每个配色也是一个 --theme 值

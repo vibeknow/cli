@@ -14,6 +14,7 @@ package themecat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -96,6 +97,44 @@ func usableIn(m modes.Mode, e Entry) bool {
 // List returns what `--theme` accepts in mode m: the caller's own active
 // theme assets first (the web lists 我的 first too), then the official
 // suite with the entries the backend would replace filtered out.
+// Mine is one of the user's own themes with every mode that accepts it.
+type Mine struct {
+	Entry
+	Modes []string
+}
+
+// ListMine lists the user's own themes across all modes, each with the modes
+// it can be used in. A user names a theme ("my 国风 template"), not the
+// mode it was made for, and custom themes live in more than one catalog;
+// without this the caller lists mode after mode looking for a name.
+// Each mode is read through List, so a theme appears under a mode exactly
+// when create would accept it there.
+func ListMine(ctx context.Context, l Lister) ([]Mine, error) {
+	var out []Mine
+	at := map[string]int{}
+	for _, m := range modes.All {
+		if m.CustomAssetType == "" {
+			continue
+		}
+		entries, err := List(ctx, l, m)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.Source != SourceCustom {
+				continue
+			}
+			if i, ok := at[e.ID]; ok {
+				out[i].Modes = append(out[i].Modes, m.Name)
+				continue
+			}
+			at[e.ID] = len(out)
+			out = append(out, Mine{Entry: e, Modes: []string{m.Name}})
+		}
+	}
+	return out, nil
+}
+
 func List(ctx context.Context, l Lister, m modes.Mode) ([]Entry, error) {
 	custom, err := customEntries(ctx, l, m.CustomAssetType)
 	if err != nil {
@@ -137,12 +176,23 @@ func Validate(ctx context.Context, l Lister, m modes.Mode, id string) (Entry, er
 		// The asset id as the web shows it, without the prefix the stream
 		// request needs. Sent as-is it is an unknown catalog id, which the
 		// backend replaces — the failure this check was added for.
-		if m.CustomAssetType != "" {
+		//
+		// Still refused rather than corrected: the caller has to send the
+		// value it will see reported back. But the user's own catalog is at
+		// hand, so the answer is definite — "that is your theme X, spelled
+		// ua_<id>" or the reason ua_<id> would not work either — instead of
+		// a guess the caller has to try.
+		e, err := validateCustom(ctx, l, m, "ua_"+id)
+		if err == nil {
 			return Entry{}, clerr.Validation(i18n.T("themecat.err.bare_number", id)).
-				WithHint(i18n.T("themecat.hint.bare_number", id, m.Name))
+				WithHint(i18n.T("themecat.hint.bare_number_found", e.Name, e.ID))
 		}
-		return Entry{}, clerr.Validation(i18n.T("themecat.err.bare_number", id)).
-			WithHint(i18n.T("themecat.hint.list", m.Name))
+		var cl *clerr.Error
+		if !errors.As(err, &cl) || cl.Type != clerr.TypeValidation {
+			return Entry{}, err // the lookup itself failed
+		}
+		return Entry{}, clerr.Validation(i18n.T("themecat.err.bare_number", id) + "; " + cl.Message).
+			WithHint(cl.Hint)
 	}
 
 	if strings.HasPrefix(id, "ua_") {
@@ -197,8 +247,10 @@ func validateCustom(ctx context.Context, l Lister, m modes.Mode, id string) (Ent
 		return Entry{}, clerr.Validation(i18n.T("themecat.err.no_custom", m.Name)).
 			WithHint(i18n.T("themecat.hint.list", m.Name))
 	}
+	// A ua_ id the user does not have: the useful next step is their own
+	// list, across modes, not the whole catalog of this one.
 	return Entry{}, clerr.Validation(i18n.T("themecat.err.custom_unknown", id)).
-		WithHint(i18n.T("themecat.hint.list", m.Name))
+		WithHint(i18n.T("themecat.hint.mine"))
 }
 
 func validateOfficial(ctx context.Context, l Lister, m modes.Mode, id string) (Entry, error) {

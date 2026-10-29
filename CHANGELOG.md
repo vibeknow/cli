@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `vk theme list --mine` lists only the user's own themes, across every
+  mode, each with the `modes` it is accepted in. A user names a theme, not
+  the mode it was made for; an agent no longer lists mode after mode to
+  find it.
+
+### Changed
+
+- A bare-number `--theme` is still refused, but the answer is now definite:
+  the hint names the user's theme with that id and its `ua_<id>` spelling,
+  or the message says why `ua_<id>` would fail as well (another mode's
+  theme, inactive, not theirs).
+- The create skill's trigger description names themes and templates, and
+  says 模板 means a theme, not a voice: "voice templates" was the only
+  template it mentioned.
+
+### Fixed
+
+- `theme list --mode` help left out `canvas`.
+
 ## 0.10.0 — 2026-10-28
 
 ### Fixed — `--theme` can no longer be silently replaced

@@ -372,6 +372,7 @@ A theme belongs to a mode — the mode picks the catalog, `--theme` picks an
 entry in it. Your own themes from the web are listed first as `ua_<id>`:
 
 ```bash
+vk theme list --mine                         # just your own themes, with the modes each works in
 vk theme list --mode freeform                # your themes, then the official ones
 vk create --from post.md --theme ua_1234567  # a custom theme: ua_ + the number the web shows
 vk theme list --mode canvas                  # art directions; each palette in `variants` is a --theme value too

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"os"
 	"regexp"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/vibeknow/cli/client/figlens"
 	"github.com/vibeknow/cli/client/vectoria"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"

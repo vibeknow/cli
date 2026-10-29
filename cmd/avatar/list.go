@@ -3,7 +3,6 @@ package avatar
 import (
 	"context"
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/output"

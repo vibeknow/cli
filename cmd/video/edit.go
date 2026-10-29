@@ -2,13 +2,13 @@ package video
 
 import (
 	"fmt"
-	"github.com/vibeknow/cli/internal/charcheck"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/vibeknow/cli/client/figlens"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cmdutil"
 	"github.com/vibeknow/cli/internal/i18n"

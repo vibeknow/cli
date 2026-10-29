@@ -140,8 +140,12 @@ func TestValidate(t *testing.T) {
 		{desc: "image2 style in image", mode: "image", id: "ua_77", wantID: "ua_77"},
 
 		// The asset id as the web shows it, without the ua_ prefix.
-		{desc: "bare number", mode: "freeform", id: "1234567", wantErr: []string{"ua_1234567"}},
-		{desc: "inactive custom", mode: "freeform", id: "ua_9", wantErr: []string{"ua_9", "theme list --mode freeform"}},
+		// Refused either way, but the answer is definite: it names the theme
+		// when the user has one with that id, and the real reason otherwise.
+		{desc: "bare number of own theme", mode: "freeform", id: "1234567", wantErr: []string{"bare number", "红薄荷", "--theme ua_1234567"}},
+		{desc: "bare number of no theme", mode: "freeform", id: "1", wantErr: []string{"bare number", "not an active custom theme", "theme list --mine"}},
+		{desc: "bare number of other mode's theme", mode: "freeform", id: "77", wantErr: []string{"bare number", "--mode image"}},
+		{desc: "inactive custom", mode: "freeform", id: "ua_9", wantErr: []string{"ua_9", "theme list --mine"}},
 		{desc: "unknown custom", mode: "freeform", id: "ua_1", wantErr: []string{"ua_1"}},
 		{desc: "image2 style outside image", mode: "freeform", id: "ua_77", wantErr: []string{"--mode image"}},
 		{desc: "freeform theme in image", mode: "image", id: "ua_1234567", wantErr: []string{"--mode freeform"}},
@@ -260,5 +264,35 @@ func TestValidateScene(t *testing.T) {
 	custom, _ := Validate(context.Background(), newFake(), mode(t, "image"), "ua_77")
 	if err := ValidateScene(custom, "office"); err == nil {
 		t.Error("a style with no scenes accepted a scene")
+	}
+}
+
+// ListMine names every mode a custom theme is accepted in, applying the
+// same rules as List: a theme on a book-intro base is a replica theme
+// only, and a retired base drops it everywhere.
+func TestListMine(t *testing.T) {
+	mine, err := ListMine(context.Background(), newFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range mine {
+		got[m.ID] = strings.Join(m.Modes, ",")
+	}
+	want := map[string]string{
+		"ua_1234567": "freeform,replica",
+		"ua_11":      "replica",
+		"ua_13":      "freeform,replica",
+		"ua_77":      "image",
+	}
+	for id, modes := range want {
+		if got[id] != modes {
+			t.Errorf("%s modes = %q, want %q", id, got[id], modes)
+		}
+	}
+	for _, absent := range []string{"ua_9", "ua_12", "ua_78"} {
+		if _, ok := got[absent]; ok {
+			t.Errorf("%s listed; inactive, retired-base and IP entries are not usable themes", absent)
+		}
 	}
 }

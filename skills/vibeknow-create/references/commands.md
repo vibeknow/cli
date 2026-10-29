@@ -337,6 +337,7 @@ style, template) all mean this.
 
 ```
 vibeknow theme list [--mode freeform|replica|image|handdraw|canvas] [flags]
+vibeknow theme list --mine [flags]
 ```
 
 `--mode` takes the same values as `create --mode`, and this list is exactly
@@ -367,8 +368,21 @@ drawn. Those are listed by `vibeknow ip list` and passed as `--ip-asset`; a
 character's `ua_` passed as `--theme` is refused pointing there.
 
 Own themes are listed as `ua_<id>`. Pass that token: the web shows the bare
-number, and a bare number is refused with the `ua_` spelling in the error.
-Only usable themes are listed — deleted or still-training ones are left out.
+number, and a bare number is refused — with the matching theme named, when
+the user has one by that id. Only usable themes are listed — deleted or
+still-training ones are left out.
+
+**`--mine`** lists only the user's own themes, across every mode, each with
+the `modes` it is accepted in. A user names a theme ("用我的国风模板"), not
+the mode it was made for, so start here and pass one of its `modes` as
+`--mode`. It cannot be combined with `--mode` (exit 2).
+
+```json
+{"themes": [
+  {"id": "ua_1234567", "name": "红薄荷", "source": "custom", "base": "mint", "desc": "", "modes": ["freeform", "replica"]},
+  {"id": "ua_77", "name": "my style", "source": "custom", "desc": "", "modes": ["image"]}
+]}
+```
 
 **JSON output shape:**
 ```json
@@ -384,9 +398,9 @@ Only usable themes are listed — deleted or still-training ones are left out.
 
 | Value | Error names |
 |---|---|
-| a bare number | the `ua_<id>` spelling |
+| a bare number | the theme it matches and its `ua_<id>` spelling, or why there is none |
 | an id from another mode's list | the mode it belongs to |
-| a `ua_` that is not one of the user's usable themes | `theme list` for this mode |
+| a `ua_` that is not one of the user's usable themes | `theme list --mine` |
 | in freeform, one of the 4 reserved themes, or a custom theme built on one | the theme it is built on |
 | anything else not on the list | `theme list` for this mode |
 

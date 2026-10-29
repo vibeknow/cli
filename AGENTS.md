@@ -452,7 +452,13 @@ image2 asset type holds both styles and characters, so `themecat` keeps
 only styles as themes and refuses a character's token pointing at
 `--ip-asset`.
 
-- A bare number is refused with the `ua_<id>` spelling in the message.
+- A bare number is refused, but definitely: the hint names the user's theme
+  with that id and its `ua_<id>` spelling, or the message says why `ua_<id>`
+  would fail too. Refused rather than corrected, so the value the caller
+  sent is the value reported back.
+- `vk theme list --mine` lists only the user's own themes across every
+  mode, each with the `modes` that accept it. Users name a theme, not the
+  mode it was made for; without it an agent lists mode after mode.
 - An id from another mode's catalog is refused naming that mode.
 - Four design-suite themes are reserved for a line the CLI does not expose
   and get swapped in freeform — and so does a custom theme built on one,
