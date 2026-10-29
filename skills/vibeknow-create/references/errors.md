@@ -1,5 +1,10 @@
 # vibeknow-create Error Reference
 
+With `--output json` or `ndjson`, a failure is written to **stderr** as the
+envelope `{"ok": false, "error": {"type", "message", "hint", "detail"}}` —
+indented for `json`, on one line for `ndjson`. The exit code is the verdict;
+`error.type`, `hint` and `detail` say what to do about it.
+
 ## Exit Codes
 
 | Exit Code | Meaning | Agent Action |

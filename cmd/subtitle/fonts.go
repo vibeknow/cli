@@ -46,7 +46,7 @@ renderer falls back to what it has.`,
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			items := make([]map[string]any, 0, len(fonts))
 			for i, f := range fonts {
 				items = append(items, map[string]any{

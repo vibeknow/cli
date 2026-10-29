@@ -75,7 +75,7 @@ of theirs without saying which mode it was made for.`,
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			items := make([]map[string]any, 0, len(themes))
 			for _, t := range themes {
 				tags := t.Tags
@@ -168,7 +168,7 @@ func runListMine(cmd *cobra.Command) error {
 	}
 
 	format, _ := cmd.Flags().GetString("output")
-	if format == "json" {
+	if format == output.FormatJSON || format == output.FormatNDJSON {
 		items := make([]map[string]any, 0, len(mine))
 		for _, t := range mine {
 			item := map[string]any{

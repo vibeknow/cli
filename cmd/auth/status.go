@@ -128,7 +128,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			payload := map[string]any{
 				"authenticated": authenticated,
 				"profile":       f.Current,

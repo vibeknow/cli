@@ -269,3 +269,63 @@ func TestDocUpload_ProgressStaysOnStderr(t *testing.T) {
 		t.Fatalf("progress narration should be on stderr, got: %s", stderr)
 	}
 }
+
+// TestOutputFormat_NoCommandBranchesOnJSONAlone guards the ndjson half of
+// the contract at the source. Twelve commands — theme, voice, avatar and kb
+// lists among them — tested `format == "json"`, so `--output ndjson` fell
+// through to the text table with exit 0. Most of them need a backend to
+// run, which is why this reads the code instead of executing each one: a
+// branch that picks the structured path must accept both formats.
+func TestOutputFormat_NoCommandBranchesOnJSONAlone(t *testing.T) {
+	root := filepath.Join("..", "..", "cmd")
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			jsonOnly := strings.Contains(line, `format == "json"`) || strings.Contains(line, "format == output.FormatJSON")
+			if jsonOnly && !strings.Contains(line, "ndjson") && !strings.Contains(line, "FormatNDJSON") {
+				t.Errorf("%s:%d tests for json without ndjson: %s", path, i+1, strings.TrimSpace(line))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestOutputNDJSON_ErrorIsOneJSONLine pins the error half of ndjson: the
+// envelope a json caller gets, on a single line. It used to be rendered as
+// text, so a caller that chose ndjson lost error.type on every failure.
+func TestOutputNDJSON_ErrorIsOneJSONLine(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	bin := build(t)
+	configHome := buildProfile(t, map[string]string{"figlens": "http://127.0.0.1:1"})
+
+	_, stderr, code := runVideoCmd(t, bin, configHome, "create", "--from", "x.md", "--mode", "nope", "--output", "ndjson")
+	if code != 2 {
+		t.Fatalf("exit %d, want 2\nstderr: %s", code, stderr)
+	}
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	last := lines[len(lines)-1]
+	var env struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(last), &env); err != nil {
+		t.Fatalf("last stderr line is not one JSON value: %q: %v", last, err)
+	}
+	if env.OK || env.Error.Type != "validation" {
+		t.Fatalf("envelope = %+v, want ok=false type=validation", env)
+	}
+}

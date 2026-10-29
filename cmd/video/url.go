@@ -32,7 +32,7 @@ var urlCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
 				"work_id": workID,
 				"url":     url,

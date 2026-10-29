@@ -97,7 +97,7 @@ var pruneCmd = &cobra.Command{
 
 		// Dry-run path (default).
 		if !flagPruneYes {
-			if format == "json" {
+			if format == output.FormatJSON || format == output.FormatNDJSON {
 				outItems := make([]map[string]any, 0, len(matched))
 				for _, k := range matched {
 					outItems = append(outItems, map[string]any{
@@ -158,7 +158,7 @@ var pruneCmd = &cobra.Command{
 		}
 		fmt.Fprintln(os.Stderr, i18n.T("kb.prune.done", deleted, failed))
 
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			_ = output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
 				"dry_run": false,
 				"matched": len(matched),

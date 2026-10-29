@@ -33,7 +33,7 @@ var getCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			payload := map[string]any{
 				"doc_id": d.ID,
 				"status": d.Status,

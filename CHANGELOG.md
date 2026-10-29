@@ -21,6 +21,15 @@
 
 ### Fixed
 
+- `--output ndjson` was ignored by twelve commands — the theme, voice,
+  avatar, subtitle, kb, video and doc lists among them — which printed
+  their text table. They now write their JSON result as one line, and a
+  source check fails the build if a command tests for `json` alone.
+- Errors under `--output ndjson` were rendered as text, losing
+  `error.type`. They are now the same envelope as under `json`, on one
+  line.
+- A bare-number `--theme` refusal reads naturally in Chinese: the two
+  halves were joined with an ASCII semicolon.
 - `theme list --mode` help left out `canvas`.
 
 ## 0.10.0 — 2026-10-28

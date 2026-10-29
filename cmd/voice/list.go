@@ -50,7 +50,7 @@ var listCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			toItem := func(t vibeknow.VoiceTemplate) map[string]any {
 				item := map[string]any{
 					"id":              t.ID,

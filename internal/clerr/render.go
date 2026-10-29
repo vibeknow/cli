@@ -47,8 +47,11 @@ func Render(w io.Writer, err error) {
 	RenderAs(w, err, "text", "")
 }
 
-// RenderAs writes err to w using the given format ("text" or "json"). identity
-// is included in the JSON envelope when non-empty.
+// RenderAs writes err to w using the given format ("text", "json" or
+// "ndjson"). identity is included in the JSON envelope when non-empty.
+// ndjson gets the same envelope on a single line: a caller reading one JSON
+// value per line cannot parse an indented one, and text would hide the
+// error type it branches on.
 func RenderAs(w io.Writer, err error, format, identity string) {
 	// A silent error carries an exit code and nothing else; the command has
 	// already written its own complete output.
@@ -56,8 +59,8 @@ func RenderAs(w io.Writer, err error, format, identity string) {
 	if errors.As(err, &silent) && silent.Silent {
 		return
 	}
-	if format == "json" {
-		renderJSON(w, err, identity)
+	if format == "json" || format == "ndjson" {
+		renderJSON(w, err, identity, format == "json")
 		return
 	}
 	renderText(w, err)
@@ -86,7 +89,7 @@ func renderText(w io.Writer, err error) {
 	}
 }
 
-func renderJSON(w io.Writer, err error, identity string) {
+func renderJSON(w io.Writer, err error, identity string, indent bool) {
 	detail := &ErrDetail{Message: err.Error()}
 	var cl *Error
 	if errors.As(err, &cl) {
@@ -111,7 +114,9 @@ func renderJSON(w io.Writer, err error, identity string) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
+	if indent {
+		enc.SetIndent("", "  ")
+	}
 	if encErr := enc.Encode(env); encErr != nil {
 		fmt.Fprintf(w, "Error: %s\n", err)
 		return

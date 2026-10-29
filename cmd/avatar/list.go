@@ -45,7 +45,7 @@ var listCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			pub := make([]map[string]any, 0, len(catalog))
 			for _, a := range catalog {
 				item := map[string]any{

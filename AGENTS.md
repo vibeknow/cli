@@ -287,6 +287,11 @@ every command honours it — including `doc upload`, `credits balance`,
   `VIBEKNOW_OUTPUT` > `text`.
 - An unrecognized value is a validation error (exit 2), not a silent
   fall-through to text.
+- `ndjson` is structured everywhere `json` is: a command with one result
+  writes it as a single JSON line, and an error is the same envelope as
+  under `json`, on one line of stderr. Twelve commands used to test for
+  `json` alone and print their text table instead;
+  `TestOutputFormat_NoCommandBranchesOnJSONAlone` guards the source.
 - stdout carries data, stderr carries everything else (progress,
   warnings, hints). `vk doc upload x.pdf --output json | jq -r .doc_id`
   works.

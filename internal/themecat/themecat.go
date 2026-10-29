@@ -191,7 +191,7 @@ func Validate(ctx context.Context, l Lister, m modes.Mode, id string) (Entry, er
 		if !errors.As(err, &cl) || cl.Type != clerr.TypeValidation {
 			return Entry{}, err // the lookup itself failed
 		}
-		return Entry{}, clerr.Validation(i18n.T("themecat.err.bare_number", id) + "; " + cl.Message).
+		return Entry{}, clerr.Validation(i18n.T("themecat.err.bare_number_because", i18n.T("themecat.err.bare_number", id), cl.Message)).
 			WithHint(cl.Hint)
 	}
 

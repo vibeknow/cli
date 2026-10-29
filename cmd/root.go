@@ -144,14 +144,14 @@ func Execute() error {
 	err := asUsageError(rootCmd.Execute())
 	if err != nil {
 		format := "text"
-		if flagOutput == "json" {
-			format = "json"
+		if flagOutput == "json" || flagOutput == "ndjson" {
+			format = flagOutput
 		}
 		clerr.RenderAs(os.Stderr, err, format, "")
 	}
-	// Show update notice at the end (stderr, text-mode only — JSON callers
-	// read the envelope's _notice field instead).
-	if flagOutput != "json" {
+	// Show update notice at the end (stderr, text-mode only — structured
+	// callers read the envelope's _notice field instead).
+	if flagOutput != "json" && flagOutput != "ndjson" {
 		if info := update.GetPending(); info != nil {
 			fmt.Fprint(os.Stderr, i18n.T("root.update_notice", info.Message()))
 		}

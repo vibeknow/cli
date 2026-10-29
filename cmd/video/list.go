@@ -38,7 +38,7 @@ var listCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			shareBase := cmdutil.ShareBaseURL()
 			items := make([]map[string]any, 0, len(works))
 			for _, w := range works {

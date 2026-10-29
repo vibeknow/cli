@@ -39,7 +39,7 @@ and prints their image_index values. Pass the indexes you want embedded to
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			items := make([]map[string]any, 0, len(images))
 			for _, img := range images {
 				item := map[string]any{

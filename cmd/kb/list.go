@@ -117,7 +117,7 @@ var listCmd = &cobra.Command{
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{
 				"page":  flagListPage,
 				"size":  flagListSize,

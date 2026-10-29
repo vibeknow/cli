@@ -49,7 +49,7 @@ still apply on top.`,
 		}
 
 		format, _ := cmd.Flags().GetString("output")
-		if format == "json" {
+		if format == output.FormatJSON || format == output.FormatNDJSON {
 			items := make([]map[string]any, 0, len(presets))
 			for i, p := range presets {
 				// The patch ships whole, not summarised: it is the only way
