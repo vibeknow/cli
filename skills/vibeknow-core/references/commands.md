@@ -6,7 +6,7 @@ These flags are available on all commands:
 
 | Flag | Description |
 |------|-------------|
-| `--output string` | Output format: `text\|json\|ndjson` (auto-selects based on TTY) |
+| `--output string` | Output format: `text\|json\|ndjson` (default `text`, never chosen by TTY; `VIBEKNOW_OUTPUT` sets the default) |
 | `--profile string` | Override active profile for this command |
 | `--verbose` | Emit request/response summaries (credentials redacted) |
 

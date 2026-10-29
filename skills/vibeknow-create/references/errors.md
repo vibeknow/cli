@@ -9,7 +9,7 @@ indented for `json`, on one line for `ndjson`. The exit code is the verdict;
 
 | Exit Code | Meaning | Agent Action |
 |-----------|---------|--------------|
-| 0 | Success | Extract `video_url` from stdout (JSON) or last NDJSON `task.succeeded` event |
+| 0 | Success | Take `preview.share_url` from stdout (`--output json`), or `video_url` from the NDJSON `task.succeeded` event |
 | 1 | General error | Read stderr for details |
 | 2 | Invalid arguments | Check `--from` is provided, file exists, URL is valid |
 | 3 | Auth error | Credential missing, expired, or superseded by another login — every command exits this way, and re-running changes nothing. Only a person can fix it, so say so instead of retrying. Where a host manages the login for you (the WorkBuddy connector does), tell the user to reconnect there; where it is your own install, `vibeknow auth status --output json` names the cause and `vibeknow auth login` repairs it. |

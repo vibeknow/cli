@@ -11,7 +11,7 @@ This repo is a Cobra-based Go CLI with an npm distribution wrapper.
 ## Conventions
 - All user-visible strings go through `internal/i18n`.
 - Tests live alongside source (`*_test.go`) plus `tests/integration/`.
-- `--output` values: `text` (default in TTY), `json`, `ndjson`.
+- `--output` values: `text` (the default, whatever the terminal), `json`, `ndjson`.
 - Exit codes: see spec §5.4.
 
 ## Before making changes

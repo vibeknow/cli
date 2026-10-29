@@ -361,7 +361,7 @@ vibeknow video download t_xxx --session-id s_yyy --dest ./my-video.mp4 --overwri
 
 | Exit | Meaning | Agent Action |
 |------|---------|--------------|
-| 0 | Success | Extract `video_url` from output |
+| 0 | Success | Take `preview.share_url` (`--output json`) or the `task.succeeded` event's `video_url` (`ndjson`) |
 | 1 | General error | Read stderr |
 | 2 | Invalid arguments | Fix and retry. Covers unknown/misspelled flags, unknown subcommands, missing required flags, stray positional args, and bad enum values. stderr names the valid values, and suggests the closest flag when you typo one. Never re-send the same command unchanged. |
 | 3 | Auth error (missing/expired/replaced credential) — fires on **every** command, not just `create` | Run `vibeknow auth status` to inspect credential source. Re-login with `vibeknow auth login` (interactive) or set `VIBEKNOW_TOKEN`. See **vibeknow-core** for profile/diagnostics if installed. |
