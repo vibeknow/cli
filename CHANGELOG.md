@@ -98,10 +98,12 @@ the run succeeded, billed, and came out in a style nobody picked.
   line's planning half is now `knowledge_prepare → goal_setting →
   beat_director → beat_script`; those nodes, the canvas line's and
   `doc_replica_director` arrived unmapped and reported no stage.
-- `create` without `--language` now sends `zh-CN`. An empty field rendered
-  the same video, but the backend never wrote its fallback to the work, and
-  it refuses to re-voice a work with no language — so no CLI-made video
-  could be re-voiced unless `--language` had been passed. Videos made before
+- `create` without `--language` now sends `zh-CN` to the built-in endpoint.
+  An empty field rendered the same video, but the backend never wrote its
+  fallback to the work, and it refuses to re-voice a work with no language —
+  so no CLI-made video could be re-voiced unless `--language` had been
+  passed. A profile pointing at another deployment still sends nothing,
+  since that deployment's default may be another locale. Videos made before
   this release stay that way.
 - Command lines the CLI hands back (resume, re-export, re-attach) no longer
   carry `task_id` 0 for a run reached by `--session-id` alone; `cover` fills

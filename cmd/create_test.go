@@ -367,3 +367,17 @@ func TestResolveAvatar(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultLanguageFor(t *testing.T) {
+	cases := map[string]string{
+		"https://vibeknow.com/figlens":  "zh-CN",
+		"https://vibeknow.com/figlens/": "zh-CN",
+		"https://intl.example/figlens":  "",
+		"http://127.0.0.1:8080":         "",
+	}
+	for url, want := range cases {
+		if got := defaultLanguageFor(url); got != want {
+			t.Errorf("defaultLanguageFor(%q) = %q, want %q", url, got, want)
+		}
+	}
+}

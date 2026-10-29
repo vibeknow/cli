@@ -22,6 +22,7 @@ import (
 	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/cliauth"
 	"github.com/vibeknow/cli/internal/cmdutil"
+	"github.com/vibeknow/cli/internal/endpoints"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
 	"github.com/vibeknow/cli/internal/i18n"
@@ -199,7 +200,9 @@ conversation rather than saved to a file.`,
 			return clerr.Validation(i18n.T("create.err.language_needs_pipeline"))
 		}
 		if language == "" && engine != figlens.EngineAgent {
-			language = defaultCreateLanguage
+			if _, figlensURL, _, err := cmdutil.Default().Service("figlens"); err == nil {
+				language = defaultLanguageFor(figlensURL)
+			}
 		}
 		avatarRef, err := resolveAvatar(flagCreateAvatar, flagCreateAvatarPos, flagCreateAvatarPx)
 		if err != nil {
@@ -615,13 +618,13 @@ conversation rather than saved to a file.`,
 				if !routeEvent(ev) {
 					switch ev.Type {
 					case "node.started":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", ev.Node))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_started", charcheck.Strip(ev.Node)))
 					case "node.succeeded":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", charcheck.Strip(ev.Node)))
 					case "node.warning":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_warning", ev.Node, charcheck.Strip(ev.Message)))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_warning", charcheck.Strip(ev.Node), charcheck.Strip(ev.Message)))
 					case "node.failed":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, charcheck.Strip(ev.Message)))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", charcheck.Strip(ev.Node), charcheck.Strip(ev.Message)))
 					}
 				}
 			case "node.progress":
@@ -1338,17 +1341,27 @@ func resolveAspect(flag string) (string, error) {
 // instead of letting an explicit choice quietly not happen.
 var createLanguages = []string{"zh-CN", "en-US", "es-ES", "fr-FR", "pt-BR", "ja-JP", "ko-KR"}
 
-// defaultCreateLanguage is sent when --language is not given. Leaving the
-// field empty renders the same video — the backend falls back to its
-// deployment locale, zh-CN — but that fallback is never written to the
-// work, and re-voicing reads the language off the work: a CLI-made video
-// without one is refused ("原作品缺少语言信息"). The web always sends its
-// selected language, so only CLI runs were affected.
-const defaultCreateLanguage = "zh-CN"
+// defaultLanguageFor is the language sent when --language is not given.
+// Leaving the field empty renders in the deployment's default locale, but
+// that fallback is never written to the work, and re-voicing reads the
+// language off the work: a CLI-made video without one is refused
+// ("原作品缺少语言信息"). The web always sends its selected language.
+//
+// The fallback is only known for the built-in endpoint, which is the zh-CN
+// deployment. Another deployment may default to another locale, and
+// sending zh-CN there would silently change the language of its videos —
+// so a profile pointing elsewhere keeps the field empty and the
+// deployment's own default.
+func defaultLanguageFor(figlensURL string) string {
+	if strings.TrimRight(figlensURL, "/") == endpoints.CloudDefaults["figlens"] {
+		return "zh-CN"
+	}
+	return ""
+}
 
 // resolveLanguage normalizes --language case-insensitively to the backend's
 // canonical locale spelling. Empty passes through; the caller fills in
-// defaultCreateLanguage.
+// defaultLanguageFor.
 func resolveLanguage(flag string) (string, error) {
 	flag = strings.TrimSpace(flag)
 	if flag == "" {

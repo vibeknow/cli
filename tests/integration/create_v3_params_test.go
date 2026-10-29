@@ -243,10 +243,11 @@ func TestCreate_V3Params_LocalRejections(t *testing.T) {
 	}
 }
 
-// TestCreate_LanguageDefaultsOnTheWire pins the default --language. An
-// empty field rendered the same video but left the work without a
-// language, and the backend refuses to re-voice such a work — so every
-// CLI-made video without --language could never be re-voiced.
+// TestCreate_LanguageDefaultsOnTheWire pins what an omitted --language
+// sends to an endpoint other than the built-in one: nothing. The zh-CN
+// default (see defaultLanguageFor) holds only for the built-in deployment;
+// another may default to another locale, and overriding it would silently
+// change the language of every video made there.
 func TestCreate_LanguageDefaultsOnTheWire(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -269,7 +270,7 @@ func TestCreate_LanguageDefaultsOnTheWire(t *testing.T) {
 	if stream == nil {
 		t.Fatal("stream body never captured")
 	}
-	if stream["language"] != "zh-CN" {
-		t.Errorf("stream body language = %#v, want \"zh-CN\"\nfull body: %+v", stream["language"], stream)
+	if v, present := stream["language"]; present {
+		t.Errorf("stream body carries language %#v for a non-default endpoint\nfull body: %+v", v, stream)
 	}
 }

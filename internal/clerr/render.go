@@ -64,23 +64,24 @@ func RenderAs(w io.Writer, err error, format, identity string) {
 
 func renderText(w io.Writer, err error) {
 	// Messages and hints carry backend text verbatim (a refusal reason, a
-	// title); a terminal must not interpret any of it.
-	w = charcheck.NewWriter(w)
+	// title); a terminal must not interpret any of it. Strip the values, not
+	// the writer, so the colours below survive.
 	var cl *Error
 	if !errors.As(err, &cl) {
-		fmt.Fprintf(w, "Error: %s\n", err)
+		fmt.Fprintf(w, "Error: %s\n", charcheck.Strip(err.Error()))
 		return
 	}
+	msg, hint := charcheck.Strip(cl.Message), charcheck.Strip(cl.Hint)
 	if isTTY() {
-		fmt.Fprintf(w, "%sError%s: %s\n", colorRed, colorReset, cl.Message)
-		if cl.Hint != "" {
-			fmt.Fprintf(w, "%sHint%s:  %s\n", colorYellow, colorReset, cl.Hint)
+		fmt.Fprintf(w, "%sError%s: %s\n", colorRed, colorReset, msg)
+		if hint != "" {
+			fmt.Fprintf(w, "%sHint%s:  %s\n", colorYellow, colorReset, hint)
 		}
 		return
 	}
-	fmt.Fprintf(w, "Error: %s\n", cl.Message)
-	if cl.Hint != "" {
-		fmt.Fprintf(w, "Hint: %s\n", cl.Hint)
+	fmt.Fprintf(w, "Error: %s\n", msg)
+	if hint != "" {
+		fmt.Fprintf(w, "Hint: %s\n", hint)
 	}
 }
 

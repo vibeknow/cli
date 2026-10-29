@@ -89,13 +89,13 @@ var waitCmd = &cobra.Command{
 			default:
 				switch ev.Type {
 				case "node.started":
-					fmt.Fprintf(stderr, "[%s] started\n", ev.Node)
+					fmt.Fprintf(stderr, "[%s] started\n", charcheck.Strip(ev.Node))
 				case "node.succeeded":
-					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
+					fmt.Fprintf(stderr, "[%s] done\n", charcheck.Strip(ev.Node))
 				case "node.warning":
-					fmt.Fprintf(stderr, "[%s] warning: %s\n", ev.Node, charcheck.Strip(ev.Message))
+					fmt.Fprintf(stderr, "[%s] warning: %s\n", charcheck.Strip(ev.Node), charcheck.Strip(ev.Message))
 				case "node.failed":
-					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, charcheck.Strip(ev.Message))
+					fmt.Fprintf(stderr, "[%s] failed: %s\n", charcheck.Strip(ev.Node), charcheck.Strip(ev.Message))
 				case "node.progress":
 					fmt.Fprintf(stderr, "[agent] %s\n", charcheck.Strip(ev.Message))
 				case "task.succeeded":
