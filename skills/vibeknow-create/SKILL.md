@@ -1,7 +1,7 @@
 ---
 name: vibeknow-create
 description: "Generate videos from documents/URLs/files in a chosen mode and theme (including the user's own 主题/风格/模板 made on the web), track progress, edit, re-voice, download results, list voices. Use when: user wants to create a video, use one of their own themes or templates, check task status, edit or download a video, or browse voices."
-version: 0.10.0
+version: 0.10.1
 emoji: "🎬"
 homepage: https://github.com/vibeknow/cli
 allowed-tools: Bash(vibeknow:*)

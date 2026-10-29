@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.1 — 2026-10-29
 
 ### Added
 
@@ -31,6 +31,10 @@
 - A bare-number `--theme` refusal reads naturally in Chinese: the two
   halves were joined with an ASCII semicolon.
 - `theme list --mode` help left out `canvas`.
+- The skills sent an agent reading `--output json` to `video_url` on
+  success; the JSON carries `preview.share_url`, and `video_url` is only on
+  the ndjson `task.succeeded` event. They also said `--output` picks a
+  format from the TTY, which it never has.
 
 ## 0.10.0 — 2026-10-28
 
