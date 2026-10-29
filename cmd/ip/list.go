@@ -3,6 +3,7 @@ package ip
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"text/tabwriter"
 
@@ -62,7 +63,7 @@ Your own characters are trained on the web. Only usable ones are listed.`,
 			return output.NewJSON(cmd.OutOrStdout()).Object(map[string]any{"ips": out})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "REF\tNAME\tSOURCE\tNOTE")
 		for _, it := range items {
 			note := it.Subtitle

@@ -20,16 +20,6 @@ func newFiglensClient() (*figlens.Client, error) {
 	return figlens.New(url, tp), nil
 }
 
-// targetArgs spells the (task_id, session_id) pair for a command line the
-// CLI hands back. A run reached by --session-id alone has no task_id, and
-// writing it as 0 reads as a real task number to whoever runs the line next.
-func targetArgs(taskID int64, sessionID string) string {
-	if taskID == 0 {
-		return "--session-id " + sessionID
-	}
-	return fmt.Sprintf("%d --session-id %s", taskID, sessionID)
-}
-
 // noteJob records an observed state change, best-effort. The ledger is an
 // index, not the source of truth: failing to update it must never turn a
 // finished run into a reported failure.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"os"
 
@@ -62,6 +63,9 @@ func RenderAs(w io.Writer, err error, format, identity string) {
 }
 
 func renderText(w io.Writer, err error) {
+	// Messages and hints carry backend text verbatim (a refusal reason, a
+	// title); a terminal must not interpret any of it.
+	w = charcheck.NewWriter(w)
 	var cl *Error
 	if !errors.As(err, &cl) {
 		fmt.Fprintf(w, "Error: %s\n", err)

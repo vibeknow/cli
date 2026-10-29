@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -244,7 +246,7 @@ func renderEditResult(cmd *cobra.Command, r editResult) error {
 		}
 		if r.StaleExport {
 			payload["next_actions"] = []map[string]string{{
-				"command": "vk video export " + targetArgs(r.TaskID, r.SessionID),
+				"command": "vk video export " + snapshot.Target(r.TaskID, r.SessionID),
 				"purpose": "Re-render the MP4 with the new narration (bills; asks for confirmation first)",
 			}}
 		}
@@ -257,7 +259,7 @@ func renderEditResult(cmd *cobra.Command, r editResult) error {
 		fmt.Fprintf(out, "preview_url=%s\n", r.PreviewURL)
 	}
 	if r.StaleExport {
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("edit.export_stale", targetArgs(r.TaskID, r.SessionID)))
+		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("edit.export_stale", snapshot.Target(r.TaskID, r.SessionID)))
 	}
 	return nil
 }
@@ -285,7 +287,7 @@ func emitEditEvent(cmd *cobra.Command, ch *cmdutil.RunChannel, sceneIndex int, e
 		fmt.Fprintln(stderr, i18n.T("edit.succeeded", sceneIndex))
 	default:
 		if ev.Message != "" {
-			fmt.Fprintln(stderr, ev.Message)
+			fmt.Fprintln(stderr, charcheck.Strip(ev.Message))
 		}
 	}
 }
@@ -359,7 +361,7 @@ func editGateContext(q *figlens.EditQuota) map[string]any {
 // quoted so it survives being copied into a shell.
 func editResumeCommand(taskID int64, sessionID string, sceneIndex int, script string, scriptOnly bool, token string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "vk video edit %s --scene %d --script %s", targetArgs(taskID, sessionID), sceneIndex, shellQuote(script))
+	fmt.Fprintf(&b, "vk video edit %s --scene %d --script %s", snapshot.Target(taskID, sessionID), sceneIndex, shellQuote(script))
 	if scriptOnly {
 		b.WriteString(" --script-only")
 	}

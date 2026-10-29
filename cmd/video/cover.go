@@ -13,6 +13,7 @@ import (
 	"github.com/vibeknow/cli/internal/i18n"
 	"github.com/vibeknow/cli/internal/jobs"
 	"github.com/vibeknow/cli/internal/output"
+	"github.com/vibeknow/cli/internal/video/snapshot"
 )
 
 var (
@@ -109,7 +110,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		Yes:     flagCoverYes,
 		Token:   flagCoverConfirm,
 		ResumeCommand: func(token string) string {
-			cmdline := fmt.Sprintf("vk video cover %s --title %s", targetArgs(taskID, sessionID), shellQuote(title))
+			cmdline := fmt.Sprintf("vk video cover %s --title %s", snapshot.Target(taskID, sessionID), shellQuote(title))
 			if subtitle != "" {
 				cmdline += " --subtitle " + shellQuote(subtitle)
 			}
@@ -133,7 +134,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		// have made and billed the cover after the connection went.
 		return clerr.New(i18n.T("cover.err.outcome_unknown")).WithCode(6).
 			WithDetail(map[string]any{"resend_safe": false}).
-			WithHintf("run `vk video status %s` and compare cover_url before generating again", targetArgs(taskID, sessionID))
+			WithHintf("run `vk video status %s` and compare cover_url before generating again", snapshot.Target(taskID, sessionID))
 	}
 	if err != nil {
 		return err
@@ -165,7 +166,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 		}
 		if exportCleared {
 			payload["next_actions"] = []map[string]string{{
-				"command": "vk video export " + targetArgs(taskID, sessionID),
+				"command": "vk video export " + snapshot.Target(taskID, sessionID),
 				"purpose": "Re-render the MP4 with the new cover (bills; asks for confirmation first)",
 			}}
 		}
@@ -173,7 +174,7 @@ func runCover(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "cover_url=%s\n", res.CoverURL)
 	if exportCleared {
-		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("cover.export_cleared", targetArgs(taskID, sessionID)))
+		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("cover.export_cleared", snapshot.Target(taskID, sessionID)))
 	}
 	return nil
 }

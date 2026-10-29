@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 )
 
 type Document struct {
@@ -24,17 +25,17 @@ func (c *Client) CreateKB(ctx context.Context, name string) (string, error) {
 
 func (c *Client) UploadDoc(ctx context.Context, kbID, fileName string, file io.Reader) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/file", kbID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/file", url.PathEscape(kbID))
 	if err := c.http.DoUpload(ctx, path, "file", fileName, file, &doc); err != nil {
 		return nil, fmt.Errorf("upload document: %w", err)
 	}
 	return &doc, nil
 }
 
-func (c *Client) UploadURL(ctx context.Context, kbID, url string) (*Document, error) {
+func (c *Client) UploadURL(ctx context.Context, kbID, sourceURL string) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/url", kbID)
-	if err := c.http.Do(ctx, "POST", path, map[string]string{"url": url}, &doc); err != nil {
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/url", url.PathEscape(kbID))
+	if err := c.http.Do(ctx, "POST", path, map[string]string{"url": sourceURL}, &doc); err != nil {
 		return nil, fmt.Errorf("upload URL: %w", err)
 	}
 	return &doc, nil
@@ -42,7 +43,7 @@ func (c *Client) UploadURL(ctx context.Context, kbID, url string) (*Document, er
 
 func (c *Client) GetDocStatus(ctx context.Context, kbID, docID string) (*Document, error) {
 	var doc Document
-	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", kbID, docID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", url.PathEscape(kbID), url.PathEscape(docID))
 	if err := c.http.Do(ctx, "GET", path, nil, &doc); err != nil {
 		return nil, fmt.Errorf("get document status: %w", err)
 	}
@@ -50,7 +51,7 @@ func (c *Client) GetDocStatus(ctx context.Context, kbID, docID string) (*Documen
 }
 
 func (c *Client) DeleteDoc(ctx context.Context, kbID, docID string) error {
-	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", kbID, docID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s/documents/%s", url.PathEscape(kbID), url.PathEscape(docID))
 	if err := c.http.Do(ctx, "DELETE", path, nil, nil); err != nil {
 		return fmt.Errorf("delete document: %w", err)
 	}
@@ -61,7 +62,7 @@ func (c *Client) DeleteDoc(ctx context.Context, kbID, docID string) error {
 // Used by `vk create` to clean up orphan kbs when upload-then-pipeline fails
 // before the backend task takes ownership of the kb.
 func (c *Client) DeleteKB(ctx context.Context, kbID string) error {
-	path := fmt.Sprintf("/v1/knowledgebases/%s", kbID)
+	path := fmt.Sprintf("/v1/knowledgebases/%s", url.PathEscape(kbID))
 	if err := c.http.Do(ctx, "DELETE", path, nil, nil); err != nil {
 		return fmt.Errorf("delete knowledgebase: %w", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"os"
 	"regexp"
@@ -618,9 +619,9 @@ conversation rather than saved to a file.`,
 					case "node.succeeded":
 						fmt.Fprintln(os.Stderr, i18n.T("create.node_succeeded", ev.Node))
 					case "node.warning":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_warning", ev.Node, ev.Message))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_warning", ev.Node, charcheck.Strip(ev.Message)))
 					case "node.failed":
-						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, ev.Message))
+						fmt.Fprintln(os.Stderr, i18n.T("create.node_failed", ev.Node, charcheck.Strip(ev.Message)))
 					}
 				}
 			case "node.progress":
@@ -628,7 +629,7 @@ conversation rather than saved to a file.`,
 					// A bracketed prefix keeps output scannable alongside the
 					// [<stage>] lines; the pipeline also sends messages that
 					// belong to no stage, which are not the agent engine's.
-					fmt.Fprintf(os.Stderr, "[%s] %s\n", engine, ev.Message)
+					fmt.Fprintf(os.Stderr, "[%s] %s\n", engine, charcheck.Strip(ev.Message))
 				}
 			case "task.succeeded":
 				successSessionID = ev.SessionID
@@ -667,9 +668,9 @@ conversation rather than saved to a file.`,
 						fmt.Fprintln(os.Stderr, i18n.T("credits.insufficient"))
 					case httpclient.IsUserFixableCode(ev.Code):
 						// Backend's localized preflight message, verbatim.
-						fmt.Fprintln(os.Stderr, ev.Message)
+						fmt.Fprintln(os.Stderr, charcheck.Strip(ev.Message))
 					default:
-						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", ev.Message))
+						fmt.Fprintln(os.Stderr, i18n.T("create.task_failed", charcheck.Strip(ev.Message)))
 					}
 				}
 			}
@@ -730,7 +731,7 @@ conversation rather than saved to a file.`,
 				asyncPayload["requested_theme"] = ref
 			}
 			asyncPayload["next_actions"] = []map[string]string{{
-				"command": fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID),
+				"command": "vk video wait " + snapshot.Target(task.TaskID, task.SessionID),
 				"purpose": "Wait for the generation pipeline to finish",
 			}}
 			switch format {
@@ -756,7 +757,7 @@ conversation rather than saved to a file.`,
 				r.Status = jobs.StatusPaused
 			})
 			return clerr.Newf("%s", i18n.T("create.err.task_paused",
-				fmt.Sprintf("vk video resume %d --session-id %s", task.TaskID, task.SessionID))).WithCode(6)
+				"vk video resume "+snapshot.Target(task.TaskID, task.SessionID))).WithCode(6)
 		}
 
 		if successSessionID == "" {
@@ -775,7 +776,7 @@ conversation rather than saved to a file.`,
 			// next thing a caller is tempted to do here, at the price of a
 			// second render.
 			probe := cmdutil.ProbeRun(ctx, fc, task.TaskID, task.SessionID)
-			reattach := fmt.Sprintf("vk video wait %d --session-id %s", task.TaskID, task.SessionID)
+			reattach := "vk video wait " + snapshot.Target(task.TaskID, task.SessionID)
 			if !sawAnyEvent {
 				return cmdutil.UnknownStateError(i18n.T("create.err.no_events"), probe, reattach)
 			}
@@ -828,7 +829,7 @@ conversation rather than saved to a file.`,
 			Yes:     flagCreateYes,
 			Token:   flagCreateConfirm,
 			ResumeCommand: func(token string) string {
-				return fmt.Sprintf("vk video export %d --session-id %s --confirm %s", task.TaskID, successSessionID, token)
+				return fmt.Sprintf("vk video export %s --confirm %s", snapshot.Target(task.TaskID, successSessionID), token)
 			},
 		})
 		if err != nil {

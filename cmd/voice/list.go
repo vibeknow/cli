@@ -3,6 +3,7 @@ package voice
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -98,7 +99,7 @@ var listCmd = &cobra.Command{
 			})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		// The first column is headed "#", not "ID": it is a display index,
 		// while SPEECH_VOICE_ID is the identifier the backend's TTS keys on.
 		// `--voice` accepts either, but the header should say which is real.

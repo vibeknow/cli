@@ -3,6 +3,7 @@ package subtitle
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"text/tabwriter"
 
@@ -59,7 +60,7 @@ renderer falls back to what it has.`,
 			})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		// "#" is a display index, "FAMILY" is the value the backend stores.
 		// --subtitle-font takes either; the header should say which is real.
 		fmt.Fprintln(w, "#\tFAMILY\tLABEL")

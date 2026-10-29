@@ -8,6 +8,7 @@ package charcheck
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"unicode/utf8"
 )
@@ -101,4 +102,20 @@ func Strip(s string) string {
 		i += size
 	}
 	return b.String()
+}
+
+// NewWriter returns a writer that Strips everything written through it. It
+// is for text output assembled from backend strings — names, titles,
+// progress messages — where sanitising each field at every call site is
+// the kind of rule that is missed once. It reports len(p) on success so
+// callers such as tabwriter see a complete write.
+func NewWriter(w io.Writer) io.Writer { return stripWriter{w} }
+
+type stripWriter struct{ w io.Writer }
+
+func (s stripWriter) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(s.w, Strip(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

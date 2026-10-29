@@ -3,6 +3,7 @@ package video
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -92,15 +93,15 @@ var waitCmd = &cobra.Command{
 				case "node.succeeded":
 					fmt.Fprintf(stderr, "[%s] done\n", ev.Node)
 				case "node.warning":
-					fmt.Fprintf(stderr, "[%s] warning: %s\n", ev.Node, ev.Message)
+					fmt.Fprintf(stderr, "[%s] warning: %s\n", ev.Node, charcheck.Strip(ev.Message))
 				case "node.failed":
-					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, ev.Message)
+					fmt.Fprintf(stderr, "[%s] failed: %s\n", ev.Node, charcheck.Strip(ev.Message))
 				case "node.progress":
-					fmt.Fprintf(stderr, "[agent] %s\n", ev.Message)
+					fmt.Fprintf(stderr, "[agent] %s\n", charcheck.Strip(ev.Message))
 				case "task.succeeded":
 					fmt.Fprintf(stderr, "task succeeded\n")
 				case "task.failed":
-					fmt.Fprintf(stderr, "task failed: %s\n", ev.Message)
+					fmt.Fprintf(stderr, "task failed: %s\n", charcheck.Strip(ev.Message))
 				case "task.paused":
 					fmt.Fprintf(stderr, "task paused\n")
 				}
@@ -201,7 +202,7 @@ var waitCmd = &cobra.Command{
 			})
 			return clerr.Newf(
 				"task paused; resume it with: vk video resume %s",
-				targetArgs(taskID, flagWaitSessionID)).WithCode(6)
+				snapshot.Target(taskID, flagWaitSessionID)).WithCode(6)
 		}
 		if !taskSucceeded {
 			// The stream closed without a terminal event. Exiting 0 here

@@ -3,6 +3,7 @@ package avatar
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -83,7 +84,7 @@ var listCmd = &cobra.Command{
 			})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "ID\tNAME\tSTYLE\tGENDER\tVOICE_ID\tNOTE")
 		for _, a := range catalog {
 			note := strings.Join(a.Tags, ",")

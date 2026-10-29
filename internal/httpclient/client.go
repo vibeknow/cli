@@ -32,8 +32,22 @@ type envelope struct {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    &http.Client{Timeout: 30 * time.Second, CheckRedirect: sameHostRedirect},
 	}
+}
+
+// sameHostRedirect refuses a redirect that leaves the host the request was
+// sent to. The credential is set by a transport middleware, which runs again
+// on every hop, so following a redirect elsewhere would hand the user's token
+// to whatever host it named. No backend endpoint redirects across hosts.
+func sameHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after %d redirects", len(via))
+	}
+	if req.URL.Host != via[0].URL.Host {
+		return fmt.Errorf("refusing a redirect from %s to another host (%s)", via[0].URL.Host, req.URL.Host)
+	}
+	return nil
 }
 
 // WithEnvelope enables {"code":0,"data":{...}} unwrapping for Go backend services.
@@ -45,7 +59,7 @@ func (c *Client) WithEnvelope() *Client {
 
 func (c *Client) WithTransport(rt http.RoundTripper) *Client {
 	nc := *c
-	nc.http = &http.Client{Transport: rt, Timeout: c.http.Timeout}
+	nc.http = &http.Client{Transport: rt, Timeout: c.http.Timeout, CheckRedirect: sameHostRedirect}
 	return &nc
 }
 
@@ -141,7 +155,7 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body any) (*htt
 
 	// Use a separate http.Client with no timeout for streaming responses.
 	// The standard c.http has Timeout=30s which kills SSE streams.
-	streamClient := &http.Client{Transport: c.http.Transport}
+	streamClient := &http.Client{Transport: c.http.Transport, CheckRedirect: sameHostRedirect}
 	resp, err := streamClient.Do(req)
 	if err != nil {
 		return nil, classifyTransportError(err)

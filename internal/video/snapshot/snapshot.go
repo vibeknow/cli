@@ -7,6 +7,7 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"strings"
 	"time"
@@ -175,6 +176,7 @@ func deriveExport(in BuildInput) Export {
 // errW. Ordering: IDs → title/duration → share_url (its own line) → blank →
 // hints from next_actions. Agents parsing stdout can grep for share_url=.
 func RenderText(w, errW io.Writer, s Snapshot) {
+	w, errW = charcheck.NewWriter(w), charcheck.NewWriter(errW)
 	if s.TaskID != 0 {
 		fmt.Fprintf(w, "task_id=%d ", s.TaskID)
 	}
@@ -277,11 +279,27 @@ func formatDuration(ms int64) string {
 // accept it, a printed command is either something a caller can run as-is or
 // it is nothing — and one carrying an obviously wrong id invites the reader to
 // go and repair it, which is where a wrong id gets substituted.
+//
+// The session id is quoted when it holds anything but [A-Za-z0-9_-]. It
+// comes from the command line, the ledger or the backend, and the line is
+// built to be run — an id carrying `;` or `$(…)` must reach the shell as
+// one argument, not as a second command.
 func Target(taskID int64, sessionID string) string {
 	if taskID == 0 {
-		return "--session-id " + sessionID
+		return "--session-id " + ShellArg(sessionID)
 	}
-	return fmt.Sprintf("%d --session-id %s", taskID, sessionID)
+	return fmt.Sprintf("%d --session-id %s", taskID, ShellArg(sessionID))
+}
+
+// ShellArg returns s as one POSIX shell word: bare when it is made only of
+// characters no shell treats specially, single-quoted otherwise.
+func ShellArg(s string) string {
+	if s != "" && strings.IndexFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_')
+	}) < 0 {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func nextActions(s Snapshot, in BuildInput) []Action {

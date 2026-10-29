@@ -199,7 +199,7 @@ func revoiceGate(cmd *cobra.Command, taskID int64, sessionID, voice string, cap 
 		Yes:     flagRevoiceYes,
 		Token:   flagRevoiceConfirm,
 		ResumeCommand: func(token string) string {
-			return fmt.Sprintf("vk video revoice %s --voice %s --confirm %s", targetArgs(taskID, sessionID), shellQuote(voice), token)
+			return fmt.Sprintf("vk video revoice %s --voice %s --confirm %s", snapshot.Target(taskID, sessionID), shellQuote(voice), token)
 		},
 	})
 	if err == nil && !ok {
@@ -319,8 +319,8 @@ func revoiceBudgetError(j figlens.RevoiceJob, sourceSession string, waited, budg
 // revoiceWatchCommand is the line that re-attaches to a re-voice. It needs
 // no --confirm: attaching to a run that is going spends nothing.
 func revoiceWatchCommand(j figlens.RevoiceJob, sourceSession string, budget time.Duration) string {
-	return fmt.Sprintf("vk video revoice %d --session-id %s --voice %s --for %s",
-		j.TaskID, sourceSession, shellQuote(j.VoiceID), budget)
+	return fmt.Sprintf("vk video revoice %s --voice %s --for %s",
+		snapshot.Target(j.TaskID, sourceSession), shellQuote(j.VoiceID), budget)
 }
 
 // finishRevoice turns a settled job into an exit code and, on success, the

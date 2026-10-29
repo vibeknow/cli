@@ -3,6 +3,7 @@ package video
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"strings"
 	"time"
 
@@ -82,9 +83,10 @@ var listCmd = &cobra.Command{
 		))
 		fmt.Println(strings.Repeat("-", 100))
 		for _, w := range works {
-			title := w.Title
-			if len(title) > 28 {
-				title = title[:28] + ".."
+			// Truncate by rune: a byte cut splits a CJK title mid-character.
+			title := charcheck.Strip(w.Title)
+			if r := []rune(title); len(r) > 28 {
+				title = string(r[:28]) + ".."
 			}
 			duration := "--"
 			if w.Duration > 0 {

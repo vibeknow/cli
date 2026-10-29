@@ -3,6 +3,7 @@ package subtitle
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strconv"
 	"strings"
@@ -67,7 +68,7 @@ still apply on top.`,
 			})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "#\tNAME\tLOOK")
 		for i, p := range presets {
 			fmt.Fprintf(w, "%d\t%s\t%s\n", i+1, p.Name, describePatch(p.Patch))

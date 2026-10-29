@@ -3,6 +3,7 @@ package theme
 import (
 	"context"
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -108,7 +109,7 @@ Some modes have a second level under a theme:
 			})
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		w := tabwriter.NewWriter(charcheck.NewWriter(os.Stdout), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "ID\tNAME\tSOURCE\tTAGS\tDESC")
 		for _, t := range themes {
 			desc := t.Desc

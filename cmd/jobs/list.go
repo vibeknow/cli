@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"fmt"
+	"github.com/vibeknow/cli/internal/charcheck"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -57,7 +58,7 @@ var listCmd = &cobra.Command{
 				fmt.Fprintln(w, "no recorded runs (the ledger fills up as `vk create` runs)")
 				return
 			}
-			tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+			tw := tabwriter.NewWriter(charcheck.NewWriter(w), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TASK_ID\tSESSION_ID\tSTATUS\tAGE\tSOURCE")
 			for _, r := range all {
 				fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n",

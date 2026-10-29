@@ -1,6 +1,9 @@
 package charcheck
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestStrip(t *testing.T) {
 	cases := []struct {
@@ -22,5 +25,17 @@ func TestStrip(t *testing.T) {
 				t.Fatalf("Strip(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+func TestNewWriterStrips(t *testing.T) {
+	var b strings.Builder
+	w := NewWriter(&b)
+	n, err := w.Write([]byte("a\x1b[31mb\tc\n"))
+	if err != nil || n != len("a\x1b[31mb\tc\n") {
+		t.Fatalf("Write = %d, %v; want the full input length", n, err)
+	}
+	if got := b.String(); got != "ab\tc\n" {
+		t.Errorf("got %q", got)
 	}
 }

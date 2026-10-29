@@ -3,6 +3,7 @@ package figlens
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -44,7 +45,7 @@ type Work struct {
 
 func (c *Client) GetWorkBySession(ctx context.Context, sessionID string) (*Work, error) {
 	var w Work
-	path := fmt.Sprintf("/v1/works/detailBySession?session_id=%s", sessionID)
+	path := "/v1/works/detailBySession?session_id=" + url.QueryEscape(sessionID)
 	if err := c.http.Do(ctx, "GET", path, nil, &w); err != nil {
 		return nil, fmt.Errorf("get work by session: %w", err)
 	}

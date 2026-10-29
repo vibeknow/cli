@@ -75,6 +75,23 @@ the run succeeded, billed, and came out in a style nobody picked.
 - `--images` is no longer described as "mandatory". Outside image mode the
   backend treats picked images as a preference and may leave some out.
 
+### Security
+
+- The API client no longer follows a redirect to another host. The
+  credential is attached by a transport middleware that runs on every hop,
+  so a redirect elsewhere would have carried the user's token with it.
+- IDs taken from the command line are escaped where they enter a request:
+  `session_id` in a query string, `kb_id` and `doc_id` as path segments. An
+  id such as `../x` could otherwise address a different endpoint.
+- Command lines handed back for running (`resume_command`,
+  `next_actions[].command`, hints) quote a session id that holds anything
+  but letters, digits, `-` and `_`, so it reaches a shell as one argument.
+- Backend text written to a terminal — error messages and hints, progress
+  messages, list tables, the status summary — has escape sequences and
+  control characters stripped, as plain text output already did.
+  `video list` also truncates titles by character, not byte, which cut
+  Chinese titles mid-character.
+
 ### Fixed
 
 - Progress attribution follows the backend's current graphs. The standard
