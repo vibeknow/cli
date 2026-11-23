@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A sandbox that let the CLI read its credential store but not write it
+  got the user signed out everywhere a few minutes later. The refresh
+  went through, the new pair could not be saved, and the next command
+  presented the refresh token the server had just spent, which the server
+  treats as theft and answers by revoking the session. The CLI now checks
+  that the store is writable before refreshing. If it is not, the refresh
+  token is left alone: a still-valid access token is used, and an expired
+  one fails with `credential_store_readonly` (exit 3), saying to run where
+  the store can be written. The session survives for the next command
+  that can.
+- An auth error built with its own hint kept it; every Token() failure was
+  rewritten to "run `vibeknow auth login`".
+
 ## 0.10.1 — 2026-10-29
 
 ### Added

@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/vibeknow/cli/client/account"
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
+	"github.com/vibeknow/cli/internal/i18n"
 )
 
 // CodeSessionExpired is the CLI-facing error code returned when the stored
@@ -108,6 +111,16 @@ func (p *OAuthTokenProvider) Token(ctx context.Context) (string, error) {
 		if isSessionDead(err) {
 			return "", err
 		}
+		// The store cannot take a new pair, so nothing was refreshed and the
+		// session is intact. The stored access token is still worth sending
+		// while it has not actually expired; once it has, the request can
+		// only come back 401, so say why now instead.
+		if isStoreReadOnly(err) {
+			if time.Now().Before(st.ExpiresAt) {
+				return st.AccessToken, nil
+			}
+			return "", err
+		}
 		// Transient refresh failure (network, 5xx, etc.). The stored
 		// access token still has up to 5 minutes of validity (that is
 		// why Status() returned NeedsRefresh, not Expired), so let the
@@ -200,6 +213,17 @@ func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.Stored
 			return fresh.AccessToken != st.AccessToken && fresh.Status() == credential.StatusValid
 		},
 		func() (string, error) {
+			// Refreshing spends the presented token: the server rotates it
+			// and treats any second presentation as theft, revoking the
+			// whole session. So find out whether the new pair can be kept
+			// *before* spending the old one. A sandbox that lets the CLI
+			// read its store but not write it would otherwise get a pair
+			// that dies with this process, and the next command — reading
+			// the spent copy back — would sign the user out everywhere.
+			if err := p.probeWritable(); err != nil {
+				return "", newStoreReadOnly(err)
+			}
+
 			client := account.NewUnauthenticated(p.accountURL)
 			resp, err := client.RefreshToken(ctx, st.RefreshToken)
 			if err != nil {
@@ -261,6 +285,9 @@ func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.Stored
 			p.purgeCredential()
 			return "", newSessionExpired(err)
 		}
+		if isStoreReadOnly(err) {
+			return "", err
+		}
 		return "", fmt.Errorf("token refresh failed: %w", err)
 	}
 
@@ -275,6 +302,53 @@ func (p *OAuthTokenProvider) doRefresh(ctx context.Context, st credential.Stored
 	}
 
 	return tok, nil
+}
+
+// probeWritable checks that the store can take a write, using an entry of its
+// own so the stored credential is never touched. It exercises the same path a
+// real write takes — master key, encryption, the atomic rename into the store
+// directory — so a store that accepts the probe accepts the new pair too, short
+// of the disk filling up in between (doRefresh still copes with that).
+func (p *OAuthTokenProvider) probeWritable() error {
+	kc := p.keychainSrc.Keychain
+	if kc == nil || p.keychainSrc.Entry == "" {
+		return errors.New("no credential store")
+	}
+	entry := p.keychainSrc.Entry + ".probe"
+	if err := kc.Set(entry, []byte("probe")); err != nil {
+		return err
+	}
+	// A store that allows the write but not the delete is still writable;
+	// the leftover probe holds nothing.
+	_ = kc.Delete(entry)
+	return nil
+}
+
+// CodeCredentialStoreReadOnly marks a refresh that was not attempted because
+// the new pair could not have been saved.
+const CodeCredentialStoreReadOnly = "credential_store_readonly"
+
+// storeReadOnlyError is the cause carried by the error newStoreReadOnly
+// builds, so callers can recognise the condition through any wrapping.
+type storeReadOnlyError struct{ cause error }
+
+func (e *storeReadOnlyError) Error() string { return e.cause.Error() }
+func (e *storeReadOnlyError) Unwrap() error { return e.cause }
+
+// newStoreReadOnly reports a refresh skipped because the store refused the
+// probe. It is an auth error (exit 3: the user has to act, retrying will not
+// help) but deliberately not a login prompt: the session is fine, and logging
+// in again from the same sandbox would only hit the same wall.
+func newStoreReadOnly(cause error) *clerr.Error {
+	return clerr.Auth(i18n.T("auth.store_readonly", cause)).
+		WithHint(i18n.T("auth.store_readonly.hint")).
+		WithDetail(map[string]any{"code": CodeCredentialStoreReadOnly}).
+		WithCause(&storeReadOnlyError{cause: cause})
+}
+
+func isStoreReadOnly(err error) bool {
+	var ro *storeReadOnlyError
+	return errors.As(err, &ro)
 }
 
 // newSessionExpired wraps the backend refresh error into the CLI-facing

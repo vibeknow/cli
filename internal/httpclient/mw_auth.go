@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/vibeknow/cli/internal/clerr"
@@ -42,6 +43,15 @@ func (m AuthMiddleware) Wrap(next http.RoundTripper) http.RoundTripper {
 				// WithCause keeps the underlying *errs.Object reachable, so
 				// callers matching on codes like session_expired still see
 				// it through the wrapper.
+				//
+				// A provider that already built a *clerr.Error has said what
+				// the user should do, and keeps its hint: "log in again" is
+				// wrong advice when the session is fine but its credential
+				// store is read-only.
+				var ce *clerr.Error
+				if errors.As(err, &ce) {
+					return nil, ce
+				}
 				return nil, clerr.Auth(err.Error()).
 					WithHint("run `vibeknow auth login`").
 					WithCause(err)

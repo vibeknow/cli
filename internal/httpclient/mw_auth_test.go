@@ -2,9 +2,13 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/vibeknow/cli/internal/clerr"
 )
 
 type staticTokenProvider string
@@ -61,5 +65,31 @@ func TestRedirectToAnotherHostKeepsTheToken(t *testing.T) {
 	}
 	if leaked != "" {
 		t.Errorf("token reached the redirect target: %q", leaked)
+	}
+}
+
+type failingProvider struct{ err error }
+
+func (f failingProvider) Token(context.Context) (string, error) { return "", f.err }
+
+// A provider that already built a *clerr.Error has said what the user should
+// do; the middleware must not swap its hint for "log in again".
+func TestAuthMiddlewareKeepsTheProvidersOwnError(t *testing.T) {
+	want := clerr.Auth("store is read-only").WithHint("run it outside the sandbox")
+	chain := Chain(http.DefaultTransport, AuthMiddleware{Provider: failingProvider{err: want}})
+	_, err := chain.RoundTrip(httptest.NewRequest("GET", "http://example.invalid/", nil))
+	var ce *clerr.Error
+	if !errors.As(err, &ce) || ce.Hint != want.Hint {
+		t.Fatalf("err = %#v, want the provider's error with its hint", err)
+	}
+}
+
+// Any other failure still becomes an auth error pointing at login.
+func TestAuthMiddlewareWrapsPlainErrors(t *testing.T) {
+	chain := Chain(http.DefaultTransport, AuthMiddleware{Provider: failingProvider{err: errors.New("no credential")}})
+	_, err := chain.RoundTrip(httptest.NewRequest("GET", "http://example.invalid/", nil))
+	var ce *clerr.Error
+	if !errors.As(err, &ce) || ce.Code != clerr.ExitAuth || !strings.Contains(ce.Hint, "auth login") {
+		t.Fatalf("err = %#v, want an auth error pointing at login", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vibeknow/cli/internal/clerr"
 	"github.com/vibeknow/cli/internal/credential"
 	"github.com/vibeknow/cli/internal/errs"
 	"github.com/vibeknow/cli/internal/httpclient"
@@ -315,41 +316,40 @@ func TestOAuthTokenProvider_NonRotatingRefreshKeepsCredential(t *testing.T) {
 	}
 }
 
-// failingSetKeychain accepts reads and deletes but refuses every write. It
-// models a keychain that has become unwritable — locked, permissions changed,
-// the entry replaced by another tool — which is rare but not hypothetical.
+// failingSetKeychain refuses writes to the credential entry but accepts
+// everything else, the probe included. It models the store failing between
+// the probe and the real write — the disk filling up, another tool replacing
+// the entry — which is rare but not hypothetical, and which the probe cannot
+// rule out.
 type failingSetKeychain struct {
 	fakeKeychain
 	deleted bool
 }
 
-func (f *failingSetKeychain) Set(string, []byte) error {
-	return errors.New("keychain is locked")
+func (f *failingSetKeychain) Set(key string, data []byte) error {
+	if key == "entry" {
+		return errors.New("keychain is locked")
+	}
+	return f.fakeKeychain.Set(key, data)
 }
 
 func (f *failingSetKeychain) Delete(key string) error {
-	f.deleted = true
+	if key == "entry" {
+		f.deleted = true
+	}
 	return f.fakeKeychain.Delete(key)
 }
 
-// TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential covers the
-// narrow window that rotation turns from harmless into destructive.
-//
-// The sequence: the server accepts the refresh and spends the presented token,
-// then the CLI cannot persist what it got back. The keychain is left holding a
-// token that has already been spent. The next process to run reads it,
-// presents it, and a server that rotates treats a second presentation as a
-// stolen credential — it revokes the entire session and logs a security
-// warning. The user is signed out minutes later with nothing to connect it to.
-//
-// The stale copy must therefore be removed. It could never have worked again;
-// what changes is that the next process finds no credential and asks for a
-// login, instead of tripping the alarm on its way to the same outcome.
-//
-// This was latent while the backend re-issued without spending the old token.
-// It stopped being latent when go-account moved refresh onto jwt.Refresh.
-func TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// rotatingStub answers every refresh with a new pair and records which
+// refresh tokens were presented.
+func rotatingStub(t *testing.T, presented *[]string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		*presented = append(*presented, body.RefreshToken)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"code": 0, "message": "ok",
 			"data": map[string]any{
@@ -360,6 +360,23 @@ func TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential(t *testing.T)
 			},
 		})
 	}))
+}
+
+// TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential covers a
+// write that fails after the probe succeeded.
+//
+// The server has accepted the refresh and spent the presented token, and the
+// CLI cannot persist what it got back. The keychain is left holding a token
+// that has already been spent; the next process would present it, and a
+// server that rotates treats a second presentation as a stolen credential and
+// revokes the entire session.
+//
+// The stale copy must therefore be removed. It could never have worked again;
+// what changes is that the next process finds no credential and asks for a
+// login, instead of tripping the alarm on its way to the same outcome.
+func TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential(t *testing.T) {
+	var presented []string
+	srv := rotatingStub(t, &presented)
 	defer srv.Close()
 
 	kc := &failingSetKeychain{fakeKeychain: fakeKeychain{data: map[string][]byte{
@@ -389,49 +406,37 @@ func TestDoRefresh_UnwritableKeychain_DropsTheSupersededCredential(t *testing.T)
 	}
 }
 
-// lockedKeychain refuses writes *and* deletes. failingSetKeychain above models
-// only a refused write, which let doRefresh clean up after itself; a keychain
-// that is genuinely locked refuses both, and that is the combination where the
-// stale copy survives.
-type lockedKeychain struct{ fakeKeychain }
+// entryLockedKeychain refuses writes *and* deletes of the credential entry,
+// while the probe still goes through: a store that failed after the probe in
+// a way that also blocks the cleanup. That is the combination where the stale
+// copy survives in the keychain.
+type entryLockedKeychain struct{ fakeKeychain }
 
-func (l *lockedKeychain) Set(string, []byte) error { return errors.New("keychain is locked") }
-func (l *lockedKeychain) Delete(string) error      { return errors.New("keychain is locked") }
+func (l *entryLockedKeychain) Set(key string, data []byte) error {
+	if key == "entry" {
+		return errors.New("keychain is locked")
+	}
+	return l.fakeKeychain.Set(key, data)
+}
 
-// TestLockedKeychain_DoesNotReplayTheSpentRefreshToken pins the fix for a
-// replay this CLI could commit against itself.
-//
-// With the keychain locked, a refresh succeeds on the wire and then cannot be
-// written back, and the superseded copy cannot be deleted either. Everything
-// after that in the same process reads the keychain — and used to get the
-// token the server had just spent. Presenting it again is not a retry: a
-// rotating server treats a second presentation as a stolen credential and
-// revokes the entire session, so the user is signed out minutes later for
-// something they did not do.
-//
-// The bug was harmless while go-account re-issued without spending the
-// presented token. It became live when refresh moved onto jwt.Refresh.
+func (l *entryLockedKeychain) Delete(key string) error {
+	if key == "entry" {
+		return errors.New("keychain is locked")
+	}
+	return l.fakeKeychain.Delete(key)
+}
+
+// TestLockedKeychain_DoesNotReplayTheSpentRefreshToken pins the in-process
+// half of that case: once the refresh has gone through and could neither be
+// written back nor cleaned up, everything after it in the same process must
+// use the pair held in memory. Reading the keychain instead returns the token
+// the server just spent, and presenting it again revokes the whole session.
 func TestLockedKeychain_DoesNotReplayTheSpentRefreshToken(t *testing.T) {
 	var presented []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			RefreshToken string `json:"refresh_token"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		presented = append(presented, body.RefreshToken)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code": 0, "message": "ok",
-			"data": map[string]any{
-				"access_token":       "at_rotated",
-				"refresh_token":      "rt_rotated",
-				"expires_in":         7200,
-				"refresh_expires_in": 7776000,
-			},
-		})
-	}))
+	srv := rotatingStub(t, &presented)
 	defer srv.Close()
 
-	kc := &lockedKeychain{fakeKeychain: fakeKeychain{data: map[string][]byte{
+	kc := &entryLockedKeychain{fakeKeychain: fakeKeychain{data: map[string][]byte{
 		"entry": expiredOAuthToken().Marshal(),
 	}}}
 	p := NewOAuthTokenProvider(
@@ -447,8 +452,6 @@ func TestLockedKeychain_DoesNotReplayTheSpentRefreshToken(t *testing.T) {
 		t.Fatalf("first token = %q, want at_rotated", first)
 	}
 
-	// The second command in this process must reuse what the first obtained,
-	// not fall back to the spent copy still sitting in the keychain.
 	second, err := p.Token(context.Background())
 	if err != nil {
 		t.Fatalf("second Token: %v", err)
@@ -461,5 +464,117 @@ func TestLockedKeychain_DoesNotReplayTheSpentRefreshToken(t *testing.T) {
 		t.Errorf("refresh endpoint called %d times %v, want 1: the spent refresh token was "+
 			"presented again, which revokes the whole session under rotation",
 			len(presented), presented)
+	}
+}
+
+// readOnlyKeychain can be read but refuses every write and delete — what a
+// sandbox does to a CLI whose credential store sits outside the paths it may
+// write. It is the common way to end up unable to keep a refreshed pair, and
+// the one the probe exists for.
+type readOnlyKeychain struct{ fakeKeychain }
+
+func (r *readOnlyKeychain) Set(string, []byte) error { return errors.New("operation not permitted") }
+func (r *readOnlyKeychain) Delete(string) error      { return errors.New("operation not permitted") }
+
+// TestReadOnlyStore_DoesNotSpendTheRefreshToken is the case behind sessions
+// revoked minutes after a sandboxed agent ran a command.
+//
+// Refreshing in a read-only store gave the command in flight a new pair that
+// died with the process, while every later command — in the sandbox, or the
+// user's own terminal — read back the token the server had spent. The first of
+// them to present it got the whole session revoked.
+//
+// So the refresh is not attempted: the token is never spent and the session
+// survives for whichever process can store a new pair. With the access token
+// already expired there is nothing worth sending, so the command fails with an
+// error that says why, and — unlike a dead session — keeps the credential.
+func TestReadOnlyStore_DoesNotSpendTheRefreshToken(t *testing.T) {
+	var presented []string
+	srv := rotatingStub(t, &presented)
+	defer srv.Close()
+
+	stored := expiredOAuthToken().Marshal()
+	kc := &readOnlyKeychain{fakeKeychain: fakeKeychain{data: map[string][]byte{"entry": stored}}}
+	p := NewOAuthTokenProvider(
+		credential.KeychainSource{Keychain: kc, Entry: "entry"},
+		srv.URL, t.TempDir(),
+	)
+
+	for i := 0; i < 2; i++ {
+		_, err := p.Token(context.Background())
+		if !isStoreReadOnly(err) {
+			t.Fatalf("Token #%d err = %v, want the read-only store error", i+1, err)
+		}
+		var ce *clerr.Error
+		if !errors.As(err, &ce) || ce.Code != clerr.ExitAuth || ce.Hint == "" {
+			t.Errorf("Token #%d err = %#v, want an auth error (exit 3) with a hint", i+1, err)
+		}
+	}
+	if len(presented) != 0 {
+		t.Errorf("refresh endpoint called %d times %v, want 0: the token was spent with nowhere "+
+			"to keep its replacement", len(presented), presented)
+	}
+	if got := kc.data["entry"]; string(got) != string(stored) {
+		t.Error("the stored credential changed; a read-only store should leave the session as it was")
+	}
+
+	// ForceRefresh — what a 401 triggers — must hold back the same way.
+	if _, err := p.ForceRefresh(context.Background()); !isStoreReadOnly(err) {
+		t.Errorf("ForceRefresh err = %v, want the read-only store error", err)
+	}
+	if len(presented) != 0 {
+		t.Errorf("ForceRefresh presented the refresh token %v", presented)
+	}
+}
+
+// TestReadOnlyStore_UsesTheAccessTokenItStillHas: inside the refresh window
+// the access token has not expired yet, so the command goes ahead with it
+// rather than failing — still without spending the refresh token.
+func TestReadOnlyStore_UsesTheAccessTokenItStillHas(t *testing.T) {
+	var presented []string
+	srv := rotatingStub(t, &presented)
+	defer srv.Close()
+
+	st := credential.NewOAuthToken("access-still-good", "refresh-xyz", 120, 86400)
+	kc := &readOnlyKeychain{fakeKeychain: fakeKeychain{data: map[string][]byte{"entry": st.Marshal()}}}
+	p := NewOAuthTokenProvider(
+		credential.KeychainSource{Keychain: kc, Entry: "entry"},
+		srv.URL, t.TempDir(),
+	)
+
+	tok, err := p.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	if tok != "access-still-good" {
+		t.Errorf("token = %q, want the stored access token", tok)
+	}
+	if len(presented) != 0 {
+		t.Errorf("refresh endpoint called %v, want no call", presented)
+	}
+}
+
+// TestRefresh_ProbeLeavesNothingBehind: in a writable store the probe entry is
+// written and removed again, and the refresh proceeds as before.
+func TestRefresh_ProbeLeavesNothingBehind(t *testing.T) {
+	var presented []string
+	srv := rotatingStub(t, &presented)
+	defer srv.Close()
+
+	kc := &fakeKeychain{data: map[string][]byte{"entry": expiredOAuthToken().Marshal()}}
+	p := NewOAuthTokenProvider(
+		credential.KeychainSource{Keychain: kc, Entry: "entry"},
+		srv.URL, t.TempDir(),
+	)
+
+	if tok, err := p.Token(context.Background()); err != nil || tok != "at_rotated" {
+		t.Fatalf("Token = %q, %v; want at_rotated", tok, err)
+	}
+	if len(kc.data) != 1 {
+		keys := make([]string, 0, len(kc.data))
+		for k := range kc.data {
+			keys = append(keys, k)
+		}
+		t.Errorf("store holds %v, want only the credential entry", keys)
 	}
 }

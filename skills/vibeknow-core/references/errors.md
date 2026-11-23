@@ -7,7 +7,7 @@
 | 0 | Success | — |
 | 1 | General error | Read stderr for details |
 | 2 | Invalid arguments | Fix command syntax, check `--help` |
-| 3 | Auth error | Run `vibeknow auth status` to check credential source. If keychain/file: `vibeknow auth logout` and re-authenticate. If env var: check `VIBEKNOW_TOKEN` value. |
+| 3 | Auth error | If `error.detail.code` is `credential_store_readonly`, the sign-in is fine but this environment cannot write the credential store: rerun the command where it can (outside the sandbox) — do not log out or log in again. Otherwise run `vibeknow auth status` to check credential source. If keychain/file: `vibeknow auth logout` and re-authenticate. If env var: check `VIBEKNOW_TOKEN` value. |
 | 130 | User interrupt (SIGINT) | — |
 
 Exit codes 4, 5, 6 are task-lifecycle codes and do not apply to core commands.
@@ -35,6 +35,7 @@ When `--output json` is set, errors are returned as:
 |------|---------|-----------------|
 | `auth_required` | No credential found | No token in env, keychain, or file |
 | `auth_expired` | Token has expired | Re-authenticate |
+| `credential_store_readonly` | Sign-in needs renewing but the credential store can't be written here; nothing was spent | Run the command outside the sandbox, or allow writes to the store. Logging in again from the same place hits the same wall |
 | `invalid_args` | Bad arguments | Wrong flag or missing required arg |
 | `network_error` | Cannot reach endpoint | Check network, run `vibeknow doctor` |
 | `version_mismatch` | CLI/server version incompatible | Update CLI |

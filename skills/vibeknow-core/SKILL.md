@@ -111,7 +111,7 @@ vibeknow doctor                    # check endpoint reachability
 | 0 | Success | — |
 | 1 | General error | Check stderr message |
 | 2 | Invalid arguments | Fix command syntax |
-| 3 | Auth error | Run `vibeknow auth status`, check credential source |
+| 3 | Auth error | Run `vibeknow auth status`, check credential source; `credential_store_readonly` means run it outside the sandbox, not log in again |
 | 130 | User interrupt (SIGINT) | — |
 
 For full exit code and error code reference, see [errors.md](references/errors.md).
